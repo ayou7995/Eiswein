@@ -97,7 +97,7 @@ After completing a module: run `security-auditor` then `test-writer`.
 - **Layer 2 (Per-Ticker Action)**: 6 indicators → 強力買入🟢🟢 / 買入等回調🟢⏳ / 持有✓ / 觀望👀 / 減倉⚠️ / 出場🔴🔴
 - Equal weight v1. Adjust based on accumulated history data.
 
-## References
-- Design decisions: `~/.claude/projects/-Users-cheyulin-Eiswein/memory/eiswein_design_decisions.md`
-- Sherry articles: `~/.claude/projects/-Users-cheyulin-Eiswein/memory/sherry_article*.md`
-- Implementation plan: `~/.claude/plans/tidy-conjuring-unicorn.md`
+## References (committed to repo)
+- Implementation plan: `docs/IMPLEMENTATION_PLAN.md`
+- Design decisions: `docs/DESIGN_DECISIONS.md`
+- Sherry system context: `docs/SHERRY_SYSTEM.md`
