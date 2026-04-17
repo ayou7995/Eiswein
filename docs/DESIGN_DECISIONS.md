@@ -44,7 +44,7 @@ Differences vs. original plan:
    
    v2 candidates: Put/Call Ratio, Sector Rotation, Market Breadth, Insider Trading
 
-9. **Report format**: Dual-format per indicator — raw numbers + plain-language explanation with context ("前因後果"). Entry/exit timing indicators (MACD, BB) should give concrete price levels and actionable suggestions.
+9. **Report format** (REVISED 2026-04-16): Structured scannable UI — raw numbers + **Pros/Cons list** (🟢/🔴 bullets per indicator). NO template-based paragraph narrator (abandoned — nested if/else hell, robotic output). If rich narrative becomes necessary later, use an LLM API (Claude Haiku 4.5 / Gemini Flash) with JSON input and strict prompt — never a hand-coded template. Entry/exit timing indicators (MACD, BB) surface concrete price levels as their own dedicated UI section, not buried in prose.
 
 10. **Data sources (Plan C)**: Swappable interface pattern.
     - Dev phase: yfinance (free) + FRED API (free)

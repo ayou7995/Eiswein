@@ -19,7 +19,7 @@ backend/app/
 ├── db/           # SQLAlchemy models + session
 ├── datasources/  # Abstract DataSource + yfinance/FRED/Schwab/Polygon impls
 ├── indicators/   # 12 indicator modules (each implements base.py)
-├── signals/      # Voting, entry price, stop-loss, narrator
+├── signals/      # Voting, entry price, stop-loss, pros_cons (structured — NO template narrator)
 ├── security/     # Auth, encryption, rate limit, middleware
 ├── jobs/         # Cron: daily_update, backup, token_reminder
 └── utils/        # Shared utilities
@@ -96,6 +96,13 @@ After completing a module: run `security-auditor` then `test-writer`.
 - **Layer 1 (Market Posture)**: 4 market-regime indicators vote → 進攻/正常/防守
 - **Layer 2 (Per-Ticker Action)**: 6 indicators → 強力買入🟢🟢 / 買入等回調🟢⏳ / 持有✓ / 觀望👀 / 減倉⚠️ / 出場🔴🔴
 - Equal weight v1. Adjust based on accumulated history data.
+
+## UX Output Rules (IMPORTANT)
+- **NO template-based prose narrator**. Do not build Python/TS code that stitches indicator results into sentences.
+- User-facing "plain language" = **scannable Pros/Cons UI list** (🟢/🔴 bullets), NOT paragraphs.
+- Each indicator result surfaces as a structured item: `{category, tone, short_label, detail_on_expand}`.
+- If rich narrative becomes necessary post-v1, use an LLM API (Claude Haiku 4.5 or Gemini Flash) with JSON input and a strict prompt. Never a hand-coded template.
+- Rationale: template narrators devolve into nested if/else, sound robotic, have high maintenance cost, and scannable lists are better UX for decision-support.
 
 ## References (committed to repo)
 - Implementation plan: `docs/IMPLEMENTATION_PLAN.md`

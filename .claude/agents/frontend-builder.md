@@ -39,8 +39,11 @@ You are the Frontend Builder for the Eiswein project — a personal stock market
 - **Mobile-first responsive** — user checks on phone daily
 - Signal colors: 🟢 `#22c55e` / 🟡 `#eab308` / 🔴 `#ef4444`
 - Dark theme preferred (easier on eyes for financial data, less burn-in)
-- Traditional Chinese for labels/narratives, English for ticker symbols and technical terms
-- Dual-format: raw numbers + plain-language explanation (白話文)
+- Traditional Chinese for labels, English for ticker symbols and technical terms
+- **"Plain language" = scannable Pros/Cons UI list**, NOT paragraphs. Do NOT render prose from backend.
+  - `ProsConsCard` component: two-column list (🟢 Pros | 🔴 Cons), each row has `short_label` + expand-on-tap for raw numbers
+  - Neutral indicators collapsed by default under "⚪ Neutral signals (N)"
+- Raw indicator values always accessible via expand — user asked for dual-format (quick scan + drill-down detail)
 - No layout shift on load (reserve space with skeletons)
 
 ## Full-Stack Definition of Done (apply ALL)

@@ -472,13 +472,15 @@ Tasks:
 3. **Stop-loss calculator**
    - `signals/stop_loss.py`: Dynamic based on trend health
 
-4. **Narrator (白話文 generator)**
-   - `signals/narrator.py`: Takes all indicator results + signal → produces Chinese plain-language explanation
-   - Template-based for v1 (not LLM-generated)
+4. **Pros/Cons structured output** (REVISED — no template narrator)
+   - `signals/pros_cons.py`: Converts each indicator result into a structured `{category, symbol, tone: "pro"|"con"|"neutral", short_label, detail}` item
+   - Categories map to UI sections: Direction, Timing, Macro, Risk
+   - NO prose paragraph generation. NO templating. NO nested if/else for narrative.
+   - If rich narrative is ever required (post-v1), add `signals/llm_narrator.py` that POSTs the structured JSON to Claude Haiku 4.5 / Gemini Flash with a strict prompt. Not in v1 scope.
 
 5. **API routes**
-   - GET `/api/market-posture`: Market regime summary
-   - GET `/api/ticker/{symbol}`: Full indicator + signal + entry/stop/narrative
+   - GET `/api/market-posture`: Market regime summary (4 indicators as Pros/Cons items + overall posture)
+   - GET `/api/ticker/{symbol}`: Full indicator data + signal + entry/stop prices + `pros_cons: []` array
    - GET `/api/ticker/{symbol}/history`: Historical signals
 
 6. **Daily snapshot storage**
@@ -511,18 +513,24 @@ Tasks:
      - 50MA / 200MA line overlays
      - Bollinger Bands overlay
      - Time range selector (1M/3M/6M/1Y/ALL)
-   - Direction indicators card (4 items with 🟢🟡🔴)
-   - Timing indicators card (2 items)
+   - **Pros/Cons summary card** (REVISED — replaces paragraph narrative):
+     - Two columns: 🟢 Pros | 🔴 Cons
+     - Each row: indicator short label + tap to expand for raw numbers
+     - Example rows: `🟢 MACD crossover (bullish)` / `🔴 VIX trending up` / `🟢 Price above 200MA`
+     - Neutral indicators collapsed by default under "⚪ Neutral signals (N)" expand row
+   - Direction indicators card (4 items with 🟢🟡🔴, detailed view)
+   - Timing indicators card (2 items, detailed view)
    - Entry price section with visual progress bars
    - Stop-loss display
    - Split suggestion (僅供參考)
-   - Plain-language narrative section (白話解讀)
    - Signal history table (last 30 days)
+   - NO paragraph narrative section. Scannable Pros/Cons is the "白話" mechanism.
 
 3. **Shared components**
    - `SignalBadge` (🟢🟡🔴 with label)
    - `ActionBadge` (6 categories with icons)
    - `PriceBar` (visual distance to entry/stop prices)
+   - `ProsConsCard` (dual-column list with expand-to-detail rows)
    - `NavBar` (responsive, mobile hamburger)
    - `LoadingSpinner`
 

@@ -24,6 +24,14 @@ You are the Backend Builder for the Eiswein project — a personal stock market 
 - **Composition root**: `backend/app/main.py` (wires everything via DI)
 - **Jobs**: `backend/app/jobs/`
 
+## Signal Output Rule (CRITICAL)
+- Do NOT build a template-based narrator (signals/narrator.py with nested if/else producing Chinese sentences).
+- Instead build `signals/pros_cons.py` that converts indicator results into structured items:
+  `{category: "direction"|"timing"|"macro"|"risk", tone: "pro"|"con"|"neutral", short_label: str, detail: dict}`
+- API response includes `pros_cons: ProsConsItem[]` alongside raw indicator data.
+- Frontend renders this as a scannable UI list — it doesn't need Python to pre-format prose.
+- If the user ever requests rich paragraph narrative, propose an LLM API call (Claude Haiku / Gemini Flash) with strict JSON prompt. Never a hand-coded template.
+
 ## Full-Stack Definition of Done (apply ALL)
 1. **Zero-lint**: mypy strict, ruff clean. No `# type: ignore` without explanation comment.
 2. **Tests mandatory**: every module has test file. Test both success and failure paths.
