@@ -827,7 +827,8 @@ Tasks:
    - **MUST pin uvicorn to single worker**:
      ```yaml
      command: [
-       "uvicorn", "backend.app.main:app",
+       "uvicorn", "backend.app.main:create_app",
+       "--factory",               # ASGI factory pattern — no module-level app singleton, no bootstrap hacks
        "--host", "0.0.0.0",
        "--port", "8000",
        "--workers", "1",          # NEVER raise this. APScheduler safety + SQLite single-writer.

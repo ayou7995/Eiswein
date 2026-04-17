@@ -1,0 +1,37 @@
+# Top-level dependencies. Generate full pinned requirements.txt via:
+#   pip-compile --generate-hashes --output-file=requirements.txt requirements.in
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Database
+sqlalchemy==2.0.35
+alembic==1.13.3
+
+# Security
+bcrypt==4.2.0
+cryptography==43.0.1
+python-jose[cryptography]==3.3.0
+zxcvbn==4.4.28
+slowapi==0.1.9
+
+# Logging / observability
+structlog==24.4.0
+
+# HTTP helpers
+python-multipart==0.0.12
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==5.0.0
+httpx==0.27.2
+freezegun==1.5.1
+
+# Dev tooling
+mypy==1.11.2
+ruff==0.6.9
+pip-tools==7.4.1

@@ -6,7 +6,9 @@ Inspired by Heaton's Sherry trading system. Positioning: systematic decision-sup
 
 ## Status
 
-Greenfield / in development. See `~/.claude/plans/tidy-conjuring-unicorn.md` for the implementation plan.
+Phase 0 complete (backend scaffold + security foundation). Phase 1 (data
+layer) in progress. See `docs/IMPLEMENTATION_PLAN.md` for the full phased
+plan and `docs/STAFF_REVIEW_DECISIONS.md` for locked technical decisions.
 
 ## Stack
 
@@ -20,24 +22,32 @@ Greenfield / in development. See `~/.claude/plans/tidy-conjuring-unicorn.md` for
 ```bash
 # Copy env template
 cp .env.example .env
-# Edit .env with your secrets
+# Generate secrets and update .env:
+python -c "import secrets; print(secrets.token_urlsafe(64))"                        # JWT_SECRET
+python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"  # ENCRYPTION_KEY
+python scripts/set_password.py                                                      # ADMIN_PASSWORD_HASH
 
 # Backend
 cd backend
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Frontend
+# Apply migrations
+alembic upgrade head
+
+# Run
+uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
+
+# Tests, lint, type (from repo root)
+make test
+make lint
+make type
+
+# Frontend (Phase 1+)
 cd ../frontend
 npm install
-
-# Dev
-# Terminal 1:
-cd backend && uvicorn app.main:app --reload
-
-# Terminal 2:
-cd frontend && npm run dev
+npm run dev
 ```
 
 ## Architecture
