@@ -35,4 +35,12 @@ def build_limiter(default_limits: list[str] | None = None) -> Limiter:
     )
 
 
-__all__: tuple[str, ...] = ("build_limiter", "client_ip_key")
+# Module-level singleton used by route decorators (@limiter.limit(...)).
+# Actual limit enforcement requires SlowAPIMiddleware to be attached to
+# the app and `app.state.limiter = limiter` to be set (done in main.py).
+# Route decorators just register the limit intent; they take effect when
+# the middleware sees the state assignment.
+limiter: Limiter = build_limiter()
+
+
+__all__: tuple[str, ...] = ("build_limiter", "client_ip_key", "limiter")

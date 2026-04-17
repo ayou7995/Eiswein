@@ -27,6 +27,9 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -42,6 +45,7 @@ from app.security.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
+from app.security.rate_limit import limiter as app_limiter
 
 
 def _seed_admin_if_needed(settings: Settings, users: UserRepository) -> None:
@@ -107,20 +111,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     resolved = settings or get_settings()
 
+    is_production = resolved.environment == "production"
+
     app = FastAPI(
         title="Eiswein API",
         version="0.1.0",
         lifespan=_lifespan,
-        docs_url="/api/v1/docs" if resolved.environment != "production" else None,
+        docs_url=None if is_production else "/api/v1/docs",
         redoc_url=None,
-        openapi_url="/api/v1/openapi.json",
+        openapi_url=None if is_production else "/api/v1/openapi.json",
     )
     app.state.settings = resolved
+    app.state.limiter = app_limiter
 
+    # Middleware add order is reverse execution order — last added runs first.
+    # ClientIP must run before rate limiter so that the limiter keys off the
+    # validated CF-Connecting-IP, not the transport peer.
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ClientIPMiddleware, extra_trusted=tuple(resolved.trusted_proxies))
     app.add_middleware(RequestContextMiddleware)
 
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     register_error_handlers(app)
 
     app.include_router(build_v1_router())

@@ -90,6 +90,17 @@ def app(settings: Settings, engine: Engine, session_factory: sessionmaker[Sessio
     return application
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Iterator[None]:
+    """Reset slowapi in-memory storage between tests so rate limits don't
+    accumulate across test functions sharing the same TestClient IP."""
+    from app.security.rate_limit import limiter as module_limiter
+
+    module_limiter.reset()
+    yield
+    module_limiter.reset()
+
+
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
     with TestClient(app) as tc:
