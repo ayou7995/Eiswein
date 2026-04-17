@@ -23,14 +23,10 @@ venv/
 .venv/
 env/
 ENV/
-build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -45,17 +41,26 @@ htmlcov/
 .tox/
 .mypy_cache/
 .ruff_cache/
+# (Python's build/, dist/, lib/ patterns removed from global — they also
+# match frontend src directories. Backend will re-add scoped patterns.)
 
 # Node / Frontend
 node_modules/
 .pnpm-store/
-dist/
+frontend/dist/
+frontend/.vite/
 .vite/
 .cache/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .eslintcache
+
+# Python build artifacts (scoped to backend/ so frontend src/lib isn't matched)
+backend/build/
+backend/dist/
+backend/lib/
+backend/lib64/
 
 # IDE / OS
 .DS_Store
