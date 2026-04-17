@@ -107,4 +107,5 @@ After completing a module: run `security-auditor` then `test-writer`.
 ## References (committed to repo)
 - Implementation plan: `docs/IMPLEMENTATION_PLAN.md`
 - Design decisions: `docs/DESIGN_DECISIONS.md`
+- **Staff engineer review (40+ locked technical details)**: `docs/STAFF_REVIEW_DECISIONS.md` ← authoritative for any detail not explicit in IMPLEMENTATION_PLAN.md
 - Sherry system context: `docs/SHERRY_SYSTEM.md`

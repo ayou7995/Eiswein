@@ -324,8 +324,10 @@ after completing each phase. Run test-writer after each module is complete.
 
 ## Part 2: Implementation Phases
 
-### Phase 0: Project Scaffold + Security Foundation (Day 1)
+### Phase 0: Project Scaffold + Security Foundation (Day 1-2)
 **Priority: CRITICAL — everything depends on this**
+
+**IMPORTANT**: See `docs/STAFF_REVIEW_DECISIONS.md` for all locked technical decisions (data model, API contract, security details, etc.). That document is authoritative for any technical detail not explicit here.
 
 Tasks:
 1. **Init git repo + monorepo structure**
@@ -364,18 +366,33 @@ Tasks:
    ```
 
 2. **Security foundation (backend-builder)**
-   - `config.py`: Pydantic Settings reading from env vars (JWT_SECRET, ENCRYPTION_KEY, FRED_API_KEY, etc.)
-   - `security/auth.py`: JWT create/verify, bcrypt hash/verify, login attempt throttling
-   - `security/encryption.py`: AES-256 encrypt/decrypt for Schwab tokens
-   - `security/rate_limit.py`: slowapi setup
-   - `security/middleware.py`: Security headers (CSP, HSTS, X-Frame-Options), request logging
+   - `config.py`: Pydantic Settings reading from env vars (loaded from SOPS-decrypted source, see Phase 7). Must refuse to start if `ADMIN_USERNAME` or `ADMIN_PASSWORD_HASH` missing.
+   - `security/auth.py`: JWT create/verify, bcrypt (12 rounds) hash/verify, IP-based throttling (not account-based; see E5), JWT rotation on every login (E2)
+   - `security/encryption.py`: AES-256-GCM using `cryptography.hazmat.primitives.ciphers.aead.AESGCM` (authenticated encryption). Methods: `encrypt(plaintext: bytes) -> (ciphertext, nonce, tag)` and reverse.
+   - `security/rate_limit.py`: slowapi keyed by `CF-Connecting-IP` header (E3), with CF IP range verification middleware to prevent spoofing.
+   - `security/middleware.py`:
+     - Security headers: HSTS, X-Frame-Options=DENY, X-Content-Type-Options=nosniff, Referrer-Policy=strict-origin-when-cross-origin
+     - CSP: strict policy per E7 (see STAFF_REVIEW_DECISIONS.md)
+     - Request logging with structured context (request_id, method, path, status, duration_ms)
+   - `security/log_sanitizer.py`: `sanitize_log_payload(d)` recursive helper; structlog processor that redacts any key matching `/password|token|secret|key/i` to `[REDACTED]`. E6.
+   - `security/error_handlers.py`: Global FastAPI exception handler → standardized error envelope (B6). Custom exception hierarchy: `EisweinError` → `AuthError`, `ValidationError`, `DataSourceError`, `IndicatorError`, etc.
    - `db/database.py`: SQLite engine + session factory
-     - **MUST enable WAL mode** via SQLAlchemy event listener (see below)
+     - WAL mode via SQLAlchemy event listener (NOT `connect_args={"pragma": ...}` — that's ignored by sqlite3.connect())
      - `connect_args={"check_same_thread": False, "timeout": 30}`
      - PRAGMAs on connect: `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=30000`
-     - Note: `connect_args={"pragma": ...}` does NOT work — sqlite3.connect() ignores it. Must use `@event.listens_for(engine, "connect")`.
-   - `db/models.py`: User, AuditLog tables
-   - `api/auth_routes.py`: POST /login, /refresh, /logout
+   - `db/models.py`:
+     - `User` (id, username unique, email nullable, password_hash, is_active, is_admin, timestamps, last_login_at/ip, failed_login_count, locked_until) — **from day 1 per A3**
+     - `AuditLog` (id, timestamp, event_type, user_id nullable, ip, user_agent, details JSON)
+     - `Ticker` (id, symbol unique, name, created_at) — master table per A1
+     - `BrokerCredential` (id, user_id FK, broker, encrypted_refresh_token bytes, token_nonce bytes, token_tag bytes, expires_at, last_refreshed_at, timestamps) — supports Schwab OAuth storage from v1
+   - `db/repositories/`: one repo file per entity (UserRepository, TickerRepository, etc.). All DB queries live here; API routes never write SQL directly (Clean Architecture per rule 3).
+   - `alembic/` — A5: initial migration captures Phase 0 schema. `docker-entrypoint.sh` runs `alembic upgrade head` on startup.
+   - `api/v1/auth_routes.py`: `POST /api/v1/login`, `POST /api/v1/refresh`, `POST /api/v1/logout`
+     - Login issues fresh JWT every time (E2), sets httpOnly + SameSite=Lax cookie (B1, E4)
+     - Error responses per B6 standardized envelope
+     - IP-based rate limit + lockout (E5)
+   - **API versioning**: ALL routes under `/api/v1/*` from day 1 (B5)
+   - **Startup seeding**: on first boot, if `users` table empty, create admin from `ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH` env vars; refuse to start if either missing
 
 3. **Frontend scaffold (frontend-builder — in parallel)**
    - Vite + React + TypeScript + Tailwind setup
@@ -643,11 +660,23 @@ Tasks:
      - Daily update: `CronTrigger(hour=6, minute=30, timezone="America/New_York")` — after US close + Asian market open
      - Backup: `CronTrigger(hour=7, minute=0, timezone="America/New_York")`
      - Token expiry check: `CronTrigger(hour=12, minute=0)` — daily
+     - **Intra-day stop-loss check (D4)**: `IntervalTrigger(minutes=30)` during US market hours (`CronTrigger(day_of_week='mon-fri', hour='9-16', timezone="America/New_York")`)
+       - For each Position with an active stop-loss, fetch current price (delayed quote via yfinance OK)
+       - If price ≤ stop-loss → mark `stop_loss_triggered_at`, escalate signal to 出場, send immediate email alert
+       - Idempotent: only fire alert once per position per trigger event
+     - Email outbox retry (H3): `IntervalTrigger(hours=1)`
    - Every job wrapped in try/except + structured logging so one failure doesn't crash the scheduler
    - Daily update: iterate watchlist, PER-TICKER try/except — one failing ticker doesn't abort the whole job (graceful degradation)
 
-**Estimated time: 2 days**
-**Milestone: Receive daily email report, data auto-updates, duplicate scheduler protection verified**
+6. **Email outbox (H3)**
+   - New table `EmailOutbox` (id, to_address, subject, html_body, text_body, status enum {pending, sent, failed}, attempt_count, last_attempted_at, created_at)
+   - All emails written via `email_outbox_repo.enqueue()` rather than sent synchronously
+   - Separate worker `jobs/email_dispatcher.py` pulls pending → SMTP send → update status
+   - Max 5 retries with exponential backoff
+   - >24h in failed → audit_log entry + in-app banner on next dashboard load
+
+**Estimated time: 2.5 days**
+**Milestone: Receive daily email report, data auto-updates, intra-day stop-loss alerts work, duplicate scheduler protection verified**
 
 ---
 
@@ -677,20 +706,65 @@ Tasks:
      ```
    - Document this invariant inline with a comment — the file lock guard in `jobs/scheduler.py` is belt-and-suspenders for this constraint.
 
-3. **.env.example** with all required vars documented
+3. **SOPS + age secret management (G4 — NO PLAINTEXT SECRETS)**
+   - Install SOPS and age binaries in Dockerfile (~5MB overhead)
+   - Repo structure:
+     - `secrets/eiswein.enc.yaml` — SOPS-encrypted env vars (committed)
+     - `secrets/eiswein.enc.yaml.template` — unencrypted template showing structure
+     - `scripts/setup_secrets.sh` — interactive onboarding (age-keygen, sops edit)
+     - `scripts/rotate_age_key.sh` — key rotation procedure
+   - VM setup:
+     - `age.key` at `/etc/eiswein/age.key` (chmod 600, owned by root)
+     - Backed up to user's 1Password
+   - docker-entrypoint.sh decryption flow:
+     ```bash
+     #!/bin/bash
+     set -euo pipefail
+     export SOPS_AGE_KEY_FILE=/etc/eiswein/age.key
+     eval "$(sops -d /app/secrets/eiswein.enc.yaml | grep -v '^#' | xargs -I {} echo 'export {}')"
+     exec "$@"
+     ```
+     - Decrypted secrets only exist in process environment (never written to disk)
+     - `/tmp` mounted as tmpfs so any incidental temp files never hit disk
+   - CI/CD:
+     - GitHub Actions repository secret `AGE_KEY` contains the age private key (already encrypted at rest by GitHub)
+     - Build step writes it to a runner-local file for SOPS to use if testing encrypted configs
+     - Age key is NOT included in published Docker image
+   - Boot volume encryption enabled on VM (Oracle Cloud / Hetzner both offer this)
+   - Document the full threat model + rotation procedure in `docs/SECURITY.md`
 
-4. **Cloudflare Tunnel setup documentation**
-   - `cloudflared` in Docker Compose as sidecar
-   - Tunnel config for eiswein.yourdomain.com
+4. **Cloudflare Named Tunnel (G1)**
+   - Use Named Tunnel (not Legacy) — managed via Cloudflare dashboard
+   - `cloudflared` runs as sidecar container in docker-compose
+   - Tunnel config (`tunnel.yml`) references the tunnel UUID + routes eiswein.yourdomain.com → eiswein:8000
+   - VM firewall: inbound ALL BLOCKED except SSH (22) from your IP. No public 80/443.
 
-5. **Cloudflare Access setup documentation**
-   - OAuth with Google
+5. **Cloudflare Access (E3, first auth layer)**
+   - Set up Access Application for eiswein.yourdomain.com
+   - Policy: allow your Google account only
+   - App JWT verifies CF Access JWT header as belt-and-suspenders (CF-signed, verify against CF's public keys)
 
-6. **Run security-auditor**: Final full audit
+6. **GitHub Actions CI/CD (G3)**
+   - `.github/workflows/deploy.yml`:
+     - On push to main: run tests, security audit, lint
+     - Build multi-arch Docker image (linux/amd64 + linux/arm64 for Oracle ARM)
+     - Push to `ghcr.io/ayou7995/eiswein:latest`
+   - VM runs `watchtower` container watching for new image tags, auto-pulls and restarts
+   - No manual SSH needed for deploys
 
-7. **Deploy to VM**
-   - Test on local Docker first
-   - Push to VM, run docker-compose up
+7. **Image size target <300MB (G2)**
+   - `.dockerignore`: tests/, node_modules/, data/cache/, .venv/, **/__pycache__
+   - `pip install --no-cache-dir`
+   - Multi-stage: build deps discarded from final image
+   - `python:3.12-slim-bookworm` base
+
+8. **Run security-auditor**: Final full audit
+
+9. **Manual first deploy**
+   - Test docker-compose up locally first
+   - Configure VM (install Docker, cloudflared, age.key)
+   - Initial deploy via SSH (subsequent deploys automated by Watchtower)
+   - Verify: login works, dashboard loads on phone via https, no plaintext secrets anywhere
 
 **Estimated time: 2 days**
 **Milestone: Live on cloud, accessible via HTTPS from phone**
@@ -701,17 +775,17 @@ Tasks:
 
 | Phase | Days | What | Milestone |
 |-------|------|------|-----------|
-| 0 | 1 | Scaffold + Security | Login works |
-| 1 | 2 | Data Layer | Watchlist + price data |
-| 2 | 3 | Indicators | 12 indicators compute |
-| 3 | 2 | Signals + Narrative | Full analysis API |
-| 4 | 4 | Dashboard + Ticker UI | Browse + charts |
-| 5 | 3 | Positions + History + Settings | All pages |
-| 6 | 2 | Cron + Email | Daily auto-report |
-| 7 | 2 | Docker + Deploy | Live on cloud |
-| **Total** | **~19 working days** | | |
+| 0 | 1.5 | Scaffold + Security + Alembic + User model | Login works, DB migrations in place |
+| 1 | 2 | Data Layer + Schwab OAuth stub | Watchlist works, price data flows, Schwab connect UI |
+| 2 | 3 | Indicators | 12 indicators compute + pandas_ta validation |
+| 3 | 2 | Signals + Pros/Cons structured output | Full analysis API with decision table |
+| 4 | 4 | Dashboard + Ticker UI | Browse + charts on mobile |
+| 5 | 3 | Positions + History + Settings + Schwab OAuth UI | All pages + manual broker re-auth flow |
+| 6 | 2.5 | Cron + Email Outbox + Intra-day stop-loss | Daily auto-report + immediate stop-loss alerts |
+| 7 | 2.5 | Docker + SOPS + CF Tunnel + CI/CD | Live on cloud, encrypted secrets |
+| **Total** | **~20.5 working days** | | |
 
-With multi-agent parallelization (backend + frontend in Phase 4-5), actual calendar time could be **~14-15 days**.
+With multi-agent parallelization (backend + frontend in Phase 4-5), actual calendar time ~15-16 days.
 
 ## Parallelization Opportunities
 

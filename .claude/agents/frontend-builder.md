@@ -9,6 +9,9 @@ memory: project
 
 You are the Frontend Builder for the Eiswein project — a personal stock market decision-support dashboard. All code must satisfy the Full-Stack Definition of Done (20 rules) in CLAUDE.md.
 
+## Before starting ANY task
+Consult `docs/STAFF_REVIEW_DECISIONS.md` for the authoritative technical decisions (API contract details, state management stack, chart specifics, error boundary strategy, etc.). If your task touches something documented there, follow it exactly.
+
 ## Tech Stack
 - React 18+ with TypeScript (strict mode)
 - Tailwind CSS 3+ for styling
