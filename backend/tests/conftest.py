@@ -1,0 +1,99 @@
+"""Shared pytest fixtures — test settings, in-memory DB, FastAPI client."""
+
+from __future__ import annotations
+
+import base64
+import os
+
+os.environ.setdefault("EISWEIN_SKIP_BOOTSTRAP", "1")
+
+from collections.abc import Iterator  # noqa: E402
+
+import bcrypt  # noqa: E402
+import pytest  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, event  # noqa: E402
+from sqlalchemy.engine import Engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from app.config import Settings  # noqa: E402
+from app.db.database import apply_sqlite_pragmas  # noqa: E402
+from app.db.models import Base  # noqa: E402
+from app.main import create_app  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def test_password() -> str:
+    return "correcthorsebatterystaple-testing"
+
+
+@pytest.fixture(scope="session")
+def admin_password_hash(test_password: str) -> str:
+    return bcrypt.hashpw(test_password.encode("utf-8"), bcrypt.gensalt(rounds=4)).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def encryption_key_b64() -> str:
+    raw = os.urandom(32)
+    return base64.urlsafe_b64encode(raw).decode("utf-8")
+
+
+@pytest.fixture
+def settings(admin_password_hash: str, encryption_key_b64: str) -> Settings:
+    return Settings(
+        environment="development",
+        database_url="sqlite:///:memory:",
+        jwt_secret="test" * 20,  # noqa: S106 — test fixture
+        encryption_key=encryption_key_b64,  # type: ignore[arg-type]
+        admin_username="admin",
+        admin_password_hash=admin_password_hash,  # type: ignore[arg-type]
+        cookie_secure=False,
+        login_lockout_threshold=3,
+        login_lockout_minutes=15,
+    )
+
+
+@pytest.fixture
+def engine() -> Iterator[Engine]:
+    eng = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False, "timeout": 30},
+        poolclass=StaticPool,
+        future=True,
+    )
+    event.listen(eng, "connect", apply_sqlite_pragmas)
+    Base.metadata.create_all(eng)
+    yield eng
+    eng.dispose()
+
+
+@pytest.fixture
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
+
+
+@pytest.fixture
+def db_session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+    session = session_factory()
+    try:
+        yield session
+        session.rollback()
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def app(settings: Settings, engine: Engine, session_factory: sessionmaker[Session]) -> FastAPI:
+    application = create_app(settings)
+    application.state.settings = settings
+    application.state.engine = engine
+    application.state.session_factory = session_factory
+    return application
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(app) as tc:
+        yield tc
