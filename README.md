@@ -37,7 +37,7 @@ pip install -r requirements.txt
 alembic upgrade head
 
 # Run
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
 
 # Tests, lint, type (from repo root)
 make test

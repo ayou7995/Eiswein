@@ -4,24 +4,21 @@ from __future__ import annotations
 
 import base64
 import os
+from collections.abc import Iterator
 
-os.environ.setdefault("EISWEIN_SKIP_BOOTSTRAP", "1")
+import bcrypt
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from collections.abc import Iterator  # noqa: E402
-
-import bcrypt  # noqa: E402
-import pytest  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, event  # noqa: E402
-from sqlalchemy.engine import Engine  # noqa: E402
-from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
-
-from app.config import Settings  # noqa: E402
-from app.db.database import apply_sqlite_pragmas  # noqa: E402
-from app.db.models import Base  # noqa: E402
-from app.main import create_app  # noqa: E402
+from app.config import Settings
+from app.db.database import apply_sqlite_pragmas
+from app.db.models import Base
+from app.main import create_app
 
 
 @pytest.fixture(scope="session")

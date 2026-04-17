@@ -22,7 +22,6 @@ Shutdown
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -99,6 +98,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """ASGI factory — invoked via `uvicorn app.main:create_app --factory`.
+
+    Tests import this directly and pass in a test ``Settings`` instance;
+    production invocation resolves settings from env vars. No module-level
+    ``app`` singleton exists: importing this module has no side effects,
+    so tests never need a bootstrap escape hatch.
+    """
     resolved = settings or get_settings()
 
     app = FastAPI(
@@ -119,19 +125,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(build_v1_router())
     return app
-
-
-def _make_module_app() -> FastAPI:
-    """uvicorn entrypoint: `uvicorn app.main:app`.
-
-    Boot-time failures (missing ADMIN_PASSWORD_HASH, weak JWT secret,
-    etc.) MUST surface to the operator, so we let the exception from
-    `Settings()` propagate. Set EISWEIN_SKIP_BOOTSTRAP=1 in environments
-    (tests, docs generation) that import this module but won't serve.
-    """
-    if os.environ.get("EISWEIN_SKIP_BOOTSTRAP") == "1":
-        return FastAPI(title="Eiswein API (bootstrap skipped)")
-    return create_app()
-
-
-app: FastAPI = _make_module_app()

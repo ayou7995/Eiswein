@@ -9,7 +9,7 @@ help:
 	@echo "  type          - mypy --strict backend/"
 	@echo "  test          - pytest -v backend/tests"
 	@echo "  migrate       - alembic upgrade head"
-	@echo "  dev           - uvicorn backend.app.main:app --reload"
+	@echo "  dev           - uvicorn backend.app.main:create_app --factory --reload"
 
 deps-update:
 	cd backend && pip-compile --generate-hashes --output-file=requirements.txt requirements.in
@@ -36,4 +36,4 @@ migrate:
 	cd backend && alembic upgrade head
 
 dev:
-	cd backend && uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+	cd backend && uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
