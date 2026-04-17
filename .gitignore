@@ -62,6 +62,11 @@ backend/dist/
 backend/lib/
 backend/lib64/
 
+# Claude Code sub-agent worktrees — transient workspaces, not source.
+# (Agent persistent memory under .claude/agent-memory/ IS committed — those
+# are shared learnings that help future agent runs.)
+.claude/worktrees/
+
 # IDE / OS
 .DS_Store
 .idea/
