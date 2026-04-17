@@ -401,10 +401,33 @@ Tasks:
    - Auth context + protected routes
    - Fetch wrapper with auto-refresh on 401
 
-4. **Run security-auditor on Phase 0 output**
+4. **Dependency management (per I8)**
+   - Backend: `requirements.in` (top-level only) → `pip-compile` → `requirements.txt` (fully pinned)
+   - `Makefile` targets: `deps-update` (regenerate requirements.txt + run pip audit), `deps-sync` (pip-sync to install pinned)
+   - Frontend: `package-lock.json` committed (npm default behavior)
 
-**Estimated time: 1 day**
-**Milestone: Can login to an empty dashboard via browser**
+5. **Operational scripts (per I3, I21)**
+   - `scripts/reset_password_offline.py`: runs on VM without app; connects directly to SQLite; prompts for new password; validates with zxcvbn; writes bcrypt hash
+   - `scripts/set_password.py`: generates initial ADMIN_PASSWORD_HASH (used during setup)
+   - `scripts/rotate_age_key.sh`: age key rotation procedure (documented, run manually)
+   - `scripts/rotate_secrets.py`: rotates JWT_SECRET / ENCRYPTION_KEY (the latter requires re-encrypting BrokerCredential rows)
+   - `scripts/setup_secrets.sh`: interactive first-time SOPS + age setup
+
+6. **Healthcheck + graceful shutdown (per I23, I24)**
+   - `api/v1/health_routes.py`: `GET /api/v1/health` → `{status, db, scheduler, data_sources}` structured response
+   - Dockerfile: `HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:8000/api/v1/health || exit 1`
+   - FastAPI lifespan handler: shutdown calls `scheduler.shutdown(wait=True)` + closes DB engine
+   - uvicorn: `--timeout-graceful-shutdown 30`
+
+7. **NTP + timezone (per I22)**
+   - Dockerfile: `apt-get install -y ntpdate` + `ENV TZ=UTC`
+   - docker-entrypoint.sh: `ntpdate -s time.google.com || true` on startup
+   - App code: explicit `zoneinfo.ZoneInfo("America/New_York")` for all market dates
+
+8. **Run security-auditor on Phase 0 output**
+
+**Estimated time: 1.5 days**
+**Milestone: Can login to an empty dashboard via browser. Reset password script works. Healthcheck passes.**
 
 ---
 
@@ -430,9 +453,22 @@ Tasks:
    - `MacroIndicator` (name, date, value) — UNIQUE (name, date), UPSERT
    - `Watchlist` (symbol, added_date, data_status: enum "pending"|"ready"|"failed")
 
-3. **Data ingestion module** (`backend/app/ingestion/`)
-   - `backfill.py`: `backfill_ticker(symbol, years=2, data_source, db) -> None` — fetches history, UPSERTs into DailyPrice. Idempotent.
-   - Used by cold-start flow AND daily_update job.
+3. **Centralized data ingestion module** (`backend/app/ingestion/` — per I7)
+   - `daily_ingestion.py`: Orchestrator for daily_update. Flow:
+     1. Fetch ALL ticker OHLCV in ONE bulk call: `yf.download(" ".join(all_symbols), ...)`
+     2. Fetch macro data (DXY, 10Y, 2Y, Fed Funds) from FRED in batched calls
+     3. Persist raw data via UPSERT to DailyPrice, MacroIndicator
+     4. Trigger indicator computation (indicator modules read from DB, never call network)
+     5. Store DailySignal, MarketSnapshot
+   - `backfill.py`: `backfill_ticker(symbol, years=2, data_source, db) -> None` — for cold-start single-ticker add
+   - **Concurrency guard** (per I4):
+     - Process-level `asyncio.Lock` dict keyed by symbol
+     - Background backfill task checks `watchlist.data_status != "pending"` before starting
+     - UNIQUE(user_id, symbol) on Watchlist → second POST returns 409
+   - **Market calendar check** (per I6):
+     - `pandas_market_calendars.get_calendar("NYSE")` used in daily_ingestion
+     - If not a trading day: log and return (no data fetch, no computation)
+     - Market holidays trigger "market closed today" in API response
 
 4. **API routes — with cold-start handling**
    - `POST /api/watchlist` — add ticker with immediate backfill:
@@ -468,9 +504,17 @@ Tasks:
 
 Tasks (can parallelize indicator groups):
 
-1. **Indicator base class**
-   - `indicators/base.py`: Abstract with `calculate(df: DataFrame) -> IndicatorResult`
-   - `IndicatorResult`: value, signal (GREEN/YELLOW/RED), explanation_zh (白話文)
+1. **Indicator base class (per I7 — pure functions, no network calls)**
+   - `indicators/base.py`: Abstract with `calculate(df: DataFrame, context: IndicatorContext) -> IndicatorResult`
+   - Indicators receive pre-fetched DataFrames and ONLY read DB via the context (read-only repo)
+   - `IndicatorResult` (frozen Pydantic model):
+     - `value: float` — raw number
+     - `signal: SignalTone` — GREEN | YELLOW | RED
+     - `data_sufficient: bool` — false when insufficient history (e.g., ticker <200 days for 200MA)
+     - `short_label: str` — for pros/cons UI (e.g., "MACD 金叉")
+     - `detail: dict` — expandable raw data (e.g., `{macd_line: 0.43, signal_line: 0.21, histogram: 0.22}`)
+     - `computed_at: datetime`
+   - `indicator_version: str` (semver) — across all indicators, bumps when formula changes
 
 2. **Market regime indicators (4)**
    - `spx_ma.py`: SPX 50/200 MA position + golden/death cross detection
@@ -504,30 +548,59 @@ Tasks (can parallelize indicator groups):
 **Backend-builder**
 
 Tasks:
-1. **Voting system**
-   - `signals/voting.py`: Market posture (4 votes → 進攻/正常/防守)
-   - `signals/voting.py`: Per-ticker action (6 votes → 6 categories)
+1. **Voting system — two independent decision layers (per I1 in STAFF_REVIEW_DECISIONS.md)**
+   - `signals/market_posture.py`: Layer 1 — 4 market-regime indicators vote → 進攻/正常/防守 enum
+   - `signals/direction.py`: Layer D1a — 4 direction indicators vote → ActionCategory (強力買入 / 買入 / 持有 / 觀望 / 減倉 / 出場)
+   - `signals/timing.py`: Layer D1b — 2 timing indicators (MACD, BB) → TimingModifier enum (favorable / mixed / unfavorable)
+   - `signals/compose.py`: `compose_ticker_signal(direction_action, timing_modifier) -> Signal` — applies rules:
+     - Timing modifier only appears for 強力買入/買入/持有 actions (buy-side)
+     - 觀望/減倉/出場 suppresses timing badge (not relevant when exiting)
+     - All-NEUTRAL (data_sufficient=False for all 4 direction) → 觀望 + "資料不足以判斷" note
+   - ALL classifications via pure-function decision tables, NOT if/elif chains:
+     ```python
+     DIRECTION_TABLE = [
+         # (min_green, max_green, min_red, max_red, action)
+         (4, 4, 0, 0, ActionCategory.STRONG_BUY),
+         (3, 3, 0, 1, ActionCategory.BUY),
+         (2, 2, 0, 1, ActionCategory.HOLD),
+         ...
+     ]
+     def classify_direction(greens: int, reds: int) -> ActionCategory:
+         for min_g, max_g, min_r, max_r, action in DIRECTION_TABLE:
+             if min_g <= greens <= max_g and min_r <= reds <= max_r:
+                 return action
+         return ActionCategory.NEUTRAL  # fallback
+     ```
 
-2. **Entry price calculator**
-   - `signals/entry_price.py`: 3 tiers (50MA / BB mid / 200MA) + split suggestion
+2. **Entry price calculator — timing-aware emphasis**
+   - `signals/entry_price.py`: 3 tiers (50MA / BB mid / 200MA) + split suggestion 30/40/30
+   - Emphasis depends on timing modifier:
+     - `favorable` → 積極進場 highlighted
+     - `mixed` → all equal
+     - `unfavorable` → 理想/保守 highlighted, 積極 dimmed
 
 3. **Stop-loss calculator**
-   - `signals/stop_loss.py`: Dynamic based on trend health
+   - `signals/stop_loss.py`: Dynamic based on trend health (see STAFF_REVIEW_DECISIONS.md I1)
+   - Healthy trend: 200MA - 3%
+   - Weakening trend: Bollinger lower band - 3%
 
-4. **Pros/Cons structured output** (REVISED — no template narrator)
-   - `signals/pros_cons.py`: Converts each indicator result into a structured `{category, symbol, tone: "pro"|"con"|"neutral", short_label, detail}` item
-   - Categories map to UI sections: Direction, Timing, Macro, Risk
-   - NO prose paragraph generation. NO templating. NO nested if/else for narrative.
-   - If rich narrative is ever required (post-v1), add `signals/llm_narrator.py` that POSTs the structured JSON to Claude Haiku 4.5 / Gemini Flash with a strict prompt. Not in v1 scope.
+4. **Pros/Cons structured output** (per no-template-narrator rule)
+   - `signals/pros_cons.py`: Converts each indicator result into `ProsConsItem{category, tone, short_label, detail}`
+   - `category`: "direction" | "timing" | "macro" | "risk"
+   - `tone`: "pro" | "con" | "neutral"
+   - API response includes `pros_cons: ProsConsItem[]` alongside raw indicator data
+   - Frontend renders as scannable list (no prose generation)
+   - If LLM narrative ever needed: `signals/llm_narrator.py` POSTs JSON to Claude Haiku with strict prompt. v2+.
 
-5. **API routes**
-   - GET `/api/market-posture`: Market regime summary (4 indicators as Pros/Cons items + overall posture)
-   - GET `/api/ticker/{symbol}`: Full indicator data + signal + entry/stop prices + `pros_cons: []` array
-   - GET `/api/ticker/{symbol}/history`: Historical signals
+5. **API routes (all under /api/v1/)**
+   - GET `/api/v1/market-posture`: Market regime summary (4 indicators + overall posture + streak days)
+   - GET `/api/v1/ticker/{symbol}`: Full indicator data + signal (action + timing modifier) + entry/stop prices + `pros_cons: []` array
+   - GET `/api/v1/ticker/{symbol}/history?limit=30`: Historical signals with pagination wrapper `{data, total, has_more}`
 
 6. **Daily snapshot storage**
-   - `DailySignal` model: date, symbol, all indicator values, action, entry prices, stop-loss
-   - `MarketSnapshot` model: date, posture, 4 regime indicator values
+   - `DailySignal` model: UNIQUE(symbol, date), UPSERT (INSERT...ON CONFLICT DO UPDATE). Fields: date, symbol, action (enum), timing_modifier (enum), direction_green_count, direction_red_count, entry_aggressive, entry_ideal, entry_conservative, stop_loss, computed_at, indicator_version
+   - `MarketSnapshot` model: UNIQUE(date), UPSERT. Fields: date, posture, 4 regime indicator values, computed_at, indicator_version
+   - `MarketPostureStreak` model: tracks consecutive days of same posture
 
 7. **Run test-writer**: Voting logic with all edge cases (all green, all red, mixed, etc.)
 8. **Run security-auditor**
@@ -550,29 +623,40 @@ Tasks:
    - Mobile responsive layout
 
 2. **Ticker Detail page**
+   - Action badge header: composed from direction + timing layers (per STAFF_REVIEW_DECISIONS.md I1)
+     - Main: `強力買入 🟢🟢` / `買入 🟢` / `持有 ✓` / `觀望 👀` / `減倉 ⚠️` / `出場 🔴🔴`
+     - Timing modifier (buy-side only): `✓ 時機好` / `⏳ 等回調` / (none)
+     - Examples: `強力買入 🟢🟢 ⏳ 等回調` (方向對但現在追高) / `持有 ✓`
    - TradingView Lightweight Charts integration:
      - Candlestick series + volume histogram
      - 50MA / 200MA line overlays
      - Bollinger Bands overlay
      - Time range selector (1M/3M/6M/1Y/ALL)
-   - **Pros/Cons summary card** (REVISED — replaces paragraph narrative):
-     - Two columns: 🟢 Pros | 🔴 Cons
+     - Mobile optimization (per F3): default only K-line + 200MA; "顯示進階指標" toggle adds BB + 50MA + volume
+   - **Pros/Cons summary card**:
+     - Two columns: 🟢 Pros | 🔴 Cons (separated by category: Direction / Timing / Macro)
      - Each row: indicator short label + tap to expand for raw numbers
-     - Example rows: `🟢 MACD crossover (bullish)` / `🔴 VIX trending up` / `🟢 Price above 200MA`
-     - Neutral indicators collapsed by default under "⚪ Neutral signals (N)" expand row
-   - Direction indicators card (4 items with 🟢🟡🔴, detailed view)
+     - Example rows: `🟢 MACD 金叉` / `🔴 VIX 上升` / `🟢 價格在 200MA 上方`
+     - Neutral + insufficient data collapsed under "⚪ Neutral signals (N)" expandable row
+   - Direction indicators card (4 items, detailed view with expand)
    - Timing indicators card (2 items, detailed view)
-   - Entry price section with visual progress bars
+   - Entry price section with visual progress bars + timing-aware emphasis (per STAFF_REVIEW_DECISIONS.md I1)
    - Stop-loss display
-   - Split suggestion (僅供參考)
+   - Split suggestion (30/40/30, "僅供參考" label)
+   - Delisted/invalid badge handling (per I18): grey out + "🚫 Delisted" if `data_status=delisted`
    - Signal history table (last 30 days)
-   - NO paragraph narrative section. Scannable Pros/Cons is the "白話" mechanism.
 
-3. **Shared components**
-   - `SignalBadge` (🟢🟡🔴 with label)
-   - `ActionBadge` (6 categories with icons)
-   - `PriceBar` (visual distance to entry/stop prices)
-   - `ProsConsCard` (dual-column list with expand-to-detail rows)
+3. **Shared components (per I20 accessibility + I17 validation)**
+   - `SignalBadge` — emoji + Chinese text label + letter redundancy for color-blind (🟢 買 / 🟡 持 / 🔴 賣). ARIA label on every instance.
+   - `ActionBadge` — 6 action categories (強力買入 🟢🟢, 買入 🟢, 持有 ✓, 觀望 👀, 減倉 ⚠️, 出場 🔴🔴)
+   - `TimingModifier` — optional badge (✓ 時機好 / ⏳ 等回調) rendered after ActionBadge
+   - `PriceBar` — visual distance to entry/stop prices with aria-valuenow
+   - `ProsConsCard` — dual-column list, expand-to-detail, grouped by category
+   - `TickerInput` — validated input with regex `^[A-Z0-9.\-]{1,10}$`, auto-uppercase on paste
+   - `MarketClosedBanner` — shown when `is_market_open=false` (per I6)
+   - `StopLossTriggeredBanner` — red banner for triggered positions
+   - `EmailBatchModeBanner` — quota warning banner (per I5)
+   - `DelistedBadge` — for tickers with `data_status=delisted`
    - `NavBar` (responsive, mobile hamburger)
    - `LoadingSpinner`
 
@@ -587,42 +671,60 @@ Tasks:
 **Frontend-builder**
 
 Tasks:
-1. **Positions page**
+1. **Positions page (per A4 + I1)**
    - Position list with P&L per position
    - Add/edit/delete position forms
-   - "Record buy/sell" action (auto-recalculates avg cost)
-   - Pie chart (allocation visualization — use Recharts for this one)
-   - Trade history log
+   - "Record buy/sell" action (appends to Trade table; Position.shares derived)
+   - **Corporate action warning banner** (per I1): "Corporate actions (splits, dividends) are NOT automatically adjusted. Recheck your avg_cost after any split. See [ticker] for split history."
+   - Pie chart (allocation visualization — use Recharts)
+   - Trade history log (append-only per A4)
+   - Stop-loss reset button (clears `stop_loss_triggered_at` per I9)
 
 2. **Positions API (backend-builder in parallel)**
-   - `db/models.py`: Position, Trade tables
-   - CRUD `/api/positions`
-   - POST `/api/positions/{id}/add`, `/api/positions/{id}/reduce`
+   - `db/models.py`: Position (never deleted, soft by shares=0), Trade (append-only)
+   - CRUD `/api/v1/positions`
+   - POST `/api/v1/positions/{id}/add`, `/api/v1/positions/{id}/reduce`
+   - POST `/api/v1/positions/{id}/reset-stop-loss-alert`
+   - Validation: reduce cannot result in negative shares (400 Bad Request)
    - Trade log auto-generated on add/reduce
+   - FK: all tables have `user_id` FK per A3
 
 3. **History page**
-   - Market posture timeline chart
-   - Signal accuracy table (calculated from stored DailySignal vs actual price movement)
+   - Market posture timeline chart with streak visualization
+   - Signal accuracy table (calculated from stored DailySignal vs actual future price movement — computed on-demand or via nightly job)
    - "My decisions vs Eiswein" comparison (joins Trade + DailySignal tables)
    - Pattern matching section (cosine similarity on 12-indicator vectors)
 
 4. **History API (backend-builder in parallel)**
-   - GET `/api/history/accuracy`
-   - GET `/api/history/decisions`
-   - GET `/api/history/patterns`
+   - GET `/api/v1/history/accuracy?days=90`
+   - GET `/api/v1/history/decisions`
+   - GET `/api/v1/history/patterns?top_n=5`
+   - All use pagination wrapper `{data, total, has_more}` per B4
 
-5. **Settings page**
-   - Watchlist management (search + add/remove)
-   - Data source status display
-   - Email notification preferences
-   - Password change form
+5. **Settings page (per I14 + I10 + I20 + E1)**
+   - Watchlist management (search + add/remove, with TickerInput validation per I17)
+   - **Broker connections section** (per I14):
+     - Schwab status: 🟢 connected (5d 12h left) / 🟡 <2 days / 🔴 expired
+     - "重新連接 Schwab" button → OAuth flow
+     - Button to disconnect
+   - Data source status display (yfinance / FRED / Schwab health per I23)
+   - Email notification preferences + current quota status
+   - Password change form (validates new password via zxcvbn per E1)
    - Login audit log display
-   - System info (DB size, last update, last backup)
-   - Manual data refresh button
+   - System info (DB size, last update, last backup, last vacuum)
+   - Manual data refresh button (rate-limited)
    - Backup download
+   - **Footer disclaimer (per I10)**: "Data sourced from Yahoo Finance (yfinance library). See https://finance.yahoo.com/terms"
+   - **Disclaimer (per J)**: "此工具僅為個人決策輔助，不構成投資建議。使用者自行承擔所有交易決策風險。"
 
-6. **Run test-writer**: Frontend component tests, API integration tests
-7. **Run security-auditor**: Full audit of all pages and endpoints
+6. **Schwab OAuth callback (backend-builder)**
+   - `GET /api/v1/broker/schwab/callback?code=...&state=...`
+   - Exchange authorization code for access + refresh tokens
+   - AES-256-GCM encrypt refresh token → store in BrokerCredential table
+   - Redirect to Settings page with success/error status
+
+7. **Run test-writer**: Frontend component tests, API integration tests
+8. **Run security-auditor**: Full audit of all pages and endpoints, especially OAuth callback
 
 **Estimated time: 3 days**
 **Milestone: All 6 pages functional**
@@ -668,12 +770,41 @@ Tasks:
    - Every job wrapped in try/except + structured logging so one failure doesn't crash the scheduler
    - Daily update: iterate watchlist, PER-TICKER try/except — one failing ticker doesn't abort the whole job (graceful degradation)
 
-6. **Email outbox (H3)**
-   - New table `EmailOutbox` (id, to_address, subject, html_body, text_body, status enum {pending, sent, failed}, attempt_count, last_attempted_at, created_at)
+6. **Email outbox with quota tracking (H3 + I5)**
+   - New table `EmailOutbox` (id, to_address, subject, html_body, text_body, category, status enum {pending, sent, failed, batched}, attempt_count, last_attempted_at, sent_at, created_at)
+   - New table `EmailQuota` (date, sent_count, batch_mode_enabled) — daily quota tracking
    - All emails written via `email_outbox_repo.enqueue()` rather than sent synchronously
-   - Separate worker `jobs/email_dispatcher.py` pulls pending → SMTP send → update status
+   - `jobs/email_dispatcher.py`:
+     - Pulls pending → SMTP send → update status
+     - Checks EmailQuota daily count. If count >= 400 (80% of 500 Gmail limit) → flip batch_mode_enabled=true
+     - In batch mode: pending emails marked `status=batched`; hourly job aggregates all batched events into ONE summary email
+     - Batch mode resets at midnight ET (new quota day)
    - Max 5 retries with exponential backoff
    - >24h in failed → audit_log entry + in-app banner on next dashboard load
+   - In-app banner when batch mode active: "⚠️ 每日 email 配額接近上限，目前使用摘要模式"
+
+7. **Intra-day stop-loss — dedup protection (per I9)**
+   - Position model gains `stop_loss_triggered_at: datetime | None`
+   - Job logic:
+     ```python
+     if position.current_price <= position.stop_loss:
+         today = now_et.date()
+         triggered_today = (position.stop_loss_triggered_at 
+                            and position.stop_loss_triggered_at.date() == today)
+         if not triggered_today:
+             await send_stop_loss_alert(position)
+             position.stop_loss_triggered_at = now_et
+     ```
+   - Settings: "Reset stop-loss alerts" button clears all `stop_loss_triggered_at` (for manual reset)
+   - Job only runs on trading days (market calendar check)
+
+8. **SQLite VACUUM job (per I15)**
+   - `jobs/vacuum.py`: weekly Sunday 03:00 ET
+   - `PRAGMA incremental_vacuum` (non-blocking)
+   - Optional: full VACUUM if `PRAGMA freelist_count > threshold`
+
+9. **Parquet cache eviction (per I16)**
+   - Daily cleanup step in backup job: `find data/cache/yfinance -mtime +7 -delete`
 
 **Estimated time: 2.5 days**
 **Milestone: Receive daily email report, data auto-updates, intra-day stop-loss alerts work, duplicate scheduler protection verified**
@@ -775,17 +906,17 @@ Tasks:
 
 | Phase | Days | What | Milestone |
 |-------|------|------|-----------|
-| 0 | 1.5 | Scaffold + Security + Alembic + User model | Login works, DB migrations in place |
-| 1 | 2 | Data Layer + Schwab OAuth stub | Watchlist works, price data flows, Schwab connect UI |
-| 2 | 3 | Indicators | 12 indicators compute + pandas_ta validation |
-| 3 | 2 | Signals + Pros/Cons structured output | Full analysis API with decision table |
-| 4 | 4 | Dashboard + Ticker UI | Browse + charts on mobile |
-| 5 | 3 | Positions + History + Settings + Schwab OAuth UI | All pages + manual broker re-auth flow |
-| 6 | 2.5 | Cron + Email Outbox + Intra-day stop-loss | Daily auto-report + immediate stop-loss alerts |
-| 7 | 2.5 | Docker + SOPS + CF Tunnel + CI/CD | Live on cloud, encrypted secrets |
-| **Total** | **~20.5 working days** | | |
+| 0 | 2 | Scaffold + Security + Alembic + User + Healthcheck + NTP + ops scripts | Login works, DB migrations in place, password-reset script works |
+| 1 | 2.5 | Data Layer + Centralized Ingestion + Schwab OAuth stub + Market calendar | Watchlist works, ONE bulk yfinance call, Schwab connect UI |
+| 2 | 3 | 12 Indicators (pure functions) | All 12 indicators compute + pandas_ta validation via fixture snapshots |
+| 3 | 2 | Signals (Direction + Timing layers) + Pros/Cons + Entry/Stop | Full analysis API with two-layer decision tables |
+| 4 | 4 | Dashboard + Ticker UI + Mobile optimization + A11y | Browse + charts on mobile + color-blind support |
+| 5 | 3 | Positions (Trade append-only) + History + Settings + Schwab OAuth UI + CA warning | All pages + manual broker re-auth flow + corporate actions banner |
+| 6 | 3 | Cron + EmailOutbox quota + Intra-day stop-loss dedup + VACUUM | Daily report + stop-loss alerts + quota batch mode |
+| 7 | 2.5 | Docker + SOPS + CF Tunnel + GitHub Actions CI/CD + Watchtower | Live on cloud, encrypted secrets, auto-deploy pipeline |
+| **Total** | **~22 working days** | | |
 
-With multi-agent parallelization (backend + frontend in Phase 4-5), actual calendar time ~15-16 days.
+With multi-agent parallelization (backend + frontend in Phase 4-5), actual calendar time ~16-17 days.
 
 ## Parallelization Opportunities
 

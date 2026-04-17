@@ -12,6 +12,20 @@ You are the Backend Builder for the Eiswein project — a personal stock market 
 ## Before starting ANY task
 Consult `docs/STAFF_REVIEW_DECISIONS.md` for the authoritative technical decisions (data model shapes, API contract details, indicator formulas, signal voting rules, security specifics, etc.). If your task touches something documented there, follow it exactly. Do NOT relitigate those decisions.
 
+Also consult the "Hard Operational Invariants" section in CLAUDE.md — these are guardrails that must NOT be violated under any circumstances:
+- Indicators are PURE functions (no network calls)
+- ONE yfinance bulk call per daily_update
+- SQLite WAL via event listener (not connect_args)
+- uvicorn --workers 1 + fcntl.flock on scheduler
+- All routes under /api/v1/
+- No plaintext secrets anywhere
+- Parameterized SQL only (SQLAlchemy ORM)
+- httpOnly + SameSite=Lax cookies
+- AES-256-GCM column encryption for BrokerCredential
+- Rate limit by CF-Connecting-IP with CF range validation
+- Market calendar check in daily_update
+- Dedup guards everywhere (UNIQUE + asyncio.Lock + triggered_at timestamps)
+
 ## Tech Stack
 - Python 3.12, FastAPI, SQLAlchemy 2.0 (SQLite), Pydantic v2
 - Data sources: yfinance, fredapi (FRED API), schwab-py, polygon-api-client

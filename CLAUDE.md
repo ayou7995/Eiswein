@@ -15,13 +15,14 @@ A web dashboard that analyzes a user-managed watchlist using 12 technical indica
 ## Directory Structure
 ```
 backend/app/
-├── api/          # FastAPI routes (one file per resource)
-├── db/           # SQLAlchemy models + session
-├── datasources/  # Abstract DataSource + yfinance/FRED/Schwab/Polygon impls
-├── indicators/   # 12 indicator modules (each implements base.py)
-├── signals/      # Voting, entry price, stop-loss, pros_cons (structured — NO template narrator)
-├── security/     # Auth, encryption, rate limit, middleware
-├── jobs/         # Cron: daily_update, backup, token_reminder
+├── api/          # FastAPI routes under /api/v1/* (one file per resource)
+├── db/           # SQLAlchemy models + session + Alembic migrations
+├── datasources/  # Abstract DataSource + yfinance/FRED (Schwab/Polygon as stubs)
+├── ingestion/    # Centralized orchestrator (bulk fetch, persist, then indicators compute from DB)
+├── indicators/   # 12 indicator modules — PURE functions, no network calls
+├── signals/      # direction.py + timing.py + compose.py + entry_price.py + stop_loss.py + pros_cons.py
+├── security/     # Auth, encryption, rate limit, middleware, log_sanitizer
+├── jobs/         # APScheduler + fcntl.flock: daily_update, intra_day_stop_loss, backup, vacuum, email_dispatcher
 └── utils/        # Shared utilities
 
 frontend/src/
@@ -34,12 +35,13 @@ frontend/src/
 
 ## Security Requirements (#1 PRIORITY)
 - Cloudflare Tunnel + Cloudflare Access (first auth layer)
-- App-level JWT (httpOnly cookie, SameSite=Strict) — second auth layer
-- ALL API keys in env vars. NEVER in code or git.
-- Schwab refresh tokens: AES-256 encrypted in SQLite
-- Rate limiting (slowapi), CSP headers, HSTS, parameterized SQL only
-- bcrypt (12 rounds) for password hashing
-- Login throttling: 5 fails → 15 min lock, all attempts audited
+- App-level JWT (httpOnly cookie, SameSite=Lax, Secure) — second auth layer
+- ALL secrets via SOPS + age encryption. NEVER plaintext on disk.
+- Schwab refresh tokens: AES-256-GCM column-level encryption in BrokerCredential table
+- Rate limiting (slowapi) keyed by CF-Connecting-IP; CSP/HSTS/X-Frame-Options headers; parameterized SQL only
+- bcrypt (12 rounds) for password hashing; zxcvbn for strength validation
+- Login throttling: IP-based 5 fails → 15 min lock; global 20 fails/min → email alert; all attempts audited
+- Log sanitizer redacts password/token/secret/key from structlog output
 
 ## Sub-Agent Workflow
 Delegate to specialized agents:
@@ -92,9 +94,13 @@ After completing a module: run `security-auditor` then `test-writer`.
 **Timing (2)**: MACD, Bollinger Bands
 **Macro (2)**: DXY trend, Fed Funds Rate + market expectations
 
-## Signal Rules
+## Signal Rules (revised 2026-04-17)
 - **Layer 1 (Market Posture)**: 4 market-regime indicators vote → 進攻/正常/防守
-- **Layer 2 (Per-Ticker Action)**: 6 indicators → 強力買入🟢🟢 / 買入等回調🟢⏳ / 持有✓ / 觀望👀 / 減倉⚠️ / 出場🔴🔴
+- **Layer D1a (Direction)**: 4 direction indicators (Price vs MA, RSI, Volume, Relative Strength) → ActionCategory (強力買入 🟢🟢 / 買入 🟢 / 持有 ✓ / 觀望 👀 / 減倉 ⚠️ / 出場 🔴🔴)
+- **Layer D1b (Timing)**: 2 timing indicators (MACD, BB) → TimingModifier (✓ 時機好 / none / ⏳ 等回調) — modifies Entry recommendation emphasis only, does NOT change Action
+- Timing modifier only shows for buy-side actions (強力買入, 買入, 持有). Suppressed for 觀望/減倉/出場.
+- All-NEUTRAL (data_sufficient=False for all 4 direction) → 觀望 + "⚪ 資料不足以判斷"
+- Implemented as pure-function decision tables, NOT if/elif chains. See `docs/STAFF_REVIEW_DECISIONS.md` I1 for full spec.
 - Equal weight v1. Adjust based on accumulated history data.
 
 ## UX Output Rules (IMPORTANT)
@@ -103,6 +109,28 @@ After completing a module: run `security-auditor` then `test-writer`.
 - Each indicator result surfaces as a structured item: `{category, tone, short_label, detail_on_expand}`.
 - If rich narrative becomes necessary post-v1, use an LLM API (Claude Haiku 4.5 or Gemini Flash) with JSON input and a strict prompt. Never a hand-coded template.
 - Rationale: template narrators devolve into nested if/else, sound robotic, have high maintenance cost, and scannable lists are better UX for decision-support.
+
+## Hard Operational Invariants (DO NOT VIOLATE)
+- **Indicators are pure functions**: `DataFrame -> IndicatorResult`. They NEVER call external APIs. All data fetching is centralized in `backend/app/ingestion/`.
+- **One yfinance bulk call per daily_update**: `yf.download(" ".join(all_symbols), threads=False, ...)`. Never loop per-ticker.
+- **SQLite WAL mode** via event listener (NOT connect_args `pragma`).
+- **uvicorn --workers 1** hardcoded in docker-compose. APScheduler protected with fcntl.flock as belt-and-suspenders.
+- **All API routes under `/api/v1/`** from day 1.
+- **No plaintext secrets on disk**: SOPS + age encrypts all env vars. Age key in `/etc/eiswein/age.key` (chmod 600).
+- **No raw SQL strings**: SQLAlchemy ORM or parameterized queries only.
+- **httpOnly + SameSite=Lax cookies** for JWT. Never localStorage.
+- **Schwab refresh tokens** AES-256-GCM encrypted at column level in BrokerCredential table.
+- **Rate limit keyed by `CF-Connecting-IP`** with CF IP range validation middleware.
+- **Every data fetch has timeout + retry + cache**: yfinance bulk with tenacity backoff, parquet cache before parsing.
+- **Market calendar check** in daily_update: skip weekends/holidays. UI shows "最近交易日" not "today".
+- **Dedup guards**: UNIQUE constraints + asyncio.Lock per-symbol for cold-start; stop_loss_triggered_at for intra-day alerts.
+
+## Operational Scripts (in `scripts/`)
+- `setup_secrets.sh` — first-time SOPS + age setup
+- `set_password.py` — generate bcrypt hash for initial ADMIN_PASSWORD_HASH
+- `reset_password_offline.py` — reset admin password without app running (SSH to VM)
+- `rotate_age_key.sh` — rotate SOPS age encryption key
+- `rotate_secrets.py` — rotate JWT_SECRET / ENCRYPTION_KEY (re-encrypts BrokerCredential)
 
 ## References (committed to repo)
 - Implementation plan: `docs/IMPLEMENTATION_PLAN.md`

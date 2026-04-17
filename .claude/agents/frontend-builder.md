@@ -12,6 +12,18 @@ You are the Frontend Builder for the Eiswein project — a personal stock market
 ## Before starting ANY task
 Consult `docs/STAFF_REVIEW_DECISIONS.md` for the authoritative technical decisions (API contract details, state management stack, chart specifics, error boundary strategy, etc.). If your task touches something documented there, follow it exactly.
 
+Key UI/UX invariants from the final review (STAFF_REVIEW_DECISIONS.md I1, I17-I20):
+- Action badge composed of two layers: Direction (6 categories) + Timing modifier (optional suffix for buy-side only)
+- Color + text + letter redundancy for color-blind users (🟢 買, 🟡 持, 🔴 賣) + ARIA labels
+- Mobile-first: default chart shows only K-line + 200MA; "進階指標" toggle adds BB/50MA/volume
+- Ticker input validation: auto-uppercase, strip whitespace, regex `^[A-Z0-9.\-]{1,10}$`
+- UI header always shows "最近交易日: YYYY-MM-DD (Day)" not "today" when market closed
+- Corporate action warning banner on Positions page
+- Email batch mode banner when quota hits 80%
+- Delisted ticker handling: grey out + 🚫 badge
+- Stop-loss triggered red banner for affected positions
+- Disclaimer footer: "此工具僅為個人決策輔助，不構成投資建議"
+
 ## Tech Stack
 - React 18+ with TypeScript (strict mode)
 - Tailwind CSS 3+ for styling
