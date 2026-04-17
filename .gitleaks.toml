@@ -1,0 +1,34 @@
+# Gitleaks allowlist for Eiswein. Extends the default rules.
+#
+# Allowlist philosophy:
+# - Example values in .env.example are placeholders ("your_jwt_secret_here...")
+# - Test fixtures use repeated low-entropy strings that read as secrets to
+#   entropy-based detectors but carry no real credentials
+# - bcrypt hash prefix documentation ($2b$12$...) is a schema example,
+#   not a real hash
+# - Do NOT add exclusions for regular source files — those paths must
+#   continue to be scanned
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist: placeholder env examples and test fixtures"
+paths = [
+  '''\.env\.example$''',
+  '''backend/tests/conftest\.py$''',
+  '''backend/tests/security/.*\.py$''',
+  '''scripts/set_password\.py$''',          # documentation strings for password prompts
+  '''docs/.*\.md$''',                        # narrative docs may include example tokens
+  '''\.gitleaks\.toml$''',
+  '''frontend/\.env\.example$''',
+]
+
+# Low-entropy test values that keep triggering generic secret detection.
+regexes = [
+  '''your_jwt_secret_here_at_least_64_chars''',
+  '''your_encryption_key_here_32_bytes_base64''',
+  '''your-app-password''',
+  '''\$2b\$12\$\.\.\.''',
+  '''test_password_placeholder''',
+]

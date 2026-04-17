@@ -13,7 +13,7 @@ string references, so Phase 1 just needs to register the target models against
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -32,7 +32,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -62,7 +62,7 @@ class User(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
 
-    broker_credentials: Mapped[list["BrokerCredential"]] = relationship(
+    broker_credentials: Mapped[list[BrokerCredential]] = relationship(
         "BrokerCredential", back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -91,9 +91,7 @@ class AuditLog(Base):
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
-    __table_args__ = (
-        Index("ix_audit_log_event_ip_time", "event_type", "ip", "timestamp"),
-    )
+    __table_args__ = (Index("ix_audit_log_event_ip_time", "event_type", "ip", "timestamp"),)
 
 
 class Ticker(Base):
@@ -154,4 +152,4 @@ class BrokerCredential(Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    user: Mapped["User"] = relationship("User", back_populates="broker_credentials")
+    user: Mapped[User] = relationship("User", back_populates="broker_credentials")

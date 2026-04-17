@@ -7,7 +7,7 @@ row are intentionally absent.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -51,7 +51,7 @@ class AuditRepository:
     def recent_login_attempts(
         self, *, window: timedelta, now: datetime | None = None
     ) -> Sequence[AttemptRecord]:
-        current = now or datetime.now(timezone.utc)
+        current = now or datetime.now(UTC)
         cutoff = current - window
         stmt = (
             select(AuditLog)

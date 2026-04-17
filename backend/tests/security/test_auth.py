@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -67,7 +67,7 @@ def test_jwt_tampered_signature_rejected() -> None:
 
 
 def test_ip_lockout_triggers_after_threshold() -> None:
-    now = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 12, 0, tzinfo=UTC)
     attempts = [
         AttemptRecord(ip="1.2.3.4", success=False, timestamp=now - timedelta(seconds=i * 5))
         for i in range(5)
@@ -85,7 +85,7 @@ def test_ip_lockout_triggers_after_threshold() -> None:
 
 
 def test_ip_lockout_resets_after_success() -> None:
-    now = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 12, 0, tzinfo=UTC)
     attempts = [
         AttemptRecord(ip="1.2.3.4", success=True, timestamp=now - timedelta(seconds=1)),
         AttemptRecord(ip="1.2.3.4", success=False, timestamp=now - timedelta(seconds=10)),
@@ -103,7 +103,7 @@ def test_ip_lockout_resets_after_success() -> None:
 
 
 def test_ip_lockout_isolated_per_ip() -> None:
-    now = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 12, 0, tzinfo=UTC)
     attempts = [
         AttemptRecord(ip="1.2.3.4", success=False, timestamp=now - timedelta(seconds=i))
         for i in range(5)
@@ -120,7 +120,7 @@ def test_ip_lockout_isolated_per_ip() -> None:
 
 
 def test_global_failure_count_windowed() -> None:
-    now = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 12, 0, tzinfo=UTC)
     attempts = [
         AttemptRecord(ip=f"10.0.0.{i}", success=False, timestamp=now - timedelta(seconds=10))
         for i in range(25)

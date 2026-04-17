@@ -22,9 +22,19 @@ ignore = [
     "B008",  # function-call-in-default — FastAPI Depends idiom
 ]
 
+# Traditional-Chinese punctuation is NEVER confusable in our user-facing
+# strings — whitelist the fullwidth marks so RUF001 stops flagging them.
+[tool.ruff.lint.flake8-implicit-str-concat]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S311"]  # hardcoded test secrets / weak random
 "scripts/*" = ["S105", "S106"]
+# Audit event-type constants look password-shaped to the bandit heuristic.
+"app/db/repositories/audit_repository.py" = ["S105"]
+# `token_type="access"|"refresh"` is an internal JWT claim, not a secret.
+"app/security/auth.py" = ["S106"]
+# User-facing Chinese error messages legitimately use fullwidth commas.
+"app/security/exceptions.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

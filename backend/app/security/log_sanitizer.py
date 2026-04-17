@@ -28,7 +28,7 @@ def _redact(value: Any) -> Any:
 def sanitize_log_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Return a deep copy with sensitive keys redacted."""
     result = _redact(payload)
-    assert isinstance(result, dict)  # noqa: S101 — narrow type for callers
+    assert isinstance(result, dict)
     return result
 
 

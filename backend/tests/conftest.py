@@ -42,7 +42,7 @@ def settings(admin_password_hash: str, encryption_key_b64: str) -> Settings:
     return Settings(
         environment="development",
         database_url="sqlite:///:memory:",
-        jwt_secret="test" * 20,  # noqa: S106 — test fixture
+        jwt_secret="test" * 20,
         encryption_key=encryption_key_b64,  # type: ignore[arg-type]
         admin_username="admin",
         admin_password_hash=admin_password_hash,  # type: ignore[arg-type]

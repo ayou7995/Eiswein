@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +50,7 @@ def evaluate_ip_lockout(
     from `ip` within `window`. While the lockout window is still active
     (last fail + window > now), we stay locked.
     """
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     ip_attempts = sorted(
         (a for a in recent_attempts if a.ip == ip),
         key=lambda a: a.timestamp,
@@ -81,7 +81,5 @@ def global_failure_count(
     window: timedelta,
     now: datetime | None = None,
 ) -> int:
-    current = now or datetime.now(timezone.utc)
-    return sum(
-        1 for a in recent_attempts if not a.success and current - a.timestamp <= window
-    )
+    current = now or datetime.now(UTC)
+    return sum(1 for a in recent_attempts if not a.success and current - a.timestamp <= window)

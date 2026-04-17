@@ -21,7 +21,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import bcrypt
@@ -67,7 +67,7 @@ def verify_password(plaintext: str, password_hash: str) -> bool:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _create_token(
@@ -149,8 +149,8 @@ def decode_token(
         subject=str(subject),
         token_type=token_type,
         jti=str(jti),
-        issued_at=datetime.fromtimestamp(int(iat), tz=timezone.utc),
-        expires_at=datetime.fromtimestamp(int(exp), tz=timezone.utc),
+        issued_at=datetime.fromtimestamp(int(iat), tz=UTC),
+        expires_at=datetime.fromtimestamp(int(exp), tz=UTC),
     )
 
 

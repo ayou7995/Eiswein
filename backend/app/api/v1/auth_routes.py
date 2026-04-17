@@ -166,9 +166,7 @@ def login(
                 user_agent=user_agent,
                 details={"retry_after_seconds": lockout.retry_after_seconds},
             )
-            raise AccountLockedError(
-                details={"retry_after_seconds": lockout.retry_after_seconds}
-            )
+            raise AccountLockedError(details={"retry_after_seconds": lockout.retry_after_seconds})
 
     user = users.by_username(payload.username)
     valid_password = user is not None and verify_password(payload.password, user.password_hash)

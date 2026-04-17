@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -46,7 +46,7 @@ class UserRepository:
         return user
 
     def record_successful_login(self, user: User, *, ip: str | None) -> None:
-        user.last_login_at = datetime.now(timezone.utc)
+        user.last_login_at = datetime.now(UTC)
         user.last_login_ip = ip
         user.failed_login_count = 0
         user.locked_until = None

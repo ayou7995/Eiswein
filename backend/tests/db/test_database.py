@@ -14,9 +14,7 @@ from app.db.database import create_db_engine
 def test_sqlite_wal_enabled(settings: Settings) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "wal_test.db"
-        settings_with_file = settings.model_copy(
-            update={"database_url": f"sqlite:///{db_path}"}
-        )
+        settings_with_file = settings.model_copy(update={"database_url": f"sqlite:///{db_path}"})
         engine = create_db_engine(settings_with_file)
         try:
             with engine.connect() as conn:

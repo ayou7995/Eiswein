@@ -26,7 +26,7 @@ def _envelope(code: str, message: str, details: dict[str, Any] | None = None) ->
 
 
 async def eiswein_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, EisweinError)  # noqa: S101 — mypy narrowing
+    assert isinstance(exc, EisweinError)
     logger.info(
         "domain_error",
         code=exc.code,
@@ -40,7 +40,7 @@ async def eiswein_error_handler(_request: Request, exc: Exception) -> JSONRespon
 
 
 async def http_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, StarletteHTTPException)  # noqa: S101
+    assert isinstance(exc, StarletteHTTPException)
     code = _http_code_for_status(exc.status_code)
     message = str(exc.detail) if exc.detail else code
     return JSONResponse(
@@ -49,10 +49,8 @@ async def http_exception_handler(_request: Request, exc: Exception) -> JSONRespo
     )
 
 
-async def validation_exception_handler(
-    _request: Request, exc: Exception
-) -> JSONResponse:
-    assert isinstance(exc, RequestValidationError)  # noqa: S101
+async def validation_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, RequestValidationError)
     err = ValidationError(details={"errors": exc.errors()})
     return JSONResponse(
         status_code=err.http_status,
