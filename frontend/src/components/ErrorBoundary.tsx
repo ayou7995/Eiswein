@@ -6,10 +6,14 @@ import type { ReactNode } from 'react';
 
 function DefaultFallback({ error, resetErrorBoundary }: FallbackProps): JSX.Element {
   const errorId = Date.now().toString(36);
-  // Intentionally logged: boundary only fires on genuine render errors and
-  // the trace is critical for debugging. Log sanitization is a backend concern.
+  // Log only a sanitized message — never the full Error object. The raw
+  // stack/component trace is visible in DevTools to anyone with physical
+  // access to an unlocked device and can leak prop values or component
+  // names. Internal debugging should reproduce the error via tests, not
+  // rely on production console traces.
+  const safeMessage = error instanceof Error ? error.message : String(error);
   // eslint-disable-next-line no-console
-  console.error(`[ErrorBoundary ${errorId}]`, error);
+  console.error(`[ErrorBoundary ${errorId}]`, safeMessage);
 
   return (
     <div

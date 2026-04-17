@@ -1,61 +1,62 @@
 import { z } from 'zod';
 import { apiRequest } from './client';
 
-// STAFF_REVIEW_DECISIONS.md B1: login JWT is set via Set-Cookie (httpOnly),
-// NEVER in the response body. The body only confirms success + minimal profile.
-export const loginResponseSchema = z.object({
-  ok: z.literal(true),
-  user: z.object({
-    username: z.string(),
-    is_admin: z.boolean(),
-  }),
-});
+// All auth responses share a common envelope: {ok: true, user?: UserSummary}.
+// Matches backend LoginResponse / MeResponse / SessionResponse shapes.
+// JWT travels via Set-Cookie (httpOnly) per B1 — never in the body.
 
-export type LoginResponse = z.infer<typeof loginResponseSchema>;
-
-export const refreshResponseSchema = z.object({
-  ok: z.literal(true),
-});
-
-export const logoutResponseSchema = z.object({
-  ok: z.literal(true),
-});
-
-export const currentUserSchema = z.object({
+const userSummarySchema = z.object({
   username: z.string(),
   is_admin: z.boolean(),
 });
 
-export type CurrentUser = z.infer<typeof currentUserSchema>;
+export type CurrentUser = z.infer<typeof userSummarySchema>;
 
-export function login(password: string): Promise<LoginResponse> {
+export const loginResponseSchema = z.object({
+  ok: z.literal(true),
+  user: userSummarySchema,
+});
+
+export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+export const sessionResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+export const meResponseSchema = z.object({
+  ok: z.literal(true),
+  user: userSummarySchema,
+});
+
+export function login(username: string, password: string): Promise<LoginResponse> {
   return apiRequest('/api/v1/login', {
     method: 'POST',
-    body: { password },
+    body: { username, password },
     schema: loginResponseSchema,
     skipAuthRefresh: true,
   });
 }
 
-export function logout(): Promise<z.infer<typeof logoutResponseSchema>> {
+export function logout(): Promise<z.infer<typeof sessionResponseSchema>> {
   return apiRequest('/api/v1/logout', {
     method: 'POST',
-    schema: logoutResponseSchema,
+    schema: sessionResponseSchema,
     skipAuthRefresh: true,
   });
 }
 
-export function refreshToken(): Promise<z.infer<typeof refreshResponseSchema>> {
+export function refreshToken(): Promise<z.infer<typeof sessionResponseSchema>> {
   return apiRequest('/api/v1/refresh', {
     method: 'POST',
-    schema: refreshResponseSchema,
+    schema: sessionResponseSchema,
     skipAuthRefresh: true,
   });
 }
 
-export function getCurrentUser(): Promise<CurrentUser> {
-  return apiRequest('/api/v1/me', {
+export async function getCurrentUser(): Promise<CurrentUser> {
+  const response = await apiRequest('/api/v1/me', {
     method: 'GET',
-    schema: currentUserSchema,
+    schema: meResponseSchema,
   });
+  return response.user;
 }

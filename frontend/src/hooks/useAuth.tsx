@@ -21,7 +21,7 @@ export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 export interface AuthContextValue {
   status: AuthStatus;
   user: CurrentUser | null;
-  login: (password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   // Exposed mainly for tests so they can force a known state without hitting
   // the network. Not used by production pages.
@@ -89,8 +89,8 @@ export function AuthProvider({
     };
   }, [initialStatus]);
 
-  const login = useCallback(async (password: string): Promise<void> => {
-    const response = await loginRequest(password);
+  const login = useCallback(async (username: string, password: string): Promise<void> => {
+    const response = await loginRequest(username, password);
     setUser(response.user);
     setStatus('authenticated');
   }, []);

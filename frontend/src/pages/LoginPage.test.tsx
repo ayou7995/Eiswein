@@ -57,25 +57,29 @@ describe('LoginPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders form with accessible password input', () => {
+  it('renders form with accessible username + password inputs', () => {
     const restore = installFetch([]);
     try {
       renderLogin();
-      const input = screen.getByLabelText('密碼');
-      expect(input).toHaveAttribute('type', 'password');
-      expect(input).toHaveAttribute('autocomplete', 'current-password');
+      const username = screen.getByLabelText('使用者名稱');
+      expect(username).toHaveAttribute('type', 'text');
+      expect(username).toHaveAttribute('autocomplete', 'username');
+      const password = screen.getByLabelText('密碼');
+      expect(password).toHaveAttribute('type', 'password');
+      expect(password).toHaveAttribute('autocomplete', 'current-password');
     } finally {
       restore();
     }
   });
 
-  it('validates the required password field', async () => {
+  it('validates both required fields', async () => {
     const restore = installFetch([]);
     try {
       renderLogin();
       const user = userEvent.setup();
       await user.click(screen.getByRole('button', { name: /登入/ }));
-      expect(await screen.findByRole('alert')).toHaveTextContent('請輸入密碼');
+      expect(await screen.findByText('請輸入使用者名稱')).toBeInTheDocument();
+      expect(await screen.findByText('請輸入密碼')).toBeInTheDocument();
     } finally {
       restore();
     }
@@ -88,6 +92,7 @@ describe('LoginPage', () => {
     try {
       renderLogin();
       const user = userEvent.setup();
+      await user.type(screen.getByLabelText('使用者名稱'), 'admin');
       await user.type(screen.getByLabelText('密碼'), 'correct-horse');
       await user.click(screen.getByRole('button', { name: /登入/ }));
       await waitFor(() => {
@@ -114,6 +119,7 @@ describe('LoginPage', () => {
     try {
       renderLogin();
       const user = userEvent.setup();
+      await user.type(screen.getByLabelText('使用者名稱'), 'admin');
       await user.type(screen.getByLabelText('密碼'), 'wrong');
       await user.click(screen.getByRole('button', { name: /登入/ }));
       const alert = await screen.findByText(/密碼錯誤/);
@@ -139,6 +145,7 @@ describe('LoginPage', () => {
     try {
       renderLogin();
       const user = userEvent.setup();
+      await user.type(screen.getByLabelText('使用者名稱'), 'admin');
       await user.type(screen.getByLabelText('密碼'), 'anything');
       await user.click(screen.getByRole('button', { name: /登入/ }));
       const alert = await screen.findByText(/已暫時鎖定/);

@@ -9,6 +9,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { DISCLAIMER_TEXT, ROUTES } from '../lib/constants';
 
 const loginFormSchema = z.object({
+  username: z.string().min(1, '請輸入使用者名稱'),
   password: z.string().min(1, '請輸入密碼'),
 });
 
@@ -66,13 +67,13 @@ export function LoginPage(): JSX.Element {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
-    defaultValues: { password: '' },
+    defaultValues: { username: '', password: '' },
   });
 
   const onSubmit = async (values: LoginFormValues): Promise<void> => {
     setSubmitError(null);
     try {
-      await login(values.password);
+      await login(values.username, values.password);
       navigate(readRedirectTarget(location.state), { replace: true });
     } catch (err) {
       setSubmitError(formatAuthError(err));
@@ -94,6 +95,26 @@ export function LoginPage(): JSX.Element {
 
         <form noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
+            <label htmlFor="username" className="text-sm font-medium text-slate-300">
+              使用者名稱
+            </label>
+            <input
+              id="username"
+              type="text"
+              autoComplete="username"
+              autoFocus
+              aria-invalid={Boolean(errors.username)}
+              aria-describedby={errors.username ? 'username-error' : undefined}
+              {...register('username')}
+              className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            />
+            {errors.username && (
+              <p id="username-error" role="alert" className="text-sm text-signal-red">
+                {errors.username.message}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
             <label htmlFor="password" className="text-sm font-medium text-slate-300">
               密碼
             </label>
@@ -101,7 +122,6 @@ export function LoginPage(): JSX.Element {
               id="password"
               type="password"
               autoComplete="current-password"
-              autoFocus
               aria-invalid={Boolean(errors.password)}
               aria-describedby={errors.password ? 'password-error' : undefined}
               {...register('password')}
