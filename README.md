@@ -46,9 +46,37 @@ make type
 
 # Frontend (Phase 1+)
 cd ../frontend
+cp .env.example .env
 npm install
 npm run dev
 ```
+
+### Frontend scripts
+
+```bash
+cd frontend
+npm run dev         # Vite dev server on :5173 (proxies /api to VITE_API_URL)
+npm run typecheck   # tsc --noEmit (strict mode)
+npm run lint        # eslint (zero warnings allowed)
+npm test            # vitest run
+npm run build       # type-check + production build into dist/
+```
+
+### Frontend stack (Phase 0)
+
+- React 18 + TypeScript strict mode + Vite 5
+- Tailwind CSS 3 (dark mode via `class`, signal colors extended)
+- TanStack Query 5 (server state), react-router-dom v6, react-hook-form + Zod (forms)
+- react-error-boundary (page + app fallbacks)
+- lightweight-charts (installed for Phase 4, not yet rendered)
+- vitest + @testing-library/react + jsdom (tests)
+
+### Frontend security invariants
+
+- JWT is carried **only** in httpOnly Set-Cookie — never localStorage, never body
+- fetch wrapper sends `credentials: 'include'` and coalesces concurrent 401s onto a single refresh call
+- Every API boundary parsed with a Zod schema; failures surface as `SchemaValidationError`
+- No `dangerouslySetInnerHTML` anywhere
 
 ## Architecture
 
