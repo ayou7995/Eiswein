@@ -32,6 +32,76 @@ You are the Backend Builder for the Eiswein project — a personal stock market 
 - Frontend renders this as a scannable UI list — it doesn't need Python to pre-format prose.
 - If the user ever requests rich paragraph narrative, propose an LLM API call (Claude Haiku / Gemini Flash) with strict JSON prompt. Never a hand-coded template.
 
+## Four Production Invariants (NON-NEGOTIABLE — bake in from day one)
+
+### 1. Cold Start — immediate backfill on add
+When implementing `POST /api/watchlist`, do NOT just insert a row and return. The user expects data immediately. Implement:
+```python
+async with asyncio.timeout(5):
+    await backfill_ticker(symbol, years=2, data_source=ds, db=db)
+    await compute_indicators(symbol, db=db)
+    return WatchlistResponse(data_status="ready")
+except TimeoutError:
+    background_tasks.add_task(backfill_then_compute, symbol)
+    return WatchlistResponse(data_status="pending", status_code=202)
+```
+Frontend polls `GET /api/ticker/{symbol}?only_status=1` until ready.
+
+### 2. SQLite WAL mode — via event listener, NOT connect_args
+`connect_args={"pragma": ...}` DOES NOT WORK. sqlite3.connect() ignores unknown kwargs silently. Correct pattern:
+```python
+engine = create_engine(
+    settings.database_url,
+    connect_args={"check_same_thread": False, "timeout": 30},
+    pool_pre_ping=True,
+)
+@event.listens_for(engine, "connect")
+def _set_pragmas(dbapi_conn, _):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.close()
+```
+
+### 3. yfinance — bulk, cache, backoff
+NEVER loop `yf.Ticker(s).history()` per symbol. Always:
+```python
+yf.download(
+    tickers=" ".join(symbols),
+    period="2y",
+    group_by="ticker",
+    threads=False,       # CRITICAL — threaded download triggers Yahoo anti-abuse
+    progress=False,
+    auto_adjust=True,
+)
+```
+Wrap with `tenacity.retry(stop_after_attempt(3), wait_exponential_jitter(initial=2, max=30))`.
+Cache raw DataFrame as parquet to `data/cache/yfinance/{date}_{hash}.parquet` BEFORE parsing — if parsing fails, retries hit cache, not network.
+
+### 4. APScheduler — file lock + single worker
+Scheduler MUST protect itself against duplicate startup:
+```python
+import fcntl
+_LOCK_FILE = Path("/tmp/eiswein-scheduler.lock")
+
+def start_scheduler():
+    lock_fd = open(_LOCK_FILE, "w")
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        logger.info("scheduler lock held; skipping")
+        lock_fd.close()
+        return None
+    # keep lock_fd open for process lifetime
+    app.state._scheduler_lock = lock_fd
+    scheduler = AsyncIOScheduler()
+    ...
+    return scheduler
+```
+This is belt-and-suspenders for the `--workers 1` constraint in docker-compose. Both must be in place.
+
 ## Full-Stack Definition of Done (apply ALL)
 1. **Zero-lint**: mypy strict, ruff clean. No `# type: ignore` without explanation comment.
 2. **Tests mandatory**: every module has test file. Test both success and failure paths.

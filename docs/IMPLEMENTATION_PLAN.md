@@ -370,6 +370,10 @@ Tasks:
    - `security/rate_limit.py`: slowapi setup
    - `security/middleware.py`: Security headers (CSP, HSTS, X-Frame-Options), request logging
    - `db/database.py`: SQLite engine + session factory
+     - **MUST enable WAL mode** via SQLAlchemy event listener (see below)
+     - `connect_args={"check_same_thread": False, "timeout": 30}`
+     - PRAGMAs on connect: `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=30000`
+     - Note: `connect_args={"pragma": ...}` does NOT work — sqlite3.connect() ignores it. Must use `@event.listens_for(engine, "connect")`.
    - `db/models.py`: User, AuditLog tables
    - `api/auth_routes.py`: POST /login, /refresh, /logout
 
@@ -393,31 +397,52 @@ Tasks:
 Tasks:
 1. **DataSource interface**
    - `datasources/base.py`: Abstract class with methods:
-     - `get_daily_ohlcv(symbol, start, end) -> DataFrame`
+     - `bulk_download(symbols: list[str], period: str) -> dict[str, DataFrame]` ← PREFER this over single-ticker loops
+     - `get_daily_ohlcv(symbol, start, end) -> DataFrame` (convenience wrapper, internally uses bulk)
      - `get_index_data(symbol) -> DataFrame` (for SPX, VIX, DXY)
      - `health_check() -> bool`
-   - `datasources/yfinance_source.py`: Implementation
-   - `datasources/fred_source.py`: Yield spread, DXY, Fed Funds Rate
+   - `datasources/yfinance_source.py` — MUST follow these rules:
+     - Use `yf.download(" ".join(symbols), period="2y", group_by="ticker", threads=False, progress=False, auto_adjust=True)` — ONE call for N tickers. Never loop per-ticker. `threads=False` to avoid Yahoo anti-abuse.
+     - Wrap with tenacity: `@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=2, max=30))`
+     - Cache raw response as parquet to `data/cache/yfinance/{YYYY-MM-DD}_{symbols_hash}.parquet` BEFORE parsing. On parse failure, subsequent retries hit cache, not network.
+     - Split bulk DataFrame into per-ticker DataFrames at the interface boundary so indicators work per-ticker downstream.
+   - `datasources/fred_source.py`: Yield spread, DXY, Fed Funds Rate (via fredapi, simpler — no bulk batch concern)
 
 2. **SQLite models for market data**
-   - `DailyPrice` (symbol, date, open, high, low, close, volume)
-   - `MacroIndicator` (name, date, value)
-   - `Watchlist` (symbol, added_date)
+   - `DailyPrice` (symbol, date, open, high, low, close, volume) — UNIQUE (symbol, date), UPSERT on insert for idempotency
+   - `MacroIndicator` (name, date, value) — UNIQUE (name, date), UPSERT
+   - `Watchlist` (symbol, added_date, data_status: enum "pending"|"ready"|"failed")
 
-3. **API routes**
-   - CRUD `/api/watchlist`
-   - GET `/api/data/status` (data source health)
-   - POST `/api/data/refresh` (manual trigger)
+3. **Data ingestion module** (`backend/app/ingestion/`)
+   - `backfill.py`: `backfill_ticker(symbol, years=2, data_source, db) -> None` — fetches history, UPSERTs into DailyPrice. Idempotent.
+   - Used by cold-start flow AND daily_update job.
 
-4. **Historical data preload job**
-   - Pull 2 years of daily data for a default watchlist (SPY, QQQ, IWM + a few stocks)
-   - Store in SQLite
+4. **API routes — with cold-start handling**
+   - `POST /api/watchlist` — add ticker with immediate backfill:
+     ```python
+     async with asyncio.timeout(5):
+         await backfill_ticker(symbol, years=2, ...)
+         await compute_indicators(symbol, ...)
+         return WatchlistResponse(data_status="ready")
+     except TimeoutError:
+         background_tasks.add_task(backfill_then_compute, symbol)
+         return WatchlistResponse(data_status="pending")
+     ```
+   - `GET /api/watchlist` — list current watchlist
+   - `DELETE /api/watchlist/{symbol}` — remove
+   - `GET /api/data/status` — data source health + per-ticker data_status
+   - `POST /api/data/refresh` — manual trigger (rate-limited)
+   - `GET /api/ticker/{symbol}?only_status=1` — light endpoint for frontend polling during pending backfill
 
-5. **Run test-writer**: DataSource tests with mocked yfinance responses
-6. **Run security-auditor**
+5. **Historical data preload** (one-time seed)
+   - Script: pull 2 years for default watchlist (SPY, QQQ, IWM) using bulk_download
+   - Run on first startup if DailyPrice is empty
+
+6. **Run test-writer**: DataSource tests with mocked yfinance responses, including failure/retry paths and cache hit paths
+7. **Run security-auditor**
 
 **Estimated time: 2 days**
-**Milestone: Can add tickers to watchlist, backend fetches and stores price data**
+**Milestone: Can add tickers to watchlist, backend fetches and stores price data, UI shows data immediately (or skeleton + polls for pending)**
 
 ---
 
@@ -610,14 +635,19 @@ Tasks:
    - HTML email with market posture + attention items + top movers
    - Plain text fallback
 
-5. **Scheduler setup**
-   - APScheduler or cron in Docker entrypoint
-   - Daily update: 06:30 EST (after US market close + Asian market context)
-   - Backup: 07:00 EST
-   - Token check: daily
+5. **Scheduler setup** — `jobs/scheduler.py` with file lock protection
+   - Use `AsyncIOScheduler` from APScheduler, started from FastAPI lifespan hook
+   - **MUST acquire fcntl.flock on `/tmp/eiswein-scheduler.lock` BEFORE starting** — if lock already held, skip (defensive against future workers>1 misconfiguration)
+   - Keep file descriptor open for lifetime of process (so lock persists)
+   - Jobs:
+     - Daily update: `CronTrigger(hour=6, minute=30, timezone="America/New_York")` — after US close + Asian market open
+     - Backup: `CronTrigger(hour=7, minute=0, timezone="America/New_York")`
+     - Token expiry check: `CronTrigger(hour=12, minute=0)` — daily
+   - Every job wrapped in try/except + structured logging so one failure doesn't crash the scheduler
+   - Daily update: iterate watchlist, PER-TICKER try/except — one failing ticker doesn't abort the whole job (graceful degradation)
 
 **Estimated time: 2 days**
-**Milestone: Receive daily email report, data auto-updates**
+**Milestone: Receive daily email report, data auto-updates, duplicate scheduler protection verified**
 
 ---
 
@@ -634,6 +664,18 @@ Tasks:
 2. **docker-compose.yml**
    - Single service with volume mounts (data/, .env)
    - Health check endpoint
+   - **MUST pin uvicorn to single worker**:
+     ```yaml
+     command: [
+       "uvicorn", "backend.app.main:app",
+       "--host", "0.0.0.0",
+       "--port", "8000",
+       "--workers", "1",          # NEVER raise this. APScheduler safety + SQLite single-writer.
+       "--loop", "uvloop",
+       "--proxy-headers"
+     ]
+     ```
+   - Document this invariant inline with a comment — the file lock guard in `jobs/scheduler.py` is belt-and-suspenders for this constraint.
 
 3. **.env.example** with all required vars documented
 
