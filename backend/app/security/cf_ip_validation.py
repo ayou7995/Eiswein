@@ -16,8 +16,8 @@ them. Never trust `CF-Connecting-IP` without passing `is_trusted`.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
-from typing import Iterable, Sequence
 
 # Cloudflare published ranges (verified 2026-04-17). Kept in code so the
 # app defaults are secure; deployment can extend via `trusted_proxies`.

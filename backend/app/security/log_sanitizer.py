@@ -8,7 +8,8 @@ stdout nor downstream sinks see the real value.
 from __future__ import annotations
 
 import re
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from typing import Any
 
 REDACTED = "[REDACTED]"
 _SENSITIVE_KEY = re.compile(r"password|token|secret|key", re.IGNORECASE)

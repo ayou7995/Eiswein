@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable, Sequence
 from ipaddress import IPv4Network, IPv6Network
-from typing import Callable, Sequence
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware

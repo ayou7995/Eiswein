@@ -17,6 +17,7 @@ from datetime import timedelta
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, Field
+
 from app.api.dependencies import (
     COOKIE_ACCESS,
     COOKIE_REFRESH,
