@@ -8,6 +8,8 @@ key function + limiter factory usable by both the app and tests.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -27,10 +29,13 @@ def client_ip_key(request: Request) -> str:
     return get_remote_address(request)
 
 
-def build_limiter(default_limits: list[str] | None = None) -> Limiter:
+def build_limiter(default_limits: Sequence[str] | None = None) -> Limiter:
+    # slowapi types `default_limits` as list[str | Callable]; Sequence[str]
+    # is the covariant input we want to accept.
+    limits: list[str] = list(default_limits) if default_limits else []
     return Limiter(
         key_func=client_ip_key,
-        default_limits=default_limits or [],
+        default_limits=limits,  # type: ignore[arg-type]  # slowapi's invariant list[Union]
         headers_enabled=True,
     )
 

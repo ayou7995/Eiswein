@@ -21,15 +21,19 @@ describe('apiRequest', () => {
 
   it('parses a successful response against the Zod schema', async () => {
     const schema = z.object({ ok: z.literal(true), count: z.number() });
-    const fetchMock = vi.fn(async () => jsonResponse(200, { ok: true, count: 7 }));
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) => jsonResponse(200, { ok: true, count: 7 }),
+    );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const result = await apiRequest('/api/v1/thing', { schema });
     expect(result).toEqual({ ok: true, count: 7 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const init = fetchMock.mock.calls[0]?.[1];
+    const firstCall = fetchMock.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    const init = firstCall?.[1];
     expect(init).toBeDefined();
-    expect((init as RequestInit).credentials).toBe('include');
+    expect(init?.credentials).toBe('include');
   });
 
   it('throws SchemaValidationError when the body does not match', async () => {

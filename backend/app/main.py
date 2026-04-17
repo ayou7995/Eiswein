@@ -132,7 +132,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(ClientIPMiddleware, extra_trusted=tuple(resolved.trusted_proxies))
     app.add_middleware(RequestContextMiddleware)
 
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # slowapi's handler signature is (Request, RateLimitExceeded) -> Response
+    # but Starlette's add_exception_handler expects (Request, Exception).
+    # Cast is safe because slowapi only invokes it for RateLimitExceeded.
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     register_error_handlers(app)
 
     app.include_router(build_v1_router())

@@ -78,13 +78,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          # Cache intentionally omitted: package-lock.json is generated on
-          # first successful CI run (see "Install dependencies" below), then
-          # committed. After that, flip cache back on with
-          # cache-dependency-path: frontend/package-lock.json.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: ESLint
         run: npm run lint

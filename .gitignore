@@ -66,6 +66,7 @@ backend/lib64/
 # (Agent persistent memory under .claude/agent-memory/ IS committed — those
 # are shared learnings that help future agent runs.)
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 # IDE / OS
 .DS_Store

@@ -86,7 +86,9 @@ def _create_token(
         "iat": int(now.timestamp()),
         "exp": int((now + lifetime).timestamp()),
     }
-    return jwt.encode(payload, secret, algorithm=algorithm)
+    # jose.jwt.encode is typed as Any in the stubs; we guarantee str.
+    token: str = jwt.encode(payload, secret, algorithm=algorithm)
+    return token
 
 
 def create_access_token(

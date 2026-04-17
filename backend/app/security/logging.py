@@ -40,4 +40,7 @@ def configure_logging(level: str = "INFO") -> None:
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)
+    # structlog.get_logger returns Any under strict mypy; we've configured
+    # wrapper_class to BoundLogger so the runtime type matches.
+    logger: structlog.stdlib.BoundLogger = structlog.get_logger(name)
+    return logger

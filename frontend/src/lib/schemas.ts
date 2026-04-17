@@ -15,7 +15,7 @@ export type ApiErrorEnvelope = z.infer<typeof apiErrorEnvelopeSchema>;
 // Ticker symbol normalization (STAFF_REVIEW_DECISIONS.md I17). Same regex used
 // in backend pydantic validator — allow uppercase letters/digits plus . and -
 // so BRK.B and class-A tickers parse cleanly.
-export const TICKER_SYMBOL_REGEX = /^[A-Z0-9.\-]{1,10}$/;
+export const TICKER_SYMBOL_REGEX = /^[A-Z0-9.-]{1,10}$/;
 
 export const tickerSymbolSchema = z
   .string()
