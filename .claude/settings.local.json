@@ -87,7 +87,9 @@
       "Bash(~/Library/Python/3.9/bin/ruff format *)",
       "Bash(export ADMIN_USERNAME=admin JWT_SECRET=$\\(.venv/bin/python -c \"import secrets; print\\(secrets.token_urlsafe\\(48\\)\\)\"\\) ENCRYPTION_KEY=$\\(.venv/bin/python -c \"import secrets,base64; print\\(base64.urlsafe_b64encode\\(secrets.token_bytes\\(32\\)\\).decode\\(\\)\\)\"\\) ADMIN_PASSWORD_HASH=$\\(.venv/bin/python -c \"import bcrypt; print\\(bcrypt.hashpw\\(b'ci', bcrypt.gensalt\\(rounds=4\\)\\).decode\\(\\)\\)\"\\))",
       "Bash(DATABASE_URL=sqlite:///./data/eiswein_dev.db python3 *)",
-      "Bash(pkill -f \"uvicorn\")"
+      "Bash(pkill -f \"uvicorn\")",
+      "Bash(pkill -f uvicorn)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('login ok:', d.get\\('ok'\\)\\)\")"
     ]
   }
 }

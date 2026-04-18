@@ -72,6 +72,31 @@ describe('LoginPage', () => {
     }
   });
 
+  it('toggles password visibility when the eye button is clicked', async () => {
+    const restore = installFetch([]);
+    try {
+      renderLogin();
+      const user = userEvent.setup();
+      const password = screen.getByLabelText('密碼');
+      expect(password).toHaveAttribute('type', 'password');
+
+      const toggle = screen.getByRole('button', { name: '顯示密碼' });
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+      await user.click(toggle);
+      expect(password).toHaveAttribute('type', 'text');
+      expect(screen.getByRole('button', { name: '隱藏密碼' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+
+      await user.click(screen.getByRole('button', { name: '隱藏密碼' }));
+      expect(password).toHaveAttribute('type', 'password');
+    } finally {
+      restore();
+    }
+  });
+
   it('validates both required fields', async () => {
     const restore = installFetch([]);
     try {
