@@ -59,9 +59,22 @@ module = [
     "jose.*",
     "yfinance.*",
     "fredapi.*",
+    "pandas.*",
     "pandas_market_calendars.*",
     "tenacity.*",
 ]
+ignore_missing_imports = true
+
+# Modules that bridge pandas / yfinance / fredapi surfaces into typed code.
+# Keep disallow_any_unimported=False here so pd.DataFrame flows through
+# without manufacturing wrapper types — everywhere else stays strict.
+[[tool.mypy.overrides]]
+module = [
+    "app.datasources.*",
+    "app.ingestion.*",
+]
+disallow_any_unimported = false
+warn_return_any = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -106,9 +106,7 @@ class FREDSource(DataSource):
     async def get_index_data(self, symbol: str, *, period: str = "2y") -> pd.DataFrame:
         frame = await self._fetch_one_async(symbol.upper())
         if frame.empty:
-            raise DataSourceError(
-                details={"reason": "no_data", "series": symbol}
-            )
+            raise DataSourceError(details={"reason": "no_data", "series": symbol})
         return frame
 
     async def health_check(self) -> DataSourceHealth:
@@ -149,5 +147,4 @@ def _fetch_with_retry(client: Fred, series_id: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["value"])
     frame = pd.DataFrame({"value": series})
     frame.index = pd.to_datetime(frame.index)
-    frame = frame.dropna(how="all")
-    return frame
+    return frame.dropna(how="all")

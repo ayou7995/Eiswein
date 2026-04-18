@@ -60,7 +60,7 @@ class DailyUpdateResult:
 
 async def run_daily_update(
     *,
-    db: "Session",
+    db: Session,
     data_source: DataSource,
     settings: Settings,
 ) -> DailyUpdateResult:
@@ -106,9 +106,7 @@ async def run_daily_update(
         for sym in symbols:
             frame = bulk.get(sym)
             try:
-                upserted = await _persist_symbol(
-                    sym, frame, prices=prices, watchlist=watchlist
-                )
+                upserted = await _persist_symbol(sym, frame, prices=prices, watchlist=watchlist)
             except DataSourceError as exc:
                 reason = exc.details.get("reason") if isinstance(exc.details, dict) else None
                 if reason == "delisted_or_invalid":
@@ -178,17 +176,11 @@ async def _persist_symbol(
     lock = await get_symbol_lock(symbol)
     async with lock:
         if frame is None or frame.empty:
-            _mark_watchlist_rows(
-                watchlist, symbol=symbol, status="delisted", mark_refreshed=False
-            )
-            raise DataSourceError(
-                details={"reason": "delisted_or_invalid", "symbol": symbol}
-            )
+            _mark_watchlist_rows(watchlist, symbol=symbol, status="delisted", mark_refreshed=False)
+            raise DataSourceError(details={"reason": "delisted_or_invalid", "symbol": symbol})
         rows = list(iter_daily_price_rows(symbol, frame))
         upserted = prices.upsert_many(rows)
-        _mark_watchlist_rows(
-            watchlist, symbol=symbol, status="ready", mark_refreshed=True
-        )
+        _mark_watchlist_rows(watchlist, symbol=symbol, status="ready", mark_refreshed=True)
         return upserted
 
 
@@ -264,6 +256,6 @@ def _to_date(idx: object) -> date | None:
     if isinstance(idx, date):
         return idx
     try:
-        return pd.Timestamp(idx).date()  # type: ignore[arg-type]
+        return pd.Timestamp(idx).date()
     except (ValueError, TypeError):
         return None

@@ -21,22 +21,18 @@ def _seed_watchlist(
             session.add(user)
             session.flush()
             for sym in symbols:
-                session.add(
-                    Watchlist(user_id=user.id, symbol=sym, data_status="pending")
-                )
+                session.add(Watchlist(user_id=user.id, symbol=sym, data_status="pending"))
         session.commit()
 
 
 @pytest.mark.asyncio
 async def test_daily_update_issues_exactly_one_bulk_call(
     session_factory: sessionmaker[Session],
-    fake_data_source: "object",
+    fake_data_source: object,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "app.ingestion.daily_ingestion.is_trading_day_et", lambda: True
-    )
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
     _seed_watchlist(
         session_factory,
         {"u1": ["SPY", "QQQ"], "u2": ["SPY", "IWM"]},
@@ -63,13 +59,11 @@ async def test_daily_update_issues_exactly_one_bulk_call(
 @pytest.mark.asyncio
 async def test_daily_update_skips_on_non_trading_day(
     session_factory: sessionmaker[Session],
-    fake_data_source: "object",
+    fake_data_source: object,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "app.ingestion.daily_ingestion.is_trading_day_et", lambda: False
-    )
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: False)
     _seed_watchlist(session_factory, {"u1": ["SPY"]})
 
     with session_factory() as session:
@@ -92,9 +86,7 @@ async def test_daily_update_isolates_per_symbol_failures(
 ) -> None:
     from tests.conftest import FakeDataSource, FakeDataSourceConfig, _make_price_frame
 
-    monkeypatch.setattr(
-        "app.ingestion.daily_ingestion.is_trading_day_et", lambda: True
-    )
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
 
     ds = FakeDataSource(
         FakeDataSourceConfig(
@@ -108,9 +100,7 @@ async def test_daily_update_isolates_per_symbol_failures(
     _seed_watchlist(session_factory, {"u1": ["SPY", "QQQ", "DELIST"]})
 
     with session_factory() as session:
-        result = await run_daily_update(
-            db=session, data_source=ds, settings=settings
-        )
+        result = await run_daily_update(db=session, data_source=ds, settings=settings)
 
     assert result.symbols_requested == 3
     assert result.symbols_succeeded == 2
@@ -131,24 +121,26 @@ async def test_daily_update_isolates_per_symbol_failures(
 @pytest.mark.asyncio
 async def test_daily_update_is_idempotent(
     session_factory: sessionmaker[Session],
-    fake_data_source: "object",
+    fake_data_source: object,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "app.ingestion.daily_ingestion.is_trading_day_et", lambda: True
-    )
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
     _seed_watchlist(session_factory, {"u1": ["SPY"]})
 
     with session_factory() as session:
         first = await run_daily_update(
-            db=session, data_source=fake_data_source, settings=settings  # type: ignore[arg-type]
+            db=session,
+            data_source=fake_data_source,
+            settings=settings,  # type: ignore[arg-type]
         )
         first_rows = DailyPriceRepository(session).count_for_symbol("SPY")
 
     with session_factory() as session:
         second = await run_daily_update(
-            db=session, data_source=fake_data_source, settings=settings  # type: ignore[arg-type]
+            db=session,
+            data_source=fake_data_source,
+            settings=settings,  # type: ignore[arg-type]
         )
         second_rows = DailyPriceRepository(session).count_for_symbol("SPY")
 

@@ -26,12 +26,8 @@ def test_upsert_many_then_get_latest(db_session: Session) -> None:
 
 def test_upsert_updates_existing_conflict(db_session: Session) -> None:
     repo = MacroRepository(db_session)
-    repo.upsert_many(
-        [MacroRow(series_id="FEDFUNDS", date=date(2026, 4, 1), value=Decimal("5.25"))]
-    )
-    repo.upsert_many(
-        [MacroRow(series_id="FEDFUNDS", date=date(2026, 4, 1), value=Decimal("5.00"))]
-    )
+    repo.upsert_many([MacroRow(series_id="FEDFUNDS", date=date(2026, 4, 1), value=Decimal("5.25"))])
+    repo.upsert_many([MacroRow(series_id="FEDFUNDS", date=date(2026, 4, 1), value=Decimal("5.00"))])
     latest = repo.get_latest("FEDFUNDS")
     assert latest is not None
     assert latest.value == Decimal("5.000000")

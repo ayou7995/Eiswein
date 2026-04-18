@@ -34,9 +34,7 @@ def _bulk_frame(symbols: list[str], days: int = 10) -> pd.DataFrame:
         columns.append((sym, "Low"))
         arrays.append(base + 0.5)
         columns.append((sym, "Close"))
-        arrays.append(
-            rng.integers(1_000_000, 5_000_000, size=days).astype(np.int64)
-        )
+        arrays.append(rng.integers(1_000_000, 5_000_000, size=days).astype(np.int64))
         columns.append((sym, "Volume"))
     frame = pd.DataFrame(
         {col: arr for col, arr in zip(columns, arrays, strict=True)},

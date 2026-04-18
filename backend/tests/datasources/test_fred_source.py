@@ -35,9 +35,7 @@ async def test_bulk_download_returns_per_series_frames(
     series = pd.Series([3.5, 3.6, 3.7, 3.8, 3.9], index=dates)
     fake = _FakeFredClient(returns={"DGS10": series, "FEDFUNDS": series})
 
-    monkeypatch.setattr(
-        "app.datasources.fred_source.Fred", lambda api_key: fake  # noqa: ARG005
-    )
+    monkeypatch.setattr("app.datasources.fred_source.Fred", lambda api_key: fake)
 
     source = FREDSource(api_key="secret")
     out = await source.bulk_download(["DGS10", "FEDFUNDS"])
@@ -54,9 +52,7 @@ async def test_bulk_download_gracefully_handles_per_series_failure(
 ) -> None:
     series = pd.Series([1.0, 2.0], index=pd.date_range("2026-01-01", periods=2))
     fake = _FakeFredClient(returns={"DGS10": series}, raise_for={"FEDFUNDS"})
-    monkeypatch.setattr(
-        "app.datasources.fred_source.Fred", lambda api_key: fake  # noqa: ARG005
-    )
+    monkeypatch.setattr("app.datasources.fred_source.Fred", lambda api_key: fake)
     monkeypatch.setattr("tenacity.nap.sleep", lambda _s: None)
 
     source = FREDSource(api_key="secret")
@@ -69,9 +65,7 @@ async def test_bulk_download_gracefully_handles_per_series_failure(
 async def test_health_check_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     series = pd.Series([4.0], index=pd.to_datetime(["2026-04-01"]))
     fake = _FakeFredClient(returns={"DGS10": series})
-    monkeypatch.setattr(
-        "app.datasources.fred_source.Fred", lambda api_key: fake  # noqa: ARG005
-    )
+    monkeypatch.setattr("app.datasources.fred_source.Fred", lambda api_key: fake)
     source = FREDSource(api_key="secret")
     health = await source.health_check()
     assert health.status == "ok"

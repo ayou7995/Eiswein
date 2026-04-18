@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 
 def _login(client: TestClient, password: str) -> None:
-    resp = client.post(
-        "/api/v1/login", json={"username": "admin", "password": password}
-    )
+    resp = client.post("/api/v1/login", json={"username": "admin", "password": password})
     assert resp.status_code == 200
 
 
@@ -23,9 +20,7 @@ def test_watchlist_add_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_watchlist_add_returns_ready_on_success(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_add_returns_ready_on_success(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.post("/api/v1/watchlist", json={"symbol": "SPY"})
     assert resp.status_code == 200
@@ -35,9 +30,7 @@ def test_watchlist_add_returns_ready_on_success(
     assert body["data"]["last_refresh_at"] is not None
 
 
-def test_watchlist_list_returns_paginated_wrapper(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_list_returns_paginated_wrapper(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "SPY"})
     client.post("/api/v1/watchlist", json={"symbol": "QQQ"})
@@ -50,26 +43,20 @@ def test_watchlist_list_returns_paginated_wrapper(
     assert symbols == {"SPY", "QQQ"}
 
 
-def test_watchlist_add_rejects_invalid_symbol(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_add_rejects_invalid_symbol(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.post("/api/v1/watchlist", json={"symbol": "bad symbol"})
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "validation_error"
 
 
-def test_watchlist_add_rejects_too_long_symbol(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_add_rejects_too_long_symbol(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.post("/api/v1/watchlist", json={"symbol": "ABCDEFGHIJK"})
     assert resp.status_code == 422
 
 
-def test_watchlist_add_duplicate_returns_409(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_add_duplicate_returns_409(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     first = client.post("/api/v1/watchlist", json={"symbol": "SPY"})
     assert first.status_code == 200
@@ -78,9 +65,7 @@ def test_watchlist_add_duplicate_returns_409(
     assert second.json()["error"]["code"] == "watchlist_duplicate"
 
 
-def test_watchlist_add_over_cap_returns_422(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_add_over_cap_returns_422(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     # Settings fixture sets max_size=5.
     for sym in ("AAA", "BBB", "CCC", "DDD", "EEE"):
@@ -117,9 +102,7 @@ def test_watchlist_add_cold_start_timeout_returns_202(
     assert resp.json()["data"]["data_status"] == "pending"
 
 
-def test_watchlist_add_handles_delisted_data(
-    client: TestClient, test_password: str, app
-) -> None:
+def test_watchlist_add_handles_delisted_data(client: TestClient, test_password: str, app) -> None:
     from tests.conftest import FakeDataSource, FakeDataSourceConfig
 
     ds = FakeDataSource(FakeDataSourceConfig(empty_for={"ZZZZ"}))
@@ -147,9 +130,7 @@ def test_watchlist_delete_returns_404_for_unknown_symbol(
     assert resp.status_code == 404
 
 
-def test_watchlist_delete_removes_row(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_delete_removes_row(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "SPY"})
     resp = client.delete("/api/v1/watchlist/SPY")
@@ -159,9 +140,7 @@ def test_watchlist_delete_removes_row(
     assert listing["total"] == 0
 
 
-def test_watchlist_delete_validates_symbol_shape(
-    client: TestClient, test_password: str
-) -> None:
+def test_watchlist_delete_validates_symbol_shape(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.delete("/api/v1/watchlist/bad symbol")
     assert resp.status_code == 422

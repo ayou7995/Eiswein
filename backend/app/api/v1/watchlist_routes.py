@@ -130,8 +130,10 @@ def validate_symbol_or_raise(symbol: str) -> str:
     try:
         return SymbolInput(symbol=symbol).symbol
     except ValidationError as exc:
+        from app.security.error_handlers import sanitize_validation_errors
+
         raise EisweinValidationError(
-            details={"errors": exc.errors()},
+            details={"errors": sanitize_validation_errors(exc.errors())},
         ) from exc
 
 
@@ -215,9 +217,7 @@ async def add_to_watchlist(
 
     session.refresh(row)
     response.status_code = (
-        status.HTTP_200_OK
-        if final_status == STATUS_READY
-        else status.HTTP_202_ACCEPTED
+        status.HTTP_200_OK if final_status == STATUS_READY else status.HTTP_202_ACCEPTED
     )
     return WatchlistCreateResponse(data=WatchlistItem.from_row(row))
 
@@ -275,11 +275,9 @@ def _schedule_background_backfill(
             logger.exception("background_backfill_failed", symbol=symbol)
             try:
                 repo = WatchlistRepository(local)
-                repo.set_status(
-                    user_id=user_id, symbol=symbol, status=STATUS_FAILED
-                )
+                repo.set_status(user_id=user_id, symbol=symbol, status=STATUS_FAILED)
                 local.commit()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 local.rollback()
             raise exc
         finally:

@@ -43,7 +43,7 @@ async def backfill_ticker(
     symbol: str,
     *,
     user_id: int,
-    db: "Session",
+    db: Session,
     data_source: DataSource,
     years: int = 2,
     force: bool = False,
@@ -93,9 +93,7 @@ async def backfill_ticker(
                 status=STATUS_DELISTED,
             )
             db.commit()
-            raise DataSourceError(
-                details={"reason": "delisted_or_invalid", "symbol": normalized}
-            )
+            raise DataSourceError(details={"reason": "delisted_or_invalid", "symbol": normalized})
 
         inserted = prices.upsert_many(iter_daily_price_rows(normalized, frame))
         _mark(

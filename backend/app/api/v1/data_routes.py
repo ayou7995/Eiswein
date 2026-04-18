@@ -14,7 +14,7 @@ module's (same issue as auth_routes.py documented in Phase 0).
 from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -111,14 +111,13 @@ async def get_data_status(
 @limiter.limit("1/hour")
 async def refresh_data(
     request: Request,
+    response: Response,
     _user_id: int = Depends(current_user_id),
     settings: Settings = Depends(get_settings_dep),
     data_source: DataSource = Depends(get_data_source_dep),
     session: Session = Depends(get_db_session),
 ) -> RefreshResponse:
-    result = await run_daily_update(
-        db=session, data_source=data_source, settings=settings
-    )
+    result = await run_daily_update(db=session, data_source=data_source, settings=settings)
     return RefreshResponse(
         ok=True,
         market_open=result.market_open,

@@ -21,6 +21,7 @@ errors flag the symbol as ``delisted_or_invalid`` and surface as
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -120,9 +121,7 @@ class YFinanceSource(DataSource):
         find_and_remove_old_parquets(self._cache_root)
 
         try:
-            raw = await asyncio.to_thread(
-                self._fetch_with_cache, cleaned, period=period
-            )
+            raw = await asyncio.to_thread(self._fetch_with_cache, cleaned, period=period)
         except DataSourceError:
             raise
         except Exception as exc:  # network after retries exhausted
@@ -132,9 +131,7 @@ class YFinanceSource(DataSource):
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            raise DataSourceError(
-                details={"reason": "upstream_error", "error": str(exc)}
-            ) from exc
+            raise DataSourceError(details={"reason": "upstream_error", "error": str(exc)}) from exc
 
         return _split_bulk_frame(raw, cleaned)
 
@@ -142,9 +139,7 @@ class YFinanceSource(DataSource):
         out = await self.bulk_download([symbol], period=period)
         frame = out.get(symbol.upper())
         if frame is None or frame.empty:
-            raise DataSourceError(
-                details={"reason": "delisted_or_invalid", "symbol": symbol}
-            )
+            raise DataSourceError(details={"reason": "delisted_or_invalid", "symbol": symbol})
         return frame
 
     async def health_check(self) -> DataSourceHealth:
@@ -158,29 +153,21 @@ class YFinanceSource(DataSource):
 
     # --- Internal helpers (executed in a worker thread) ---
 
-    def _fetch_with_cache(
-        self, symbols: list[str], *, period: str
-    ) -> pd.DataFrame:
+    def _fetch_with_cache(self, symbols: list[str], *, period: str) -> pd.DataFrame:
         cache_path = self._cache_path_for(symbols)
         if cache_path.exists():
             try:
                 return pd.read_parquet(cache_path)
             except Exception as exc:
-                logger.warning(
-                    "yfinance_cache_read_failed", path=str(cache_path), error=str(exc)
-                )
-                try:
+                logger.warning("yfinance_cache_read_failed", path=str(cache_path), error=str(exc))
+                with contextlib.suppress(OSError):
                     cache_path.unlink()
-                except OSError:  # best-effort eviction of a corrupt cache entry
-                    pass
 
         frame = _download_with_retry(symbols, period=period)
         try:
             frame.to_parquet(cache_path)
         except Exception as exc:
-            logger.warning(
-                "yfinance_cache_write_failed", path=str(cache_path), error=str(exc)
-            )
+            logger.warning("yfinance_cache_write_failed", path=str(cache_path), error=str(exc))
         return frame
 
 
@@ -209,9 +196,7 @@ def _download_with_retry(symbols: list[str], *, period: str) -> pd.DataFrame:
     return frame
 
 
-def _split_bulk_frame(
-    raw: pd.DataFrame, symbols: list[str]
-) -> dict[str, pd.DataFrame]:
+def _split_bulk_frame(raw: pd.DataFrame, symbols: list[str]) -> dict[str, pd.DataFrame]:
     """Turn a yfinance bulk frame into per-symbol DataFrames.
 
     Single-symbol downloads return a flat column index; multi-symbol

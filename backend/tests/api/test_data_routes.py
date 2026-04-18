@@ -6,9 +6,7 @@ from fastapi.testclient import TestClient
 
 
 def _login(client: TestClient, password: str) -> None:
-    resp = client.post(
-        "/api/v1/login", json={"username": "admin", "password": password}
-    )
+    resp = client.post("/api/v1/login", json={"username": "admin", "password": password})
     assert resp.status_code == 200
 
 
@@ -52,9 +50,7 @@ def test_data_refresh_runs_job_and_returns_summary(
     assert body["symbols_requested"] >= 1
 
 
-def test_data_refresh_rate_limit(
-    client: TestClient, test_password: str, monkeypatch
-) -> None:
+def test_data_refresh_rate_limit(client: TestClient, test_password: str, monkeypatch) -> None:
     from app.ingestion import daily_ingestion
 
     monkeypatch.setattr(daily_ingestion, "is_trading_day_et", lambda: True)
@@ -66,9 +62,7 @@ def test_data_refresh_rate_limit(
     assert second.json()["error"]["code"] == "rate_limited"
 
 
-def test_ticker_only_status_returns_light_payload(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_only_status_returns_light_payload(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "SPY"})
     resp = client.get("/api/v1/ticker/SPY?only_status=1")
@@ -80,17 +74,13 @@ def test_ticker_only_status_returns_light_payload(
     assert "last_refresh_at" in body
 
 
-def test_ticker_unknown_returns_404(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_unknown_returns_404(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.get("/api/v1/ticker/NOPE?only_status=1")
     assert resp.status_code == 404
 
 
-def test_ticker_rejects_invalid_symbol(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_rejects_invalid_symbol(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.get("/api/v1/ticker/bad symbol?only_status=1")
     assert resp.status_code == 422

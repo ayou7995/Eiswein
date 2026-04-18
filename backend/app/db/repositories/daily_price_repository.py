@@ -63,9 +63,7 @@ class DailyPriceRepository:
         self._session.flush()
         return len(materialized)
 
-    def get_range(
-        self, symbol: str, *, start: date, end: date
-    ) -> Sequence[DailyPrice]:
+    def get_range(self, symbol: str, *, start: date, end: date) -> Sequence[DailyPrice]:
         stmt = (
             select(DailyPrice)
             .where(

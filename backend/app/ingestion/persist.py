@@ -62,6 +62,6 @@ def _index_to_date(idx: object) -> date | None:
     if isinstance(idx, date):
         return idx
     try:
-        return pd.Timestamp(idx).date()  # type: ignore[arg-type]
+        return pd.Timestamp(idx).date()
     except (ValueError, TypeError):
         return None

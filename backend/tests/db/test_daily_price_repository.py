@@ -27,9 +27,7 @@ def _row(day: date, close: str) -> DailyPriceRow:
 
 def test_upsert_many_inserts_new_rows(db_session: Session) -> None:
     repo = DailyPriceRepository(db_session)
-    upserted = repo.upsert_many(
-        [_row(date(2026, 4, 1), "100"), _row(date(2026, 4, 2), "101")]
-    )
+    upserted = repo.upsert_many([_row(date(2026, 4, 1), "100"), _row(date(2026, 4, 2), "101")])
     assert upserted == 2
     assert repo.count_for_symbol("SPY") == 2
 

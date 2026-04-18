@@ -7,7 +7,7 @@ import base64
 import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import bcrypt
@@ -100,7 +100,10 @@ def _make_price_frame(
     start_price: float = 100.0,
 ) -> pd.DataFrame:
     """Deterministic OHLCV frame — shared across ingestion + API tests."""
-    origin = datetime(2026, 1, 2, tzinfo=UTC)
+    # Use a tz-naive origin; pandas applies the tz to the resulting index.
+    # Passing a UTC-aware origin + tz="America/New_York" made pandas 2.x
+    # reject as "inferred time zone != passed time zone".
+    origin = datetime(2026, 1, 2)
     idx = pd.date_range(origin, periods=days, freq="B", tz="America/New_York")
     rng = np.random.default_rng(seed=42)
     base = start_price + np.cumsum(rng.normal(0, 1.0, size=days))
@@ -122,9 +125,7 @@ class FakeDataSourceConfig:
     empty_for: set[str] = field(default_factory=set)
     error_for: set[str] = field(default_factory=set)
     delay_seconds: float = 0.0
-    health: DataSourceHealth = field(
-        default_factory=lambda: DataSourceHealth(status="ok")
-    )
+    health: DataSourceHealth = field(default_factory=lambda: DataSourceHealth(status="ok"))
 
 
 class FakeDataSource(DataSource):
@@ -146,24 +147,18 @@ class FakeDataSource(DataSource):
         for sym in symbols:
             upper = sym.upper()
             if upper in self.config.error_for:
-                raise DataSourceError(
-                    details={"reason": "upstream_error", "symbol": upper}
-                )
+                raise DataSourceError(details={"reason": "upstream_error", "symbol": upper})
             if upper in self.config.empty_for:
                 out[upper] = pd.DataFrame()
                 continue
             out[upper] = self.config.frames.get(upper, _make_price_frame())
         return out
 
-    async def get_index_data(
-        self, symbol: str, *, period: str = "2y"
-    ) -> pd.DataFrame:
+    async def get_index_data(self, symbol: str, *, period: str = "2y") -> pd.DataFrame:
         result = await self.bulk_download([symbol], period=period)
         frame = result.get(symbol.upper())
         if frame is None or frame.empty:
-            raise DataSourceError(
-                details={"reason": "delisted_or_invalid", "symbol": symbol}
-            )
+            raise DataSourceError(details={"reason": "delisted_or_invalid", "symbol": symbol})
         return frame
 
     async def health_check(self) -> DataSourceHealth:

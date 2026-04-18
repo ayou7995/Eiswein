@@ -89,7 +89,9 @@
       "Bash(DATABASE_URL=sqlite:///./data/eiswein_dev.db python3 *)",
       "Bash(pkill -f \"uvicorn\")",
       "Bash(pkill -f uvicorn)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('login ok:', d.get\\('ok'\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('login ok:', d.get\\('ok'\\)\\)\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(pkill -f \"node.*vite\")"
     ]
   }
 }

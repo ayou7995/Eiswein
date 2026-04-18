@@ -52,7 +52,5 @@ class MacroRepository:
         return self._session.execute(stmt).scalar_one_or_none()
 
     def count_for_series(self, series_id: str) -> int:
-        stmt = select(MacroIndicator.id).where(
-            MacroIndicator.series_id == series_id.upper()
-        )
+        stmt = select(MacroIndicator.id).where(MacroIndicator.series_id == series_id.upper())
         return len(self._session.execute(stmt).scalars().all())
