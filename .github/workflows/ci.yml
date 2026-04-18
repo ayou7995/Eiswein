@@ -47,16 +47,18 @@ jobs:
         run: mypy --strict app
 
       - name: Pytest
-        env:
-          # Settings() validates required fields even when tests pass
-          # explicit kwargs, because pydantic-settings merges env vars.
-          # These dummies satisfy the validators in app/config.py; real
-          # per-test values come from the `settings` fixture in conftest.
-          JWT_SECRET: "ci-dummy-jwt-secret-for-tests-at-least-32-chars-long-xyz"
-          ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-          ADMIN_USERNAME: "admin"
-          ADMIN_PASSWORD_HASH: "$2b$12$CIdummyCIdummyCIdummyCIdummyCIdummyCIdummyCIdummyCIdum"
-        run: pytest --tb=short tests
+        run: |
+          # Generate dummy env values at runtime so nothing secret-shaped
+          # lives in source. Real per-test values come from the `settings`
+          # fixture in conftest.
+          export ADMIN_USERNAME=admin
+          export JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
+          export ENCRYPTION_KEY=$(python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
+          export ADMIN_PASSWORD_HASH=$(python -c "import bcrypt; print(bcrypt.hashpw(b'ci-placeholder', bcrypt.gensalt(rounds=4)).decode())")
+          # Collection-only pass first — surfaces import/config errors without
+          # running any test, making failures much easier to diagnose.
+          pytest --collect-only -q tests
+          pytest --tb=short tests
 
       - name: Alembic migration smoke test
         run: |
