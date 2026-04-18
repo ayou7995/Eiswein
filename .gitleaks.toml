@@ -16,12 +16,12 @@ useDefault = true
 description = "Allowlist: placeholder env examples and test fixtures"
 paths = [
   '''\.env\.example$''',
-  '''backend/tests/conftest\.py$''',
-  '''backend/tests/security/.*\.py$''',
-  '''scripts/set_password\.py$''',          # documentation strings for password prompts
-  '''docs/.*\.md$''',                        # narrative docs may include example tokens
+  '''backend/tests/.*\.py$''',               # all tests may use bcrypt-prefix + similar stubs
+  '''scripts/set_password\.py$''',           # documentation strings for password prompts
+  '''docs/.*\.md$''',                         # narrative docs may include example tokens
   '''\.gitleaks\.toml$''',
   '''frontend/\.env\.example$''',
+  '''\.claude/agent-memory/.*\.md$''',        # audit findings discuss $2b$ / token patterns
 ]
 
 # Low-entropy test values that keep triggering generic secret detection.

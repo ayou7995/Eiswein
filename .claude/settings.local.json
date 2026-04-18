@@ -91,7 +91,24 @@
       "Bash(pkill -f uvicorn)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('login ok:', d.get\\('ok'\\)\\)\")",
       "Bash(pkill -f \"vite\")",
-      "Bash(pkill -f \"node.*vite\")"
+      "Bash(pkill -f \"node.*vite\")",
+      "Bash(.venv/bin/ruff check *)",
+      "Bash(.venv/bin/ruff format *)",
+      "Bash(.venv/bin/pytest tests/api/test_watchlist_routes.py::test_watchlist_add_returns_ready_on_success -x --tb=short)",
+      "Bash(.venv/bin/pytest tests/api/test_watchlist_routes.py::test_watchlist_add_returns_ready_on_success -x --tb=line)",
+      "Bash(.venv/bin/pytest tests/api/test_watchlist_routes.py::test_watchlist_add_rejects_invalid_symbol --tb=short)",
+      "Bash(.venv/bin/pytest tests/security/test_error_handlers.py::test_validation_exception_wraps_errors -x --tb=short)",
+      "Bash(.venv/bin/pytest tests/api/test_data_routes.py::test_ticker_rejects_invalid_symbol -x --tb=line)",
+      "Bash(.venv/bin/pytest tests/api/test_data_routes.py::test_data_refresh_rate_limit -x --tb=line)",
+      "Bash(.venv/bin/pytest tests/api/test_data_routes.py::test_ticker_rejects_invalid_symbol -x --tb=long)",
+      "Bash(.venv/bin/pytest tests/api/test_data_routes.py::test_ticker_rejects_invalid_symbol -x -s)",
+      "Bash(.venv/bin/pytest tests/api/test_data_routes.py::test_data_refresh_runs_job_and_returns_summary -x --tb=short)",
+      "Bash(DATABASE_URL=sqlite:////tmp/ci_phase1.db .venv/bin/alembic upgrade head)",
+      "Bash(git -C /Users/cheyulin/Eiswein stash push .claude/settings.local.json -m \"phase1-merge-stash\")",
+      "Bash(git -C /Users/cheyulin/Eiswein merge --no-ff worktree-agent-a93b7c0c -m ' *)",
+      "Bash(curl -s \"https://api.github.com/repos/ayou7995/Eiswein/actions/runs/24609728609/jobs\")",
+      "Bash(xargs -I {} curl -s {}/annotations)",
+      "Bash(grep -rn \"\\\\$2b\\\\$\\\\|AKIA\\\\|ghp_\\\\|sk_test\\\\|sk_live\\\\|ENCRYPTION_KEY\\\\s*=\\\\|JWT_SECRET\\\\s*=\" --include=\"*.md\" --include=\"*.py\" --include=\"*.yml\" backend/.claude/ backend/tests/ scripts/)"
     ]
   }
 }
