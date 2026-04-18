@@ -1,29 +1,37 @@
-"""SQLAlchemy ORM models for Phase 0.
+"""SQLAlchemy ORM models.
 
-Only the tables needed before the data layer exists:
+Phase 0 tables:
 * `User` (A3) — always single-admin in v1, scaffolded for multi-user.
 * `AuditLog` (I9) — append-only event log.
-* `Ticker` (A1) — master table so DailyPrice later FKs to tickers, not watchlists.
+* `Ticker` (A1) — master table so DailyPrice FKs to tickers, not watchlists.
 * `BrokerCredential` (A3, I11) — AES-GCM encrypted Schwab refresh tokens.
 
-Forward-declared relationships to Phase 1 tables (Watchlist/Position/...) use
-string references, so Phase 1 just needs to register the target models against
-`Base.metadata`.
+Phase 1 tables (data layer):
+* `Watchlist` — user-owned symbol selection (UNIQUE per user+symbol).
+* `DailyPrice` — auto-adjusted OHLCV price history keyed by symbol+date.
+* `MacroIndicator` — FRED series data keyed by series_id+date.
+
+All user-owned tables carry `user_id` FK (A3). Prices use `Decimal`
+(Numeric(12,4)) to avoid float precision bugs in P&L calculations.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -153,3 +161,79 @@ class BrokerCredential(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped[User] = relationship("User", back_populates="broker_credentials")
+
+
+class Watchlist(Base):
+    """User-selected symbols for tracking (A1, A3, I4).
+
+    `data_status` is a lightweight state machine used by the cold-start
+    backfill path: ``pending`` → ``ready`` (success) or ``failed`` / ``delisted``.
+    The frontend polls ``GET /api/v1/ticker/{symbol}?only_status=1`` to
+    display the appropriate UI while backfill finishes.
+    """
+
+    __tablename__ = "watchlist"
+    __table_args__ = (
+        UniqueConstraint("user_id", "symbol", name="uq_watchlist_user_symbol"),
+        Index("ix_watchlist_user_symbol", "user_id", "symbol"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    data_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    last_refresh_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class DailyPrice(Base):
+    """Auto-adjusted OHLCV keyed by symbol+date (A1, A2).
+
+    Prices are ``Decimal`` (Numeric(12,4)) rather than float so P&L
+    calculations aren't subject to binary-float drift. ``close`` is the
+    yfinance auto-adjusted close (splits + dividends), which means
+    Position.avg_cost (user-input) and DailyPrice.close live in the same
+    adjusted-space — see STAFF_REVIEW_DECISIONS.md I1 for the caveat.
+    """
+
+    __tablename__ = "daily_price"
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_daily_price_symbol_date"),
+        Index("ix_daily_price_symbol_date", "symbol", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    open: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    high: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    low: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    close: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class MacroIndicator(Base):
+    """FRED macro series keyed by series_id+date (A1, A2).
+
+    Example series: ``DGS10``, ``DGS2``, ``DTWEXBGS``, ``FEDFUNDS``,
+    ``VIXCLS``. ``series_id`` is the upstream FRED identifier — storing
+    it rather than a human name keeps the integration simple when we add
+    series later.
+    """
+
+    __tablename__ = "macro_indicator"
+    __table_args__ = (
+        UniqueConstraint("series_id", "date", name="uq_macro_series_date"),
+        Index("ix_macro_indicator_series_date", "series_id", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    series_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    value: Mapped[Decimal] = mapped_column(Numeric(14, 6), nullable=False)
