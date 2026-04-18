@@ -10,9 +10,13 @@ Key invariants
 * Every attempt is recorded in the audit log.
 * Response envelopes match the frontend Zod schemas: {ok, user?} for
   session-bearing responses; {ok} for fire-and-forget responses.
-"""
 
-from __future__ import annotations
+Note: this module intentionally does NOT use `from __future__ import
+annotations`. slowapi's @limiter.limit wraps the login handler, and
+FastAPI needs runtime access to `LoginRequest` as a real class (not a
+string) because the wrapper's __globals__ differs from this module's
+and forward-ref resolution fails otherwise.
+"""
 
 from datetime import timedelta
 

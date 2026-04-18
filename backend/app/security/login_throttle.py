@@ -20,6 +20,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """Coerce a datetime to tz-aware UTC.
+
+    SQLite stores ``DateTime(timezone=True)`` columns as naive strings and
+    returns naive datetimes — assume those are already UTC (we only ever
+    write UTC). Aware datetimes are returned as-is.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 @dataclass(frozen=True, slots=True)
 class AttemptRecord:
     """Single login attempt used for lockout calculation."""
@@ -50,10 +62,10 @@ def evaluate_ip_lockout(
     from `ip` within `window`. While the lockout window is still active
     (last fail + window > now), we stay locked.
     """
-    current = now or datetime.now(UTC)
+    current = _as_utc(now) if now else datetime.now(UTC)
     ip_attempts = sorted(
         (a for a in recent_attempts if a.ip == ip),
-        key=lambda a: a.timestamp,
+        key=lambda a: _as_utc(a.timestamp),
         reverse=True,
     )
 
@@ -63,10 +75,10 @@ def evaluate_ip_lockout(
             break
         consecutive_fails.append(attempt)
 
-    fails_in_window = [a for a in consecutive_fails if current - a.timestamp <= window]
+    fails_in_window = [a for a in consecutive_fails if current - _as_utc(a.timestamp) <= window]
 
     if len(fails_in_window) >= threshold:
-        last_fail = fails_in_window[0].timestamp
+        last_fail = _as_utc(fails_in_window[0].timestamp)
         unlock_at = last_fail + window
         retry_after = max(0, int((unlock_at - current).total_seconds()))
         return LockoutStatus(locked=True, attempts_remaining=0, retry_after_seconds=retry_after)
@@ -81,5 +93,7 @@ def global_failure_count(
     window: timedelta,
     now: datetime | None = None,
 ) -> int:
-    current = now or datetime.now(UTC)
-    return sum(1 for a in recent_attempts if not a.success and current - a.timestamp <= window)
+    current = _as_utc(now) if now else datetime.now(UTC)
+    return sum(
+        1 for a in recent_attempts if not a.success and current - _as_utc(a.timestamp) <= window
+    )

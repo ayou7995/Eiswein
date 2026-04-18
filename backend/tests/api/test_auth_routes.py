@@ -21,8 +21,8 @@ def test_login_success_sets_cookies(client: TestClient, test_password: str) -> N
     set_cookie = resp.headers.get("set-cookie", "")
     assert COOKIE_ACCESS in set_cookie
     assert COOKIE_REFRESH in set_cookie
-    assert "HttpOnly" in set_cookie
-    assert "SameSite=lax" in set_cookie.lower()
+    assert "httponly" in set_cookie.lower()
+    assert "samesite=lax" in set_cookie.lower()
     # Body must not contain the raw JWT.
     for token_key in (COOKIE_ACCESS, COOKIE_REFRESH):
         assert body.get(token_key) is None

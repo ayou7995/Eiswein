@@ -19,7 +19,7 @@ from app.db.repositories.broker_credential_repository import BrokerCredentialRep
 from app.db.repositories.ticker_repository import TickerRepository
 from app.db.repositories.user_repository import UserRepository
 from app.security.auth import decode_token
-from app.security.exceptions import AuthError, TokenInvalidError
+from app.security.exceptions import AuthError, EisweinError, TokenInvalidError
 
 COOKIE_ACCESS = "eiswein_access"
 COOKIE_REFRESH = "eiswein_refresh"
@@ -40,10 +40,18 @@ def get_db_session(request: Request) -> Iterator[Session]:
     session = factory()
     try:
         yield session
+    except EisweinError:
+        # Domain errors (invalid password, locked out, etc.) are expected
+        # outcomes, not programming bugs. The audit log rows written during
+        # the failed request MUST be persisted so subsequent requests can
+        # see the failure history (e.g., IP-based lockout).
         session.commit()
+        raise
     except Exception:
         session.rollback()
         raise
+    else:
+        session.commit()
     finally:
         session.close()
 
