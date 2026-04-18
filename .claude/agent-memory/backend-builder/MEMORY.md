@@ -1,0 +1,3 @@
+- [Phase 1 Module Contracts](phase1_contracts.md) — DataSource ABC, Watchlist/DailyPrice/MacroIndicator models, repository + ingestion signatures, route list.
+- [Ingestion Invariants Implemented](phase1_invariants.md) — Where the four production invariants + per-symbol lock live in Phase 1 code.
+- [Testing Pattern: FakeDataSource](phase1_test_pattern.md) — How to intercept DataSource in API/ingestion tests without mocking yfinance directly.

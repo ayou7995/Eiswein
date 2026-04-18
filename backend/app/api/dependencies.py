@@ -14,10 +14,15 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
+from app.datasources.base import DataSource
+from app.datasources.factory import build_data_source
 from app.db.repositories.audit_repository import AuditRepository
 from app.db.repositories.broker_credential_repository import BrokerCredentialRepository
+from app.db.repositories.daily_price_repository import DailyPriceRepository
+from app.db.repositories.macro_repository import MacroRepository
 from app.db.repositories.ticker_repository import TickerRepository
 from app.db.repositories.user_repository import UserRepository
+from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.security.auth import decode_token
 from app.security.exceptions import AuthError, EisweinError, TokenInvalidError
 
@@ -73,6 +78,42 @@ def get_broker_credential_repository(
     settings: Settings = Depends(get_settings_dep),
 ) -> BrokerCredentialRepository:
     return BrokerCredentialRepository(session, settings.encryption_key_bytes())
+
+
+def get_watchlist_repository(
+    session: Session = Depends(get_db_session),
+) -> WatchlistRepository:
+    return WatchlistRepository(session)
+
+
+def get_daily_price_repository(
+    session: Session = Depends(get_db_session),
+) -> DailyPriceRepository:
+    return DailyPriceRepository(session)
+
+
+def get_macro_repository(
+    session: Session = Depends(get_db_session),
+) -> MacroRepository:
+    return MacroRepository(session)
+
+
+def get_data_source_dep(request: Request) -> DataSource:
+    """Resolve the active :class:`DataSource`.
+
+    Cached on ``app.state`` to keep the parquet cache directory
+    initialization to once per process; tests can override the
+    dependency to inject a :class:`FakeDataSource` without touching
+    any real provider.
+    """
+    cached = getattr(request.app.state, "data_source", None)
+    if cached is not None:
+        assert isinstance(cached, DataSource)
+        return cached
+    settings: Settings = request.app.state.settings
+    source = build_data_source(settings)
+    request.app.state.data_source = source
+    return source
 
 
 def current_user_id(

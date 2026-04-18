@@ -7,6 +7,7 @@ Converts every raised exception into the standardized envelope (B6):
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import structlog
@@ -52,11 +53,23 @@ async def http_exception_handler(_request: Request, exc: Exception) -> JSONRespo
 
 async def validation_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
-    err = ValidationError(details={"errors": exc.errors()})
+    errors = sanitize_validation_errors(exc.errors())
+    err = ValidationError(details={"errors": errors})
     return JSONResponse(
         status_code=err.http_status,
         content=_envelope(err.code, err.message, err.details),
     )
+
+
+def sanitize_validation_errors(errors: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Strip non-JSON-serialisable values from Pydantic error dicts.
+
+    Pydantic v2 includes the raw exception object in ``ctx`` when a custom
+    field_validator raises — that crashes ``json.dumps``. The docs ``url``
+    is also noise for API clients. Keep the useful fields only.
+    """
+    KEEP = {"loc", "msg", "type", "input"}
+    return [{k: v for k, v in e.items() if k in KEEP} for e in errors]
 
 
 async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:

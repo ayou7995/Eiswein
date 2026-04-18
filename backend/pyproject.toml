@@ -36,6 +36,7 @@ ignore = [
 # User-facing Chinese error messages legitimately use fullwidth commas.
 "app/security/exceptions.py" = ["RUF001"]
 "app/security/error_handlers.py" = ["RUF001"]
+"app/db/repositories/watchlist_repository.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -52,7 +53,28 @@ namespace_packages = true
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = ["zxcvbn.*", "slowapi.*", "jose.*"]
+module = [
+    "zxcvbn.*",
+    "slowapi.*",
+    "jose.*",
+    "yfinance.*",
+    "fredapi.*",
+    "pandas.*",
+    "pandas_market_calendars.*",
+    "tenacity.*",
+]
+ignore_missing_imports = true
+
+# Modules that bridge pandas / yfinance / fredapi surfaces into typed code.
+# Keep disallow_any_unimported=False here so pd.DataFrame flows through
+# without manufacturing wrapper types — everywhere else stays strict.
+[[tool.mypy.overrides]]
+module = [
+    "app.datasources.*",
+    "app.ingestion.*",
+]
+disallow_any_unimported = false
+warn_return_any = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -63,13 +85,15 @@ check_untyped_defs = true
 warn_return_any = false
 
 [tool.pytest.ini_options]
-# No async tests yet; we rely on FastAPI TestClient (sync) throughout.
-# When async tests land, switch asyncio_mode to "auto" and set
-# asyncio_default_fixture_loop_scope="function" to silence pytest-asyncio
-# 0.24+ deprecation warnings.
+# Phase 1 introduces async ingestion + datasource tests. pytest-asyncio's
+# auto mode treats every `async def` as an asyncio test so we don't need
+# to sprinkle @pytest.mark.asyncio everywhere — but we keep the markers
+# anyway for clarity, and they're still needed to silence 0.24+ warnings.
 testpaths = ["tests"]
 addopts = "-v --strict-markers"
 pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

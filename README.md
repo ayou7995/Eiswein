@@ -6,9 +6,26 @@ Inspired by Heaton's Sherry trading system. Positioning: systematic decision-sup
 
 ## Status
 
-Phase 0 complete (backend scaffold + security foundation). Phase 1 (data
-layer) in progress. See `docs/IMPLEMENTATION_PLAN.md` for the full phased
-plan and `docs/STAFF_REVIEW_DECISIONS.md` for locked technical decisions.
+Phase 1 complete (data layer + centralized ingestion + cold-start
+watchlist API). Phase 2 (indicator engine) is next. See
+`docs/IMPLEMENTATION_PLAN.md` for the full phased plan and
+`docs/STAFF_REVIEW_DECISIONS.md` for locked technical decisions.
+
+### Phase 1 API surface
+
+- `GET    /api/v1/watchlist`                         — list user's watchlist
+- `POST   /api/v1/watchlist`                         — add ticker (cold-start backfill within 5s budget; 202 + pending on timeout)
+- `DELETE /api/v1/watchlist/{symbol}`                — remove from watchlist (price history preserved)
+- `GET    /api/v1/data/status`                       — data-source health + per-user ticker status summary
+- `POST   /api/v1/data/refresh`                      — manual trigger of `run_daily_update` (rate-limited 1/hour)
+- `GET    /api/v1/ticker/{symbol}?only_status=1`     — lightweight status poll for frontend during pending backfill
+
+### Phase 1 environment
+
+- `FRED_API_KEY` — optional. Required only for macro (10Y/2Y/DXY/VIX/Fed Funds) ingestion. `run_daily_update` logs and continues when absent, so single-ticker cold-start backfill works without it.
+- `DATA_SOURCE_PROVIDER` — default `yfinance`; `schwab` / `polygon` stubs raise `NotImplementedError` until v2.
+- `CACHE_DIR` — default `./data/cache`; parquet cache for yfinance responses (7-day retention).
+- `WATCHLIST_MAX_SIZE` — default 100 per B3.
 
 ## Stack
 
