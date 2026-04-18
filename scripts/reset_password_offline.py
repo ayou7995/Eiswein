@@ -62,7 +62,7 @@ def main() -> int:
     args = _parse_args()
     password = _prompt_password()
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
-    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+    now_iso = dt.datetime.now(dt.UTC).isoformat()
 
     with sqlite3.connect(args.db) as conn:
         conn.execute("PRAGMA foreign_keys = ON")

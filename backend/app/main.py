@@ -27,8 +27,6 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -132,10 +130,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(ClientIPMiddleware, extra_trusted=tuple(resolved.trusted_proxies))
     app.add_middleware(RequestContextMiddleware)
 
-    # slowapi's handler signature is (Request, RateLimitExceeded) -> Response
-    # but Starlette's add_exception_handler expects (Request, Exception).
-    # Cast is safe because slowapi only invokes it for RateLimitExceeded.
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    # Our rate_limit_exceeded_handler (registered inside register_error_handlers)
+    # replaces slowapi's default so 429 responses use the project's
+    # standardized error envelope instead of slowapi's plain-text body.
     register_error_handlers(app)
 
     app.include_router(build_v1_router())

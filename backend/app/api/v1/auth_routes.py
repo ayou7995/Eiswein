@@ -136,13 +136,18 @@ def _clear_auth_cookies(response: Response, settings: Settings) -> None:
     response.delete_cookie(COOKIE_REFRESH, path="/api/v1/", domain=settings.cookie_domain)
 
 
+# HTTP-layer abuse brake (protects backend from request floods). This is
+# NOT the per-user credential throttle — that's the IP-based 5-fails-in-15min
+# lockout in `evaluate_ip_lockout()`, which shows the user `attempts_remaining`.
+# Keeping this well above the app-level threshold (5) means the user sees
+# the actionable 403 "locked_out" message before ever hitting 429.
 @router.post(
     "/login",
     response_model=LoginResponse,
     status_code=status.HTTP_200_OK,
     summary="Exchange username + password for auth cookies",
 )
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 def login(
     request: Request,
     response: Response,

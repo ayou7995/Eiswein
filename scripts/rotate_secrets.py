@@ -25,7 +25,6 @@ import os
 import sqlite3
 import sys
 
-
 _TAG_BYTES = 16
 
 
@@ -49,8 +48,7 @@ def _re_encrypt_broker_rows(db_path: str, old_key: bytes, new_key: bytes) -> int
     with sqlite3.connect(db_path) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         rows = conn.execute(
-            "SELECT id, encrypted_refresh_token, token_nonce, token_tag "
-            "FROM broker_credentials"
+            "SELECT id, encrypted_refresh_token, token_nonce, token_tag " "FROM broker_credentials"
         ).fetchall()
         for row_id, ciphertext, nonce, tag in rows:
             plaintext = old.decrypt(nonce, ciphertext + tag, None)
@@ -58,7 +56,9 @@ def _re_encrypt_broker_rows(db_path: str, old_key: bytes, new_key: bytes) -> int
             combined = new.encrypt(new_nonce, plaintext, None)
             new_ct, new_tag = combined[:-_TAG_BYTES], combined[-_TAG_BYTES:]
             conn.execute(
-                "UPDATE broker_credentials SET encrypted_refresh_token=?, token_nonce=?, token_tag=? WHERE id=?",
+                "UPDATE broker_credentials "
+                "SET encrypted_refresh_token=?, token_nonce=?, token_tag=? "
+                "WHERE id=?",
                 (new_ct, new_nonce, new_tag, row_id),
             )
             touched += 1
@@ -71,14 +71,19 @@ def main() -> int:
     parser.add_argument("--db", help="SQLite DB path (required when rotating encryption key)")
     parser.add_argument("--old-encryption-key")
     parser.add_argument("--new-encryption-key")
-    parser.add_argument("--rotate-jwt", action="store_true",
-                        help="Indicate JWT_SECRET rotation happened. "
-                             "This prints a reminder; value lives in SOPS.")
+    parser.add_argument(
+        "--rotate-jwt",
+        action="store_true",
+        help="Indicate JWT_SECRET rotation happened. "
+        "This prints a reminder; value lives in SOPS.",
+    )
     args = parser.parse_args()
 
     if args.rotate_jwt:
-        print("JWT_SECRET rotation acknowledged. All active sessions will be invalidated "
-              "once the new value is deployed via SOPS.")
+        print(
+            "JWT_SECRET rotation acknowledged. All active sessions will be invalidated "
+            "once the new value is deployed via SOPS."
+        )
 
     if args.old_encryption_key or args.new_encryption_key:
         if not (args.old_encryption_key and args.new_encryption_key):

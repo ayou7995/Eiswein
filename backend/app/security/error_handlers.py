@@ -12,6 +12,7 @@ from typing import Any
 import structlog
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -66,6 +67,27 @@ async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSON
     )
 
 
+async def rate_limit_exceeded_handler(_request: Request, exc: Exception) -> JSONResponse:
+    """slowapi hit — standardize to our envelope with a user-friendly message.
+
+    This is the HTTP-layer abuse brake (protects the backend from traffic
+    floods); the app-level 5-failures-in-15min IP lockout is the
+    credential-protection layer and surfaces a different error code.
+    """
+    assert isinstance(exc, RateLimitExceeded)
+    # exc.detail is like "5 per 1 minute"; not parsed further — the limit
+    # string is already exposed via Retry-After in headers when slowapi
+    # enables them (headers_enabled=True in build_limiter).
+    return JSONResponse(
+        status_code=429,
+        content=_envelope(
+            "rate_limited",
+            "請求過於頻繁，請稍後再試",
+            {"limit": str(exc.detail) if exc.detail else ""},
+        ),
+    )
+
+
 def _http_code_for_status(status: int) -> str:
     mapping = {
         400: "bad_request",
@@ -87,4 +109,5 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(EisweinError, eiswein_error_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

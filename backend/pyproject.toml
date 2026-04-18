@@ -35,6 +35,7 @@ ignore = [
 "app/security/auth.py" = ["S106"]
 # User-facing Chinese error messages legitimately use fullwidth commas.
 "app/security/exceptions.py" = ["RUF001"]
+"app/security/error_handlers.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
