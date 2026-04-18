@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -68,6 +69,20 @@ class Settings(BaseSettings):
 
     cookie_secure: bool = True
     cookie_domain: str | None = None
+
+    # Data source selection (H1): yfinance is the v1 implementation;
+    # schwab / polygon are interface stubs that raise NotImplementedError
+    # on data methods — preserved so swapping providers is config-only.
+    data_source_provider: Literal["yfinance", "schwab", "polygon"] = "yfinance"
+    cache_dir: Path = Field(default=Path("./data/cache"))
+    # Watchlist hard cap per B3 — configurable but default 100 to match
+    # the yfinance bulk-download ceiling.
+    watchlist_max_size: int = Field(default=100, ge=1, le=500)
+    # FRED_API_KEY is not required when running without macro ingestion
+    # (e.g. a single-ticker cold-start backfill). daily_update logs and
+    # continues if it's missing or the FRED call fails (graceful
+    # degradation per rule 14).
+    fred_api_key: SecretStr | None = Field(default=None)
 
     @field_validator("admin_password_hash")
     @classmethod
