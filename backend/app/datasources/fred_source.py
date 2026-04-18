@@ -124,9 +124,16 @@ class FREDSource(DataSource):
         except DataSourceError:
             raise
         except Exception as exc:
-            raise DataSourceError(
-                details={"reason": "fred_error", "series": series_id, "error": str(exc)}
-            ) from exc
+            # Series name is safe to surface (user-requested metric). The raw
+            # upstream exception string is NOT — it can expose FRED endpoint
+            # URLs or auth hints. Route it to structured logs only.
+            logger.warning(
+                "fred_fetch_failed",
+                series=series_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            raise DataSourceError(details={"reason": "fred_error", "series": series_id}) from exc
 
 
 @retry(

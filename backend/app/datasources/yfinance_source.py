@@ -131,7 +131,11 @@ class YFinanceSource(DataSource):
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            raise DataSourceError(details={"reason": "upstream_error", "error": str(exc)}) from exc
+            # Upstream exception details stay in structured logs only (see the
+            # logger.warning above). The client envelope carries just enough
+            # to route the UI error — never the raw library traceback string,
+            # which can leak internal URLs / auth-fragment hints.
+            raise DataSourceError(details={"reason": "upstream_error"}) from exc
 
         return _split_bulk_frame(raw, cleaned)
 
@@ -224,8 +228,18 @@ def _split_bulk_frame(raw: pd.DataFrame, symbols: list[str]) -> dict[str, pd.Dat
             result[sym] = normalized
         return result
 
-    # Flat frame → single symbol case.
-    only = symbols[0] if len(symbols) == 1 else symbols[0]
+    # Flat frame → single-symbol case. Multi-symbol bulk downloads always
+    # return a MultiIndex frame, so reaching this branch with len>1 means
+    # yfinance changed its response shape — log loudly so the regression
+    # is visible before indicators compute on empty data for all but the
+    # first ticker.
+    if len(symbols) > 1:
+        logger.warning(
+            "yfinance_unexpected_flat_frame",
+            symbols=symbols,
+            hint="Expected MultiIndex for multi-ticker download",
+        )
+    only = symbols[0]
     result[only] = _normalize_frame(raw).dropna(how="all")
     for sym in symbols[1:]:
         result[sym] = pd.DataFrame()

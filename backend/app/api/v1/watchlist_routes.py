@@ -51,6 +51,7 @@ from app.ingestion.backfill import (
     STATUS_READY,
     backfill_ticker,
 )
+from app.ingestion.locks import get_user_lock
 from app.security.exceptions import DataSourceError, NotFoundError
 from app.security.exceptions import ValidationError as EisweinValidationError
 from app.security.rate_limit import limiter
@@ -173,12 +174,17 @@ async def add_to_watchlist(
     session: Session = Depends(get_db_session),
     data_source: DataSource = Depends(get_data_source_dep),
 ) -> WatchlistCreateResponse:
-    row = repo.add(
-        user_id=user_id,
-        symbol=payload.symbol,
-        max_size=settings.watchlist_max_size,
-    )
-    session.commit()
+    # Serialize add() per user so a rapid double-POST can't race past
+    # the cap check (count→add is two statements; no SQLite primitive
+    # lets us make them atomic). Single-worker asyncio loop guarantees
+    # the lock covers both.
+    async with await get_user_lock(user_id):
+        row = repo.add(
+            user_id=user_id,
+            symbol=payload.symbol,
+            max_size=settings.watchlist_max_size,
+        )
+        session.commit()
 
     try:
         async with asyncio.timeout(_COLD_START_BUDGET_SECONDS):
@@ -270,8 +276,12 @@ def _schedule_background_backfill(
             # The user may have deleted the watchlist row between the
             # 202 response and the task firing. Nothing to do.
             logger.info("background_backfill_row_removed", symbol=symbol)
-        except Exception as exc:
-            # Structured log + mark failed so UI can surface it.
+        except Exception:
+            # Structured log + mark failed so the UI can surface it.
+            # Do NOT re-raise: Starlette's BackgroundTasks runner swallows
+            # exceptions anyway and only logs to the uvicorn logger, which
+            # would bypass structlog's sanitizer. The logger.exception
+            # above IS the observability record.
             logger.exception("background_backfill_failed", symbol=symbol)
             try:
                 repo = WatchlistRepository(local)
@@ -279,7 +289,6 @@ def _schedule_background_backfill(
                 local.commit()
             except Exception:
                 local.rollback()
-            raise exc
         finally:
             local.close()
 

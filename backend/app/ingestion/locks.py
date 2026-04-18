@@ -1,4 +1,4 @@
-"""Per-symbol asyncio locks for cold-start concurrency (I4).
+"""Per-symbol and per-user asyncio locks for cold-start concurrency (I4).
 
 Two POSTs to ``/api/v1/watchlist`` for the same ticker in the same
 second would otherwise race: both spawn a backfill, both hit yfinance,
@@ -6,22 +6,27 @@ and we'd double-insert DailyPrice rows (the UNIQUE(symbol, date)
 constraint catches this but only at the cost of wasted bandwidth and
 a nasty error in logs).
 
-Module-level singleton dict is intentional — FastAPI runs with
+Module-level singleton dicts are intentional — FastAPI runs with
 ``--workers 1`` so there's exactly one process. APScheduler's
 ``fcntl.flock`` belt-and-suspenders covers accidental worker count
 changes.
 
-Lock lookup is itself synchronized with a tiny async lock so two
-requests racing to create the FIRST entry for a symbol both end up
-awaiting the same :class:`asyncio.Lock` instance (rule 12:
-idempotency).
+Registry bound: watchlist_max_size (default 100) for the symbol
+registry; |users| for the user registry. Neither is evicted on
+watchlist removal — restart clears both. Acceptable for single-user
+v1; revisit if the cap is raised or multi-user use grows.
+
+Lock lookups are synchronized with a tiny async guard so two requests
+racing to create the FIRST entry for a key both end up awaiting the
+same :class:`asyncio.Lock` instance (rule 12: idempotency).
 """
 
 from __future__ import annotations
 
 import asyncio
 
-_lock_registry: dict[str, asyncio.Lock] = {}
+_symbol_registry: dict[str, asyncio.Lock] = {}
+_user_registry: dict[int, asyncio.Lock] = {}
 _registry_guard: asyncio.Lock | None = None
 
 
@@ -44,15 +49,31 @@ async def get_symbol_lock(symbol: str) -> asyncio.Lock:
     key = symbol.upper()
     guard = _ensure_registry_guard()
     async with guard:
-        lock = _lock_registry.get(key)
+        lock = _symbol_registry.get(key)
         if lock is None:
             lock = asyncio.Lock()
-            _lock_registry[key] = lock
+            _symbol_registry[key] = lock
+        return lock
+
+
+async def get_user_lock(user_id: int) -> asyncio.Lock:
+    """Return the :class:`asyncio.Lock` associated with ``user_id``.
+
+    Used to serialize watchlist mutations per user (e.g., cap check +
+    insert) so a quick double-POST can't slip past ``watchlist_max_size``.
+    """
+    guard = _ensure_registry_guard()
+    async with guard:
+        lock = _user_registry.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _user_registry[user_id] = lock
         return lock
 
 
 def reset_locks_for_tests() -> None:
     """Clear the registry. Tests call this between cases."""
     global _registry_guard
-    _lock_registry.clear()
+    _symbol_registry.clear()
+    _user_registry.clear()
     _registry_guard = None
