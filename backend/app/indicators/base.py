@@ -109,9 +109,14 @@ def insufficient_result(
     )
 
 
-def error_result(name: str, *, reason: str) -> IndicatorResult:
+def error_result(name: str, *, error_class: str) -> IndicatorResult:
     """Shortcut for runtime-failure results — orchestrator uses this
     when an individual indicator raises (rule 14: graceful degradation).
+
+    ``error_class`` is the exception type name only (e.g. "ValueError").
+    The full exception message stays in structured logs — we don't want
+    pandas/numpy internals (array shapes, index labels, path fragments)
+    persisted to DailySignal.detail or leaked via the API response.
     """
     return IndicatorResult(
         name=name,
@@ -119,6 +124,6 @@ def error_result(name: str, *, reason: str) -> IndicatorResult:
         signal=SignalTone.NEUTRAL,
         data_sufficient=False,
         short_label=COMPUTE_ERROR_LABEL,
-        detail={"error": reason},
+        detail={"error_class": error_class},
         computed_at=datetime.now(UTC),
     )

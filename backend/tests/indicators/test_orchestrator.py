@@ -57,9 +57,11 @@ def test_compute_all_isolates_broken_indicator(
     results = orch.compute_all("AAPL", trend_frame, ctx)
 
     # Broken indicator returns error result but does not abort the batch.
+    # detail holds the exception CLASS name only — the raw message stays
+    # in structured logs (see security auditor's HIGH finding on error-leak).
     assert results["rsi"].data_sufficient is False
     assert results["rsi"].short_label == "計算錯誤"
-    assert "ValueError" in results["rsi"].detail["error"]
+    assert results["rsi"].detail == {"error_class": "ValueError"}
     # Every other indicator is present and computed.
     assert len(results) == 8
     # A neighboring indicator (price_vs_ma) still ran fine.
@@ -67,7 +69,8 @@ def test_compute_all_isolates_broken_indicator(
 
 
 def test_error_result_helper_produces_neutral_compute_error() -> None:
-    r = error_result("foo", reason="x")
+    r = error_result("foo", error_class="ValueError")
     assert r.signal == "neutral"
     assert r.data_sufficient is False
     assert r.short_label == "計算錯誤"
+    assert r.detail == {"error_class": "ValueError"}

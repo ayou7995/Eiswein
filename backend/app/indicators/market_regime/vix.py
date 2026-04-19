@@ -6,7 +6,7 @@ by date — matching the :class:`~app.db.models.MacroIndicator` row
 shape.
 
 Level tiers:
-* level ≤ 15        → YELLOW (複滿)
+* level ≤ 15        → YELLOW (自滿)
 * 15 < level ≤ 20   → GREEN  (正常)
 * 20 < level ≤ 25   → YELLOW (警戒)
 * level > 25        → RED    (恐慌)
@@ -81,7 +81,7 @@ def _classify_trend(change: float) -> str:
 
 def _classify_level(level: float, trend: str) -> tuple[SignalToneLiteral, str]:
     if level <= 15.0:
-        return SignalTone.YELLOW, f"VIX 偏低 {level:.1f}（複滿警戒）"
+        return SignalTone.YELLOW, f"VIX 偏低 {level:.1f}（自滿警戒）"
     if level <= 20.0:
         return SignalTone.GREEN, f"VIX 正常 {level:.1f}"
     if level <= 25.0:

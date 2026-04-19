@@ -57,11 +57,16 @@ def build_context(
         frame = _load_macro_frame(macro, series_id)
         if frame is not None:
             macro_frames[series_id] = frame
+    # Defensive deep copies so a misbehaving indicator that does an
+    # in-place pandas operation (e.g. inplace=True, .iloc[...] = ...)
+    # can't corrupt the shared context for later indicators in the
+    # batch. frozen=True on the dataclass protects field rebinding but
+    # NOT the mutability of the DataFrame objects it holds.
     return IndicatorContext(
         today=today,
         indicator_version=INDICATOR_VERSION,
-        spx_frame=spx_frame,
-        macro_frames=macro_frames,
+        spx_frame=spx_frame.copy(deep=True) if spx_frame is not None else None,
+        macro_frames={k: v.copy(deep=True) for k, v in macro_frames.items()},
     )
 
 

@@ -11,6 +11,7 @@ Authentication is required (all routes under ``/api/v1`` except
 
 from datetime import date
 
+import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
@@ -26,6 +27,7 @@ from app.indicators.base import INDICATOR_VERSION, SignalToneLiteral
 from app.security.exceptions import NotFoundError
 
 router = APIRouter(tags=["ticker"])
+logger = structlog.get_logger("eiswein.api.ticker")
 
 
 class IndicatorResultResponse(BaseModel):
@@ -106,4 +108,8 @@ def get_ticker_indicators(
 def _coerce_signal(raw: str) -> SignalToneLiteral:
     if raw in ("green", "yellow", "red", "neutral"):
         return raw  # type: ignore[return-value]
+    # Unknown tone (schema drift between indicator versions, corrupted row,
+    # or a future tone that hasn't reached this API layer yet). Log so the
+    # drift is detectable; fall back to neutral to keep the response valid.
+    logger.warning("unknown_signal_tone_coerced", raw=raw)
     return "neutral"

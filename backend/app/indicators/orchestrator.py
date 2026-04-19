@@ -112,7 +112,7 @@ def _safe_run(
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        return error_result(name, reason=f"{type(exc).__name__}: {exc}")
+        return error_result(name, error_class=type(exc).__name__)
     except Exception as exc:
         # Catch-all: we MUST NOT let one indicator explode the whole
         # batch. Log + return an error result and continue.
@@ -122,4 +122,4 @@ def _safe_run(
             symbol=symbol,
             error_type=type(exc).__name__,
         )
-        return error_result(name, reason=f"{type(exc).__name__}: {exc}")
+        return error_result(name, error_class=type(exc).__name__)

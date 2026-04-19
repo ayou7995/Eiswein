@@ -45,11 +45,14 @@ def test_insufficient_result_is_neutral_and_has_chinese_label() -> None:
     assert any("\u4e00" <= ch <= "\u9fff" for ch in result.short_label)
 
 
-def test_error_result_captures_reason() -> None:
-    result = error_result("rsi", reason="ZeroDivisionError: division by zero")
+def test_error_result_captures_class_only_not_message() -> None:
+    result = error_result("rsi", error_class="ZeroDivisionError")
     assert result.data_sufficient is False
     assert result.signal == SignalTone.NEUTRAL
-    assert "ZeroDivisionError" in result.detail["error"]
+    assert result.detail["error_class"] == "ZeroDivisionError"
+    # No raw exception message — those stay in structured logs, not the DB
+    # detail dict or the API response (per security-auditor findings).
+    assert "error" not in result.detail
 
 
 def test_signal_tone_constants_are_literal_strings() -> None:
