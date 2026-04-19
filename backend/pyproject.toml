@@ -72,6 +72,7 @@ ignore_missing_imports = true
 module = [
     "app.datasources.*",
     "app.ingestion.*",
+    "app.indicators.*",
 ]
 disallow_any_unimported = false
 warn_return_any = false
