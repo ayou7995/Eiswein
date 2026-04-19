@@ -259,9 +259,7 @@ class DailySignal(Base):
 
     __tablename__ = "daily_signal"
     __table_args__ = (
-        UniqueConstraint(
-            "symbol", "date", "indicator_name", name="uq_daily_signal_sym_date_ind"
-        ),
+        UniqueConstraint("symbol", "date", "indicator_name", name="uq_daily_signal_sym_date_ind"),
         Index("ix_daily_signal_symbol_date", "symbol", "date"),
     )
 

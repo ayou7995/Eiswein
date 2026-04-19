@@ -136,8 +136,7 @@ def _load_price_frame(
     ]
     frame = pd.DataFrame.from_records(records)
     frame["date"] = pd.to_datetime(frame["date"])
-    frame = frame.set_index("date").sort_index()
-    return frame
+    return frame.set_index("date").sort_index()
 
 
 def _load_macro_frame(

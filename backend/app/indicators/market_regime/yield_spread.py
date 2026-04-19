@@ -35,7 +35,7 @@ _SERIES_10Y = "DGS10"
 _SERIES_2Y = "DGS2"
 
 
-def compute_yield_spread(frame: pd.DataFrame, context: "IndicatorContext") -> IndicatorResult:
+def compute_yield_spread(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = frame
     ten = context.macro_frames.get(_SERIES_10Y)
     two = context.macro_frames.get(_SERIES_2Y)

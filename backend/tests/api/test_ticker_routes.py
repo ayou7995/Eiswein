@@ -59,17 +59,13 @@ def test_ticker_indicators_returns_stored_rows(
     assert body["indicators"]["rsi"]["short_label"] == "RSI 中性 55"
 
 
-def test_ticker_indicators_not_on_watchlist_is_404(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_indicators_not_on_watchlist_is_404(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.get("/api/v1/ticker/TSLA/indicators")
     assert resp.status_code == 404
 
 
-def test_ticker_indicators_no_computed_rows_is_404(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_indicators_no_computed_rows_is_404(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     # Add to watchlist but never compute indicators.
     client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
@@ -79,9 +75,7 @@ def test_ticker_indicators_no_computed_rows_is_404(
     assert body["error"]["code"] == "not_found"
 
 
-def test_ticker_indicators_rejects_invalid_symbol(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_indicators_rejects_invalid_symbol(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.get("/api/v1/ticker/bad symbol/indicators")
     assert resp.status_code == 422

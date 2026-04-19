@@ -32,7 +32,7 @@ _CUT_THRESHOLD = -0.25
 _HIKE_THRESHOLD = 0.25
 
 
-def compute_fed_rate(frame: pd.DataFrame, context: "IndicatorContext") -> IndicatorResult:
+def compute_fed_rate(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = frame
     series_frame = context.macro_frames.get(_MACRO_SERIES)
     if series_frame is None or series_frame.empty or "value" not in series_frame.columns:

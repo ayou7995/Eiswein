@@ -28,7 +28,7 @@ NAME = "bollinger"
 _LENGTH = 20
 
 
-def compute_bollinger(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_bollinger(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)

@@ -66,7 +66,7 @@ _MARKET_REGIME: dict[str, IndicatorFunc] = {
 def compute_all(
     symbol: str,
     price_frame: pd.DataFrame,
-    context: "IndicatorContext",
+    context: IndicatorContext,
 ) -> dict[str, IndicatorResult]:
     """Compute all 8 per-ticker indicators from a single OHLCV frame.
 
@@ -80,7 +80,7 @@ def compute_all(
     return results
 
 
-def compute_market_regime(context: "IndicatorContext") -> dict[str, IndicatorResult]:
+def compute_market_regime(context: IndicatorContext) -> dict[str, IndicatorResult]:
     """Compute the 4 market-regime indicators.
 
     The SPX frame is passed through as the primary frame for
@@ -98,7 +98,7 @@ def _safe_run(
     name: str,
     fn: IndicatorFunc,
     frame: pd.DataFrame,
-    context: "IndicatorContext",
+    context: IndicatorContext,
     *,
     symbol: str,
 ) -> IndicatorResult:

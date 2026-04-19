@@ -27,11 +27,16 @@ def _make_trend_frame(
     *,
     days: int = 260,
     start_price: float = 100.0,
-    drift: float = 0.05,
+    drift: float = 0.25,
     noise: float = 0.6,
     seed: int = 7,
 ) -> pd.DataFrame:
-    """Mild uptrend OHLCV — gives deterministic indicator outputs."""
+    """Steady uptrend OHLCV — gives deterministic indicator outputs.
+
+    drift=0.25 (%/day) + noise=0.6 reliably leaves the final bar above
+    both 50MA and 200MA for this seed — an honest "uptrend" trend_frame
+    even in a random-walk simulation.
+    """
     rng = np.random.default_rng(seed)
     idx = pd.date_range(
         "2023-01-02",

@@ -28,7 +28,7 @@ NAME = "spx_ma"
 _MIN_BARS_REQUIRED = 200
 
 
-def compute_spx_ma(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_spx_ma(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     """Compute SPX 50/200 MA regime on the SPX close series.
 
     Pure function: called with the SPX frame from ``context.spx_frame``
@@ -77,14 +77,16 @@ def compute_spx_ma(frame: "pd.DataFrame", context: "IndicatorContext") -> Indica
 def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLiteral, str]:
     if price > ma50 and price > ma200:
         return SignalTone.GREEN, "SPX 多頭排列"
-    if price > ma200:
+    # Holding the line on the long-term MA (price at or above 200MA) is not
+    # bearish — that's a YELLOW "mixed" signal, not a RED "broken" one.
+    if price >= ma200:
         return SignalTone.YELLOW, "SPX 中期多頭、短期偏弱"
     return SignalTone.RED, "SPX 空頭趨勢"
 
 
 def _detect_crosses(
-    ma50: "pd.Series",
-    ma200: "pd.Series",
+    ma50: pd.Series,
+    ma200: pd.Series,
     lookback: int = 10,
 ) -> tuple[bool, bool]:
     """Detect a bullish/bearish 50×200 cross within the last ``lookback`` bars.

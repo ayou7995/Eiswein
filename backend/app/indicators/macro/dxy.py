@@ -34,7 +34,7 @@ _SMA_WINDOW = 20
 _STREAK = 5
 
 
-def compute_dxy(frame: pd.DataFrame, context: "IndicatorContext") -> IndicatorResult:
+def compute_dxy(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = frame
     dxy = context.macro_frames.get(_MACRO_SERIES)
     if dxy is None or dxy.empty or "value" not in dxy.columns:

@@ -36,7 +36,7 @@ _MIN_DAILY_BARS = _LENGTH + 1
 _MIN_WEEKLY_BARS = _LENGTH * 7 + 7  # ~105 daily bars = ~15 weekly bars
 
 
-def compute_rsi(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_rsi(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)

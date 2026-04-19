@@ -32,7 +32,7 @@ NAME = "ad_day"
 _WINDOW = 25
 
 
-def compute_ad_day(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_ad_day(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty:
         return insufficient_result(NAME)

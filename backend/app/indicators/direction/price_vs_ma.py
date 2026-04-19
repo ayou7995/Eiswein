@@ -26,7 +26,7 @@ NAME = "price_vs_ma"
 _MIN_BARS = 200
 
 
-def compute_price_vs_ma(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)
@@ -64,6 +64,8 @@ def compute_price_vs_ma(frame: "pd.DataFrame", context: "IndicatorContext") -> I
 def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLiteral, str]:
     if price > ma50 and price > ma200:
         return SignalTone.GREEN, "價格站上 50/200MA"
-    if price > ma200:
+    # Price at-or-above the long-term MA is holding the line — YELLOW,
+    # not RED. RED means strictly below 200MA.
+    if price >= ma200:
         return SignalTone.YELLOW, "價格在 200MA 上、50MA 下"
     return SignalTone.RED, "價格跌破 200MA"

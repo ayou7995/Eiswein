@@ -14,7 +14,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float, macd as compute_macd_series
+from app.indicators._helpers import last_float
+from app.indicators._helpers import macd as compute_macd_series
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -32,7 +33,7 @@ _MIN_BARS = 35  # 26 slow EMA + 9 signal window
 _CROSS_LOOKBACK = 3
 
 
-def compute_macd(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_macd(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)
@@ -69,8 +70,8 @@ def compute_macd(frame: "pd.DataFrame", context: "IndicatorContext") -> Indicato
 
 
 def _detect_recent_cross(
-    macd_line: "pd.Series",
-    signal_line: "pd.Series",
+    macd_line: pd.Series,
+    signal_line: pd.Series,
     lookback: int,
 ) -> str:
     """Return ``bullish`` / ``bearish`` / ``none`` based on the latest

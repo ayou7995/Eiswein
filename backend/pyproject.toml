@@ -37,6 +37,11 @@ ignore = [
 "app/security/exceptions.py" = ["RUF001"]
 "app/security/error_handlers.py" = ["RUF001"]
 "app/db/repositories/watchlist_repository.py" = ["RUF001"]
+# Indicator short_labels are Chinese UX strings (fullwidth parens/commas) and
+# math helpers use Greek letters (α, σ) in docstrings — both intentional.
+"app/indicators/*" = ["RUF001", "RUF002", "RUF003"]
+"app/indicators/**/*.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/indicators/**/*.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
 python_version = "3.12"

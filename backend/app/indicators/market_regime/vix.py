@@ -35,7 +35,7 @@ _TREND_WINDOW = 10
 _TREND_FLAT_BAND = 1.0
 
 
-def compute_vix(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_vix(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     """Signature accepts ``frame`` for interface uniformity; the VIX
     series actually lives in ``context.macro_frames``. Orchestrator
     passes an empty frame — keeping the positional arg consistent with

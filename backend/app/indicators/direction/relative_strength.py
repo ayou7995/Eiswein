@@ -32,9 +32,7 @@ _WINDOW = 20
 _STRONG_THRESHOLD = 0.02
 
 
-def compute_relative_strength(
-    frame: "pd.DataFrame", context: "IndicatorContext"
-) -> IndicatorResult:
+def compute_relative_strength(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)
     spx = context.spx_frame
@@ -66,7 +64,7 @@ def compute_relative_strength(
     )
 
 
-def _cumulative_return(close: "pd.Series") -> float | None:
+def _cumulative_return(close: pd.Series) -> float | None:
     close_f = close.astype("float64").dropna()
     if len(close_f) < _WINDOW + 1:
         return None

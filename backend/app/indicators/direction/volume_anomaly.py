@@ -32,7 +32,7 @@ _WINDOW = 20
 _SPIKE_MULTIPLIER = 2.0
 
 
-def compute_volume_anomaly(frame: "pd.DataFrame", context: "IndicatorContext") -> IndicatorResult:
+def compute_volume_anomaly(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty:
         return insufficient_result(NAME)

@@ -18,8 +18,16 @@ def _make_close(values: list[float]) -> pd.DataFrame:
         freq="B",
         tz="America/New_York",
     )
-    return pd.DataFrame({"close": values, "open": values, "high": values, "low": values,
-                         "volume": [1_000_000] * len(values)}, index=idx)
+    return pd.DataFrame(
+        {
+            "close": values,
+            "open": values,
+            "high": values,
+            "low": values,
+            "volume": [1_000_000] * len(values),
+        },
+        index=idx,
+    )
 
 
 def test_rsi_flat_series_is_around_50(
