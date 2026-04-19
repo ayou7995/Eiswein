@@ -25,7 +25,11 @@ structlog==24.4.0
 python-multipart==0.0.12
 
 # Data sources + market calendar
-yfinance==0.2.48
+# yfinance 0.2.48 shipped a Yahoo-endpoint mismatch that returns empty
+# JSONDecodeError responses for every ticker. 1.3.0 restored compatibility
+# and changed bulk-download response to always use MultiIndex columns,
+# which _split_bulk_frame already handles.
+yfinance==1.3.0
 fredapi==0.5.2
 pandas==2.2.3
 numpy==2.1.2
