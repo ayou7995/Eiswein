@@ -32,6 +32,11 @@ from app.datasources.fred_source import DEFAULT_SERIES_IDS, FREDSource
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.macro_repository import MacroRepository, MacroRow
 from app.db.repositories.watchlist_repository import WatchlistRepository
+from app.ingestion.indicators import (
+    build_context,
+    compute_and_persist,
+    compute_and_persist_market_regime,
+)
 from app.ingestion.locks import get_symbol_lock
 from app.ingestion.market_calendar import is_trading_day_et, last_trading_day_et
 from app.ingestion.persist import iter_daily_price_rows
@@ -56,6 +61,8 @@ class DailyUpdateResult:
     price_rows_upserted: int
     macro_rows_upserted: int
     macro_series_failed: int
+    indicators_computed_symbols: int
+    indicators_failed_symbols: int
 
 
 async def run_daily_update(
@@ -82,6 +89,8 @@ async def run_daily_update(
             price_rows_upserted=0,
             macro_rows_upserted=0,
             macro_series_failed=0,
+            indicators_computed_symbols=0,
+            indicators_failed_symbols=0,
         )
 
     watchlist = WatchlistRepository(db)
@@ -137,6 +146,16 @@ async def run_daily_update(
     )
     db.commit()
 
+    # Phase 2: compute + persist indicators from the freshly-written
+    # raw data. Each symbol compute is isolated so one broken ticker
+    # doesn't abort the rest (rule 14). Market-regime indicators run
+    # once against the SPX frame + macro series.
+    indicators_ok, indicators_failed = _compute_indicators_for_all(
+        db=db,
+        symbols=symbols,
+        session_day=session_day,
+    )
+
     logger.info(
         "daily_update_complete",
         date=str(session_day),
@@ -146,6 +165,8 @@ async def run_daily_update(
         symbols_delisted=delisted,
         price_rows=price_rows_total,
         macro_rows=macro_rows_total,
+        indicators_ok=indicators_ok,
+        indicators_failed=indicators_failed,
     )
     return DailyUpdateResult(
         market_open=True,
@@ -157,7 +178,59 @@ async def run_daily_update(
         price_rows_upserted=price_rows_total,
         macro_rows_upserted=macro_rows_total,
         macro_series_failed=macro_series_failed,
+        indicators_computed_symbols=indicators_ok,
+        indicators_failed_symbols=indicators_failed,
     )
+
+
+def _compute_indicators_for_all(
+    *,
+    db: Session,
+    symbols: list[str],
+    session_day: date,
+) -> tuple[int, int]:
+    """Compute + persist indicators for every ticker (and market regime).
+
+    Indicator compute failures DO NOT raise — each indicator's result
+    carries an error flag via the orchestrator's try/except (rule 14).
+    We track per-symbol success/failure for the summary only.
+    """
+    try:
+        context = build_context(db=db, today=session_day)
+    except (ValueError, TypeError, KeyError) as exc:
+        logger.warning("indicator_context_build_failed", error=str(exc))
+        return (0, len(symbols))
+
+    ok = 0
+    failed = 0
+    for sym in symbols:
+        try:
+            results = compute_and_persist(sym, session_day, db=db, context=context)
+        except Exception as exc:
+            failed += 1
+            logger.warning(
+                "indicator_persist_failed",
+                symbol=sym,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            continue
+        if results:
+            ok += 1
+        else:
+            failed += 1
+
+    try:
+        compute_and_persist_market_regime(session_day, db=db, context=context)
+    except Exception as exc:
+        logger.warning(
+            "market_regime_persist_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+    db.commit()
+    return (ok, failed)
 
 
 async def _persist_symbol(

@@ -51,6 +51,21 @@ class MacroRepository:
         )
         return self._session.execute(stmt).scalar_one_or_none()
 
+    def get_all_for_series(self, series_id: str) -> list[MacroIndicator]:
+        """All stored rows for the series, oldest-first.
+
+        Used by the Phase 2 indicator context builder: macro windows
+        are bounded (20-day SMA, 30-day delta) but we still read the
+        full series because FRED sometimes back-revises historical
+        values and we want the latest snapshot in the in-memory frame.
+        """
+        stmt = (
+            select(MacroIndicator)
+            .where(MacroIndicator.series_id == series_id.upper())
+            .order_by(MacroIndicator.date.asc())
+        )
+        return list(self._session.execute(stmt).scalars().all())
+
     def count_for_series(self, series_id: str) -> int:
         stmt = select(MacroIndicator.id).where(MacroIndicator.series_id == series_id.upper())
         return len(self._session.execute(stmt).scalars().all())

@@ -66,6 +66,8 @@ class RefreshResponse(BaseModel):
     symbols_delisted: int
     price_rows_upserted: int
     macro_rows_upserted: int
+    indicators_computed_symbols: int = 0
+    indicators_failed_symbols: int = 0
 
 
 class TickerStatusResponse(BaseModel):
@@ -128,6 +130,8 @@ async def refresh_data(
         symbols_delisted=result.symbols_delisted,
         price_rows_upserted=result.price_rows_upserted,
         macro_rows_upserted=result.macro_rows_upserted,
+        indicators_computed_symbols=result.indicators_computed_symbols,
+        indicators_failed_symbols=result.indicators_failed_symbols,
     )
 
 

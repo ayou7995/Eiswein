@@ -6,10 +6,16 @@ Inspired by Heaton's Sherry trading system. Positioning: systematic decision-sup
 
 ## Status
 
-Phase 1 complete (data layer + centralized ingestion + cold-start
-watchlist API). Phase 2 (indicator engine) is next. See
-`docs/IMPLEMENTATION_PLAN.md` for the full phased plan and
-`docs/STAFF_REVIEW_DECISIONS.md` for locked technical decisions.
+Phase 2 complete (indicator engine + DailySignal persistence +
+ticker/indicators API). Phase 3 (signal composition, entry/stop
+calculators) is next. See `docs/IMPLEMENTATION_PLAN.md` for the full
+phased plan and `docs/STAFF_REVIEW_DECISIONS.md` for locked technical
+decisions.
+
+### Phase 2 API surface (additive to Phase 1)
+
+- `GET    /api/v1/ticker/{symbol}/indicators`        — most recent 8 per-ticker computed indicator results (404 if no rows yet)
+- `POST   /api/v1/data/refresh`                      — now also computes + persists `DailySignal` rows after price/macro UPSERT
 
 ### Phase 1 API surface
 
@@ -17,8 +23,14 @@ watchlist API). Phase 2 (indicator engine) is next. See
 - `POST   /api/v1/watchlist`                         — add ticker (cold-start backfill within 5s budget; 202 + pending on timeout)
 - `DELETE /api/v1/watchlist/{symbol}`                — remove from watchlist (price history preserved)
 - `GET    /api/v1/data/status`                       — data-source health + per-user ticker status summary
-- `POST   /api/v1/data/refresh`                      — manual trigger of `run_daily_update` (rate-limited 1/hour)
 - `GET    /api/v1/ticker/{symbol}?only_status=1`     — lightweight status poll for frontend during pending backfill
+
+### Indicator engine notes
+
+- **Pure functions**: every module in `backend/app/indicators/` consumes a pandas DataFrame + an `IndicatorContext` and returns a frozen `IndicatorResult`. No network I/O.
+- **DXY proxy**: FRED does not republish raw DXY — we use `DTWEXBGS` (Trade-Weighted USD Broad Index) and document the substitution.
+- **Wilder's RSI, MACD, Bollinger** are hand-rolled in `indicators/_helpers.py` on top of pandas EWM / rolling. We avoid `pandas_ta` because its latest release imports `numpy.NaN` (removed in numpy 2.x) and is abandoned.
+- **Test fixtures**: `scripts/generate_indicator_fixtures.py` regenerates real-market parquet snapshots under `backend/tests/fixtures/` (run manually when formulas change; tests themselves are hermetic).
 
 ### Phase 1 environment
 
