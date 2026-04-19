@@ -11,6 +11,11 @@ Phase 1 tables (data layer):
 * `DailyPrice` — auto-adjusted OHLCV price history keyed by symbol+date.
 * `MacroIndicator` — FRED series data keyed by series_id+date.
 
+Phase 2 tables (indicator layer):
+* `DailySignal` — per-ticker, per-indicator, per-day IndicatorResult.
+  UNIQUE(symbol, date, indicator_name) + ``indicator_version`` column
+  (A2): formula bumps don't rewrite history.
+
 All user-owned tables carry `user_id` FK (A3). Prices use `Decimal`
 (Numeric(12,4)) to avoid float precision bugs in P&L calculations.
 """
@@ -235,3 +240,41 @@ class MacroIndicator(Base):
     series_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     value: Mapped[Decimal] = mapped_column(Numeric(14, 6), nullable=False)
+
+
+class DailySignal(Base):
+    """Per-ticker, per-indicator, per-day computed result (Phase 2, A2).
+
+    One row per ``(symbol, date, indicator_name)``. ``signal`` is the
+    ``SignalTone`` string (green/yellow/red/neutral). ``value`` is the
+    headline number (nullable when ``data_sufficient=False``).
+    ``detail`` holds the raw numeric breakdown for the expand-on-tap
+    UI — stored as JSON so schema changes in the indicator modules do
+    not require Alembic migrations.
+
+    ``indicator_version`` is persisted per-row (A2): when a formula
+    bumps, old rows keep their original version label so historical
+    comparison stays meaningful.
+    """
+
+    __tablename__ = "daily_signal"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "date", "indicator_name", name="uq_daily_signal_sym_date_ind"
+        ),
+        Index("ix_daily_signal_symbol_date", "symbol", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    indicator_name: Mapped[str] = mapped_column(String(40), nullable=False)
+    signal: Mapped[str] = mapped_column(String(10), nullable=False)
+    value: Mapped[Decimal | None] = mapped_column(Numeric(14, 6), nullable=True)
+    data_sufficient: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    short_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    indicator_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )

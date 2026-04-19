@@ -19,6 +19,7 @@ from app.datasources.factory import build_data_source
 from app.db.repositories.audit_repository import AuditRepository
 from app.db.repositories.broker_credential_repository import BrokerCredentialRepository
 from app.db.repositories.daily_price_repository import DailyPriceRepository
+from app.db.repositories.daily_signal_repository import DailySignalRepository
 from app.db.repositories.macro_repository import MacroRepository
 from app.db.repositories.ticker_repository import TickerRepository
 from app.db.repositories.user_repository import UserRepository
@@ -96,6 +97,12 @@ def get_macro_repository(
     session: Session = Depends(get_db_session),
 ) -> MacroRepository:
     return MacroRepository(session)
+
+
+def get_daily_signal_repository(
+    session: Session = Depends(get_db_session),
+) -> DailySignalRepository:
+    return DailySignalRepository(session)
 
 
 def get_data_source_dep(request: Request) -> DataSource:
