@@ -7,7 +7,7 @@ Repeated ingestion of the same day is idempotent (rule 12).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TypedDict
@@ -96,6 +96,44 @@ class TickerSnapshotRepository:
         stmt = (
             select(TickerSnapshot)
             .where(TickerSnapshot.symbol == symbol.upper())
+            .order_by(TickerSnapshot.date.desc())
+            .limit(1)
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def list_for_symbol(
+        self,
+        symbol: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> Sequence[TickerSnapshot]:
+        """All stored snapshots for ``symbol`` ordered by date asc.
+
+        Used by the back-test accuracy endpoint — we need every past
+        action to compare against forward returns.
+        """
+        filters = [TickerSnapshot.symbol == symbol.upper()]
+        if start_date is not None:
+            filters.append(TickerSnapshot.date >= start_date)
+        if end_date is not None:
+            filters.append(TickerSnapshot.date <= end_date)
+        stmt = select(TickerSnapshot).where(*filters).order_by(TickerSnapshot.date.asc())
+        return self._session.execute(stmt).scalars().all()
+
+    def get_on_or_before(self, *, symbol: str, on_or_before: date) -> TickerSnapshot | None:
+        """Best-effort: the most recent snapshot at or before ``on_or_before``.
+
+        Trades executed on non-trading-days (or before that day's
+        snapshot was computed) still need an action to match against —
+        the most recent stored snapshot is the fairest comparison.
+        """
+        stmt = (
+            select(TickerSnapshot)
+            .where(
+                TickerSnapshot.symbol == symbol.upper(),
+                TickerSnapshot.date <= on_or_before,
+            )
             .order_by(TickerSnapshot.date.desc())
             .limit(1)
         )

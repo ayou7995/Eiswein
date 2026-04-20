@@ -27,6 +27,7 @@ import asyncio
 
 _symbol_registry: dict[str, asyncio.Lock] = {}
 _user_registry: dict[int, asyncio.Lock] = {}
+_position_registry: dict[int, asyncio.Lock] = {}
 _registry_guard: asyncio.Lock | None = None
 
 
@@ -71,9 +72,26 @@ async def get_user_lock(user_id: int) -> asyncio.Lock:
         return lock
 
 
+async def get_position_lock(position_id: int) -> asyncio.Lock:
+    """Return the :class:`asyncio.Lock` associated with ``position_id``.
+
+    Serializes concurrent add/reduce/close calls for a single position
+    so a race between two /add requests can't double-apply the weighted
+    average cost update (read-modify-write on the position row).
+    """
+    guard = _ensure_registry_guard()
+    async with guard:
+        lock = _position_registry.get(position_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _position_registry[position_id] = lock
+        return lock
+
+
 def reset_locks_for_tests() -> None:
     """Clear the registry. Tests call this between cases."""
     global _registry_guard
     _symbol_registry.clear()
     _user_registry.clear()
+    _position_registry.clear()
     _registry_guard = None
