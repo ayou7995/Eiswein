@@ -33,12 +33,19 @@ class MacroRepository:
         materialized: list[MacroRow] = list(rows)
         if not materialized:
             return 0
-        stmt = sqlite_insert(MacroIndicator).values(materialized)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["series_id", "date"],
-            set_={"value": stmt.excluded.value},
-        )
-        self._session.execute(stmt)
+        # SQLite's SQLITE_MAX_VARIABLE_NUMBER caps variables per statement
+        # (32766 on modern builds). FRED series go back decades, so a
+        # single INSERT with ~11k rows × 3 cols overshoots. Batch to stay
+        # well inside the limit across SQLite versions.
+        batch_size = 500
+        for start in range(0, len(materialized), batch_size):
+            chunk = materialized[start : start + batch_size]
+            stmt = sqlite_insert(MacroIndicator).values(chunk)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["series_id", "date"],
+                set_={"value": stmt.excluded.value},
+            )
+            self._session.execute(stmt)
         self._session.flush()
         return len(materialized)
 
