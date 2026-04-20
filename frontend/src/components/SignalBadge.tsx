@@ -1,4 +1,4 @@
-export type SignalTone = 'green' | 'yellow' | 'red';
+export type SignalTone = 'green' | 'yellow' | 'red' | 'neutral';
 
 // Text + shape redundancy for color-blind users (STAFF_REVIEW_DECISIONS.md I20).
 // Each tone renders as emoji + single Chinese character + letter indicator,
@@ -24,6 +24,14 @@ const TONE_PRESET: Record<
     letter: 'R',
     label: '賣',
     classes: 'bg-signal-red/15 text-signal-red border-signal-red/40',
+  },
+  // Neutral = insufficient data or balanced signals. Rendered with a grey
+  // palette + em-dash + "N" letter so it never reads as a buy/sell cue.
+  neutral: {
+    emoji: '⚪',
+    letter: 'N',
+    label: '—',
+    classes: 'bg-slate-500/10 text-slate-300 border-slate-500/40',
   },
 };
 
