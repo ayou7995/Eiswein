@@ -8,6 +8,10 @@
   :class:`TickerSnapshot` (Action, TimingModifier, entry tiers,
   stop-loss, posture) plus the Pros/Cons list derived from the 8
   per-ticker indicator results.
+* ``GET /api/v1/ticker/{symbol}/prices`` returns DB-only OHLCV bars
+  (ascending by date) for a bounded range selector. Used by the
+  TickerDetail page to render TradingView Lightweight Charts. No
+  network I/O — the daily_update job is the sole producer.
 
 Authentication is required (all routes under ``/api/v1`` except
 ``/health`` and ``/login`` require a valid access cookie).
@@ -15,19 +19,22 @@ Authentication is required (all routes under ``/api/v1`` except
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import cast
+from typing import Literal, cast
 
 import structlog
-from fastapi import APIRouter, Depends
+from dateutil.relativedelta import relativedelta
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 
 from app.api.dependencies import (
     current_user_id,
+    get_daily_price_repository,
     get_daily_signal_repository,
     get_ticker_snapshot_repository,
     get_watchlist_repository,
 )
 from app.api.v1.watchlist_routes import validate_symbol_or_raise
+from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.daily_signal_repository import DailySignalRepository
 from app.db.repositories.ticker_snapshot_repository import TickerSnapshotRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
@@ -298,3 +305,98 @@ def _to_wire_pros_cons(item: ProsConsItem) -> ProsConsItemResponse:
         detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
     )
+
+
+# --- Price history endpoint (Phase 4 chart feed) --------------------------
+
+PriceRangeLiteral = Literal["1M", "3M", "6M", "1Y", "ALL"]
+
+# ``ALL`` is capped server-side (TradingView perf + JSON payload budget).
+# The cap lives here alongside the other range offsets so the policy is
+# reviewable in one place.
+_ALL_MAX_YEARS = 5
+
+# (years, months) offsets per range. Months + years cover the selector;
+# relativedelta() below does the leap-year-safe arithmetic at call
+# time. Expressed as primitives here so the mypy-strict API package
+# doesn't leak an `Any` (relativedelta has no typed stubs).
+_RANGE_OFFSETS: dict[PriceRangeLiteral, tuple[int, int]] = {
+    "1M": (0, 1),
+    "3M": (0, 3),
+    "6M": (0, 6),
+    "1Y": (1, 0),
+    "ALL": (_ALL_MAX_YEARS, 0),
+}
+
+
+class PriceBarResponse(BaseModel):
+    """One OHLCV bar on the wire.
+
+    Numeric fields are ``float`` — the DB stores ``Decimal`` for P&L
+    precision (see :class:`DailyPrice` docstring) but the chart client
+    consumes JSON numbers, and forcing a client to parse quoted Decimal
+    strings for every bar on every ticker chart would be wasteful.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
+class PriceHistoryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    range: PriceRangeLiteral
+    timezone: str = "America/New_York"
+    bars: list[PriceBarResponse]
+
+
+@router.get(
+    "/ticker/{symbol}/prices",
+    response_model=PriceHistoryResponse,
+    summary="DB-only OHLCV history for a watchlist ticker",
+)
+def get_ticker_prices(
+    symbol: str,
+    # ``range_`` (trailing underscore) avoids shadowing the ``range``
+    # builtin in module scope. FastAPI's ``alias`` keeps the wire name
+    # ``?range=1M`` which is what the frontend spec calls for.
+    range_: PriceRangeLiteral = Query(default="6M", alias="range"),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    prices: DailyPriceRepository = Depends(get_daily_price_repository),
+) -> PriceHistoryResponse:
+    validated = validate_symbol_or_raise(symbol)
+    if watchlist.get(user_id=user_id, symbol=validated) is None:
+        raise NotFoundError(details={"symbol": validated})
+
+    # Empty watchlist-member price history is a valid "computing" state
+    # for the chart, distinct from "symbol not on watchlist". Return an
+    # empty bars list rather than 404 so the frontend can show "資料處理中"
+    # without treating it as a hard error.
+    today = date.today()
+    years, months = _RANGE_OFFSETS[range_]
+    # relativedelta handles month-end + leap years (date.replace would
+    # explode on 2024-02-29 → 2023-02-29). Leaves primitive types in
+    # the annotated module so the strict-mypy API layer stays clean.
+    start: date = today - relativedelta(years=years, months=months)
+    rows = prices.get_range(validated, start=start, end=today)
+
+    bars = [
+        PriceBarResponse(
+            date=r.date,
+            open=float(r.open),
+            high=float(r.high),
+            low=float(r.low),
+            close=float(r.close),
+            volume=int(r.volume),
+        )
+        for r in rows
+    ]
+    return PriceHistoryResponse(symbol=validated, range=range_, bars=bars)
