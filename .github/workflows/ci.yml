@@ -115,6 +115,11 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          # gitleaks-action@v2 scans the commit range of a push (or PR).
+          # A shallow clone (the default) makes the "before" commit
+          # unreachable and gitleaks exits 1 with an opaque error.
+          fetch-depth: 0
 
       - name: Scan for committed secrets
         uses: gitleaks/gitleaks-action@v2
