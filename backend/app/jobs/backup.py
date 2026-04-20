@@ -174,6 +174,10 @@ def _atomic_backup(*, source: Path, destination: Path) -> None:
     finally:
         source_conn.close()
     tmp.replace(destination)
+    # Backup contains bcrypt hashes + AES-GCM encrypted Schwab tokens.
+    # chmod 0o600 so files inherit owner-only semantics regardless of
+    # the process umask (security audit HIGH: backup-file-world-readable).
+    destination.chmod(0o600)
 
 
 def _verify_backup(path: Path) -> None:

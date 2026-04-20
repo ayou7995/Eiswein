@@ -347,11 +347,20 @@ def _dispatch(
                 )
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
+        # SMTPAuthenticationError response strings can echo back the
+        # username ("535 5.7.8 Error: authentication failed: user@host").
+        # Redact the message in that branch so log aggregators don't
+        # collect usernames (security audit MEDIUM: smtp-exception-log-string).
+        safe_error = (
+            "[redacted]"
+            if isinstance(exc, smtplib.SMTPAuthenticationError)
+            else str(exc)
+        )
         logger.warning(
             "email_send_failed",
             job=job_name,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error,
         )
         return False
 
