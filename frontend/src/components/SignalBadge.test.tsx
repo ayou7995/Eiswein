@@ -32,4 +32,12 @@ describe('SignalBadge', () => {
     expect(badge).toHaveTextContent('賣');
     expect(badge).toHaveTextContent('R');
   });
+
+  it('renders redundant indicators for neutral (insufficient data)', () => {
+    render(<SignalBadge tone="neutral" ariaLabel="資料不足" />);
+    const badge = screen.getByTestId('signal-badge');
+    expect(badge).toHaveTextContent('⚪');
+    expect(badge).toHaveTextContent('N');
+    expect(badge).toHaveAttribute('data-tone', 'neutral');
+  });
 });
