@@ -23,8 +23,18 @@ Phase 3 tables (signal composition layer):
 * `MarketPostureStreak` — consecutive-days streak of the current
   posture for dashboard badges (D3).
 
+Phase 5 tables (positions + trade log):
+* `Position` — current (or historical) holdings; ``closed_at`` nullable.
+  Partial-unique index on (user_id, symbol) WHERE closed_at IS NULL
+  enforces ONE open position per (user, symbol).
+* `Trade` — append-only ledger of executed buys / sells. Survives
+  position deletion (``position_id`` nullable). ``realized_pnl`` is
+  computed at sell time from the position's stored ``avg_cost``;
+  never client-supplied.
+
 All user-owned tables carry `user_id` FK (A3). Prices use `Decimal`
-(Numeric(12,4)) to avoid float precision bugs in P&L calculations.
+(Numeric(12,4) for prices; Numeric(18,6) for shares + cost basis to
+support fractional lots and to stop FP drift in P&L math).
 """
 
 from __future__ import annotations
@@ -37,6 +47,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -366,5 +377,103 @@ class MarketPostureStreak(Base):
     streak_days: Mapped[int] = mapped_column(Integer, nullable=False)
     streak_started_on: Mapped[date] = mapped_column(Date, nullable=False)
     computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class Position(Base):
+    """User holding for a single symbol (Phase 5).
+
+    Open-position invariant: at most ONE row per ``(user_id, symbol)``
+    with ``closed_at IS NULL``. Enforced by a partial unique index
+    created in the Alembic migration (SQLAlchemy's ORM layer cannot
+    declare partial uniques portably so it lives as raw DDL there —
+    see ``alembic/versions/0005_*.py``). Closed positions preserve the
+    row so the ledger + history can still reference them.
+
+    ``shares`` + ``avg_cost`` use Numeric(18,6) for fractional-lot
+    precision. ``avg_cost`` is a running weighted average updated on
+    buy-side trades; on sell-side trades it is left unchanged and
+    realized P&L is recorded on the :class:`Trade` row.
+
+    Prices stored here live in the same auto-adjusted space as
+    :class:`DailyPrice.close` — users enter their actual execution
+    price, which equals the auto-adjusted value on the execution date
+    unless a later split / dividend has adjusted the historical close.
+    See STAFF_REVIEW_DECISIONS.md I1 for the caveat.
+    """
+
+    __tablename__ = "positions"
+    __table_args__ = (
+        # NOTE: the open-position partial unique index is defined in the
+        # Alembic migration (SQLite/SQLAlchemy portability). A plain
+        # UniqueConstraint here would block re-opening a symbol after
+        # it's been closed, which we explicitly allow.
+        Index("ix_positions_user_symbol", "user_id", "symbol"),
+        Index("ix_positions_user_closed", "user_id", "closed_at"),
+        CheckConstraint("shares >= 0", name="ck_positions_shares_nonneg"),
+        CheckConstraint("avg_cost >= 0", name="ck_positions_avg_cost_nonneg"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    shares: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    avg_cost: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Trade(Base):
+    """Immutable ledger entry for a single executed buy or sell (Phase 5).
+
+    Append-only by convention — no ``updated_at``, no update
+    repository method. Once written, a Trade row is a historical
+    record.
+
+    ``position_id`` is nullable so the trade log survives position
+    deletion / migration — the ``symbol`` column carries the link for
+    reporting. ``realized_pnl`` is set by the server on sell trades
+    from the position's stored ``avg_cost`` at the moment of sale; it
+    is NEVER client-supplied.
+    """
+
+    __tablename__ = "trades"
+    __table_args__ = (
+        Index("ix_trades_user_executed_at", "user_id", "executed_at"),
+        Index("ix_trades_user_symbol_executed_at", "user_id", "symbol", "executed_at"),
+        CheckConstraint("shares > 0", name="ck_trades_shares_positive"),
+        CheckConstraint("price > 0", name="ck_trades_price_positive"),
+        CheckConstraint("side IN ('buy','sell')", name="ck_trades_side_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("positions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    shares: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    realized_pnl: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )

@@ -25,16 +25,33 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import bcrypt
+import zxcvbn
 from jose import JWTError, jwt
 
 from app.security.exceptions import (
     InvalidCredentialsError,
     TokenExpiredError,
     TokenInvalidError,
+    ValidationError,
 )
 
 BCRYPT_ROUNDS = 12
 _TOKEN_TYPES: tuple[Literal["access"], Literal["refresh"]] = ("access", "refresh")
+
+# Password strength policy (docs/STAFF_REVIEW_DECISIONS.md E1):
+#   * zxcvbn score >= 3, OR
+#   * length >= 12 with at least three of {upper, lower, digit, symbol}.
+# The "OR" lets users bypass a short-but-pronounceable zxcvbn false
+# positive by typing a long mixed-class password; either gate alone is
+# strong enough for the single-user threat model.
+_PASSWORD_MIN_LENGTH = 12
+_PASSWORD_MIN_ZXCVBN_SCORE = 3
+_PASSWORD_MAX_LENGTH = 256
+
+
+class WeakPasswordError(ValidationError):
+    code = "password_weak"
+    message = "密碼強度不足"
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,3 +181,54 @@ def generate_jti() -> str:
 def constant_time_compare(a: str, b: str) -> bool:
     """Short wrapper kept for intent-revealing call sites."""
     return secrets.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def _has_mixed_character_classes(plaintext: str, *, min_classes: int = 3) -> bool:
+    classes = 0
+    if any(c.islower() for c in plaintext):
+        classes += 1
+    if any(c.isupper() for c in plaintext):
+        classes += 1
+    if any(c.isdigit() for c in plaintext):
+        classes += 1
+    if any(not c.isalnum() for c in plaintext):
+        classes += 1
+    return classes >= min_classes
+
+
+def validate_password_strength(plaintext: str, *, user_inputs: list[str] | None = None) -> None:
+    """Raise :class:`WeakPasswordError` if ``plaintext`` fails policy.
+
+    Satisfies the Eiswein password policy (E1): zxcvbn score >= 3 OR
+    (length >= 12 with 3+ character classes). ``user_inputs`` is
+    passed to zxcvbn to penalize passwords containing the username
+    or email — the caller is responsible for forwarding those.
+    """
+    if not plaintext:
+        raise WeakPasswordError(details={"reason": "empty"})
+    if len(plaintext) > _PASSWORD_MAX_LENGTH:
+        raise WeakPasswordError(details={"reason": "too_long", "max_length": _PASSWORD_MAX_LENGTH})
+
+    long_and_mixed = len(plaintext) >= _PASSWORD_MIN_LENGTH and _has_mixed_character_classes(
+        plaintext
+    )
+    if long_and_mixed:
+        return
+
+    # zxcvbn is untyped; treat the result defensively.
+    result = zxcvbn.zxcvbn(plaintext, user_inputs=user_inputs or [])
+    score = int(result.get("score", 0))
+    if score >= _PASSWORD_MIN_ZXCVBN_SCORE:
+        return
+
+    # DO NOT include the password or a password hint in details — even
+    # zxcvbn's "feedback.suggestions" can echo back the input (e.g.
+    # "add more words"). Surface the score so the UI can show a meter.
+    raise WeakPasswordError(
+        details={
+            "reason": "insufficient_entropy",
+            "score": score,
+            "min_score": _PASSWORD_MIN_ZXCVBN_SCORE,
+            "min_length": _PASSWORD_MIN_LENGTH,
+        }
+    )
