@@ -16,6 +16,13 @@ Phase 2 tables (indicator layer):
   UNIQUE(symbol, date, indicator_name) + ``indicator_version`` column
   (A2): formula bumps don't rewrite history.
 
+Phase 3 tables (signal composition layer):
+* `TickerSnapshot` — one row per ticker per trading day: composed
+  Action + TimingModifier + entry tiers + stop-loss + posture.
+* `MarketSnapshot` — global market posture per trading day.
+* `MarketPostureStreak` — consecutive-days streak of the current
+  posture for dashboard badges (D3).
+
 All user-owned tables carry `user_id` FK (A3). Prices use `Decimal`
 (Numeric(12,4)) to avoid float precision bugs in P&L calculations.
 """
@@ -273,6 +280,91 @@ class DailySignal(Base):
     short_label: Mapped[str] = mapped_column(String(120), nullable=False)
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     indicator_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class TickerSnapshot(Base):
+    """Composed per-ticker signal snapshot for one trading day (Phase 3).
+
+    One row per ``(symbol, date)``. Combines the D1a action, D1b timing
+    modifier, 3-tier entry suggestion, and dynamic stop-loss. Mirrors
+    the :class:`app.signals.types.ComposedSignal` domain type.
+
+    ``market_posture_at_compute`` is snapshotted per-row so that the
+    posture surfaced next to the action in the UI is the one that was
+    current when the signal was composed (D2 says posture is a context
+    badge, never a silent action downgrade).
+    """
+
+    __tablename__ = "ticker_snapshot"
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_ticker_snapshot_symbol_date"),
+        Index("ix_ticker_snapshot_symbol_date", "symbol", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    direction_green_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    direction_red_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    timing_modifier: Mapped[str] = mapped_column(String(20), nullable=False)
+    show_timing_modifier: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    entry_aggressive: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    entry_ideal: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    entry_conservative: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    market_posture_at_compute: Mapped[str] = mapped_column(String(20), nullable=False)
+    indicator_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class MarketSnapshot(Base):
+    """Global market posture snapshot for one trading day (Phase 3, D2).
+
+    One row per trading day. ``regime_{green,red,yellow}_count`` are
+    denormalized for dashboard rendering so the frontend doesn't need
+    to re-query + re-count the regime indicators.
+    """
+
+    __tablename__ = "market_snapshot"
+    __table_args__ = (Index("ix_market_snapshot_date", "date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
+    posture: Mapped[str] = mapped_column(String(20), nullable=False)
+    regime_green_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    regime_red_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    regime_yellow_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    indicator_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class MarketPostureStreak(Base):
+    """Consecutive-day streak of the current market posture (D3).
+
+    One row per day. When posture on day N == posture on day N-1,
+    ``streak_days`` is N-1's streak + 1 and ``streak_started_on`` is
+    preserved. When posture flips, ``streak_days`` resets to 1 and
+    ``streak_started_on`` becomes today.
+
+    Streaks ONLY track market posture — per-indicator streaks are
+    explicitly excluded (D3: "too much noise").
+    """
+
+    __tablename__ = "market_posture_streak"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
+    current_posture: Mapped[str] = mapped_column(String(20), nullable=False)
+    streak_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    streak_started_on: Mapped[date] = mapped_column(Date, nullable=False)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
