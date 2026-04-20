@@ -121,6 +121,20 @@ class TickerSnapshotRepository:
         stmt = select(TickerSnapshot).where(*filters).order_by(TickerSnapshot.date.asc())
         return self._session.execute(stmt).scalars().all()
 
+    def list_for_date(self, session_date: date) -> Sequence[TickerSnapshot]:
+        """All snapshots written for a specific trading day.
+
+        Used by the Phase 6 daily-summary email to surface any
+        ``strong_buy`` / ``buy`` / ``reduce`` / ``exit`` rows the
+        freshly-completed ``run_daily_update`` produced.
+        """
+        stmt = (
+            select(TickerSnapshot)
+            .where(TickerSnapshot.date == session_date)
+            .order_by(TickerSnapshot.symbol.asc())
+        )
+        return self._session.execute(stmt).scalars().all()
+
     def get_on_or_before(self, *, symbol: str, on_or_before: date) -> TickerSnapshot | None:
         """Best-effort: the most recent snapshot at or before ``on_or_before``.
 

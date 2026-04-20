@@ -33,8 +33,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1 import build_v1_router
 from app.config import Settings, get_settings
+from app.datasources.factory import build_data_source
 from app.db.database import build_session_factory, create_db_engine
 from app.db.repositories.user_repository import UserRepository
+from app.jobs.scheduler import SchedulerHandle, start_scheduler
 from app.security.error_handlers import register_error_handlers
 from app.security.exceptions import EisweinError
 from app.security.logging import configure_logging
@@ -85,16 +87,59 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             session.rollback()
             raise
 
+    scheduler_handle: SchedulerHandle | None = None
+    preinjected_handle = getattr(app.state, "scheduler_handle", None)
+    # Tests set ``scheduler_disabled=True`` on app.state to skip Phase 6
+    # startup entirely (the TestClient runs hundreds of lifespan cycles
+    # and each fcntl.flock acquire/release would churn a shared lock
+    # file). Production + dev always get the scheduler.
+    if preinjected_handle is not None:
+        scheduler_handle = preinjected_handle
+    elif not getattr(app.state, "scheduler_disabled", False):
+        try:
+            data_source = getattr(app.state, "data_source", None)
+            if data_source is None:
+                data_source = build_data_source(settings)
+                app.state.data_source = data_source
+            scheduler_handle = start_scheduler(
+                settings=settings,
+                engine=engine,
+                session_factory=session_factory,
+                data_source=data_source,
+            )
+        except Exception as exc:
+            # Scheduler start failure must not block the API from
+            # serving requests — log + continue so the operator can
+            # still hit /health and diagnose.
+            logger.warning(
+                "scheduler_start_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            scheduler_handle = None
+    app.state.scheduler_handle = scheduler_handle
+
     logger.info(
         "app_started",
         environment=settings.environment,
         db=str(engine.url).split("@")[-1],
+        scheduler="running" if scheduler_handle is not None else "not_started",
     )
 
     try:
         yield
     finally:
         logger.info("app_stopping")
+        handle: SchedulerHandle | None = app.state.scheduler_handle
+        if handle is not None:
+            try:
+                handle.shutdown(wait=True)
+            except Exception as exc:
+                logger.warning(
+                    "scheduler_shutdown_failed",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
         if owns_engine:
             engine.dispose()
 

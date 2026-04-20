@@ -48,6 +48,14 @@ ignore = [
 "app/signals/*" = ["RUF001", "RUF002", "RUF003"]
 "app/signals/**/*.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/signals/**/*.py" = ["RUF001", "RUF002", "RUF003"]
+# Phase 6 email bodies + job docstrings contain Traditional-Chinese
+# punctuation and math operators — same rationale as the indicator
+# modules.
+"app/jobs/*" = ["RUF001", "RUF002", "RUF003"]
+"app/jobs/**/*.py" = ["RUF001", "RUF002", "RUF003"]
+# macro_repository uses a multiplication sign in a code comment to
+# explain row * column arithmetic. Same intentional-symbol rationale.
+"app/db/repositories/macro_repository.py" = ["RUF003"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -74,6 +82,7 @@ module = [
     "pandas_market_calendars.*",
     "tenacity.*",
     "dateutil.*",
+    "apscheduler.*",
 ]
 ignore_missing_imports = true
 
@@ -87,6 +96,15 @@ module = [
     "app.indicators.*",
     "app.signals.*",
 ]
+disallow_any_unimported = false
+warn_return_any = false
+ignore_missing_imports = true
+
+# Jobs package bridges APScheduler (untyped) + SQLAlchemy surfaces.
+# Same pragmatic relaxation — strict type checking is preserved for
+# the security / api / db boundaries.
+[[tool.mypy.overrides]]
+module = ["app.jobs.*"]
 disallow_any_unimported = false
 warn_return_any = false
 ignore_missing_imports = true
