@@ -31,4 +31,8 @@ regexes = [
   '''your-app-password''',
   '''\$2b\$12\$\.\.\.''',
   '''test_password_placeholder''',
+  # Historical dummy CI secret from commit d253de9 — replaced by
+  # runtime-generated dummies in 837c6b7. The literal string still lives
+  # in git history and gitleaks re-flags it on every run.
+  '''ci-dummy-jwt-secret-for-tests-at-least-32-chars-long-xyz''',
 ]
