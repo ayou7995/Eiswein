@@ -40,7 +40,12 @@ from app.ingestion.indicators import (
 from app.ingestion.locks import get_symbol_lock
 from app.ingestion.market_calendar import is_trading_day_et, last_trading_day_et
 from app.ingestion.persist import iter_daily_price_rows
+from app.ingestion.signals import (
+    compose_and_persist_market,
+    compose_and_persist_ticker,
+)
 from app.security.exceptions import DataSourceError
+from app.signals.types import MarketPosture
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -63,6 +68,10 @@ class DailyUpdateResult:
     macro_series_failed: int
     indicators_computed_symbols: int
     indicators_failed_symbols: int
+    # Phase 3: composed TickerSnapshot + MarketSnapshot outcomes.
+    snapshots_composed: int
+    snapshots_failed: int
+    market_posture: MarketPosture | None
 
 
 async def run_daily_update(
@@ -91,6 +100,9 @@ async def run_daily_update(
             macro_series_failed=0,
             indicators_computed_symbols=0,
             indicators_failed_symbols=0,
+            snapshots_composed=0,
+            snapshots_failed=0,
+            market_posture=None,
         )
 
     watchlist = WatchlistRepository(db)
@@ -150,7 +162,9 @@ async def run_daily_update(
     # raw data. Each symbol compute is isolated so one broken ticker
     # doesn't abort the rest (rule 14). Market-regime indicators run
     # once against the SPX frame + macro series.
-    indicators_ok, indicators_failed = _compute_indicators_for_all(
+    # Phase 3: compose + persist signals using the already-in-memory
+    # IndicatorResult dicts (avoids a DB round-trip).
+    compute_outcome = _compute_and_compose_for_all(
         db=db,
         symbols=symbols,
         session_day=session_day,
@@ -165,8 +179,15 @@ async def run_daily_update(
         symbols_delisted=delisted,
         price_rows=price_rows_total,
         macro_rows=macro_rows_total,
-        indicators_ok=indicators_ok,
-        indicators_failed=indicators_failed,
+        indicators_ok=compute_outcome.indicators_ok,
+        indicators_failed=compute_outcome.indicators_failed,
+        snapshots_composed=compute_outcome.snapshots_ok,
+        snapshots_failed=compute_outcome.snapshots_failed,
+        market_posture=(
+            compute_outcome.market_posture.value
+            if compute_outcome.market_posture is not None
+            else None
+        ),
     )
     return DailyUpdateResult(
         market_open=True,
@@ -178,36 +199,82 @@ async def run_daily_update(
         price_rows_upserted=price_rows_total,
         macro_rows_upserted=macro_rows_total,
         macro_series_failed=macro_series_failed,
-        indicators_computed_symbols=indicators_ok,
-        indicators_failed_symbols=indicators_failed,
+        indicators_computed_symbols=compute_outcome.indicators_ok,
+        indicators_failed_symbols=compute_outcome.indicators_failed,
+        snapshots_composed=compute_outcome.snapshots_ok,
+        snapshots_failed=compute_outcome.snapshots_failed,
+        market_posture=compute_outcome.market_posture,
     )
 
 
-def _compute_indicators_for_all(
+@dataclass(frozen=True)
+class _ComputeOutcome:
+    """Internal tally for the combined indicator + signal compose pass."""
+
+    indicators_ok: int
+    indicators_failed: int
+    snapshots_ok: int
+    snapshots_failed: int
+    market_posture: MarketPosture | None
+
+
+def _compute_and_compose_for_all(
     *,
     db: Session,
     symbols: list[str],
     session_day: date,
-) -> tuple[int, int]:
-    """Compute + persist indicators for every ticker (and market regime).
+) -> _ComputeOutcome:
+    """Compute + persist indicators AND compose + persist signals.
 
-    Indicator compute failures DO NOT raise — each indicator's result
-    carries an error flag via the orchestrator's try/except (rule 14).
-    We track per-symbol success/failure for the summary only.
+    Order is significant:
+    1. Market-regime indicators + :class:`MarketSnapshot` go first so
+       each per-ticker compose can reference the current posture.
+    2. Per-ticker indicators → per-ticker :class:`TickerSnapshot`.
+
+    Every step is guarded — one broken ticker does not abort the rest
+    (rule 14).
     """
     try:
         context = build_context(db=db, today=session_day)
     except (ValueError, TypeError, KeyError) as exc:
         logger.warning("indicator_context_build_failed", error=str(exc))
-        return (0, len(symbols))
+        return _ComputeOutcome(
+            indicators_ok=0,
+            indicators_failed=len(symbols),
+            snapshots_ok=0,
+            snapshots_failed=len(symbols),
+            market_posture=None,
+        )
 
-    ok = 0
-    failed = 0
+    # Market regime indicators + posture first.
+    market_posture: MarketPosture | None = None
+    try:
+        regime_results = compute_and_persist_market_regime(
+            session_day, db=db, context=context
+        )
+        market_posture = compose_and_persist_market(
+            session_day, db=db, regime_results=regime_results
+        )
+    except Exception as exc:
+        logger.warning(
+            "market_regime_compose_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        market_posture = None
+
+    effective_posture = market_posture or MarketPosture.NORMAL
+
+    ind_ok = 0
+    ind_failed = 0
+    snap_ok = 0
+    snap_failed = 0
     for sym in symbols:
         try:
             results = compute_and_persist(sym, session_day, db=db, context=context)
         except Exception as exc:
-            failed += 1
+            ind_failed += 1
+            snap_failed += 1
             logger.warning(
                 "indicator_persist_failed",
                 symbol=sym,
@@ -215,22 +282,38 @@ def _compute_indicators_for_all(
                 error=str(exc),
             )
             continue
-        if results:
-            ok += 1
-        else:
-            failed += 1
+        if not results:
+            ind_failed += 1
+            snap_failed += 1
+            continue
+        ind_ok += 1
 
-    try:
-        compute_and_persist_market_regime(session_day, db=db, context=context)
-    except Exception as exc:
-        logger.warning(
-            "market_regime_persist_failed",
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
+        try:
+            compose_and_persist_ticker(
+                sym,
+                session_day,
+                db=db,
+                per_ticker_results=results,
+                market_posture=effective_posture,
+            )
+            snap_ok += 1
+        except Exception as exc:
+            snap_failed += 1
+            logger.warning(
+                "signal_compose_failed",
+                symbol=sym,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
 
     db.commit()
-    return (ok, failed)
+    return _ComputeOutcome(
+        indicators_ok=ind_ok,
+        indicators_failed=ind_failed,
+        snapshots_ok=snap_ok,
+        snapshots_failed=snap_failed,
+        market_posture=market_posture,
+    )
 
 
 async def _persist_symbol(
