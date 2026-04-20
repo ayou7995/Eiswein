@@ -230,7 +230,10 @@ def _require_position(*, user_id: int, position_id: int, repo: PositionRepositor
     response_model=PositionsListResponse,
     summary="List caller's positions (open by default)",
 )
+@limiter.limit("60/minute")
 def list_positions(
+    request: Request,
+    response: Response,
     include_closed: int = 0,
     user_id: int = Depends(current_user_id),
     repo: PositionRepository = Depends(get_position_repository),
