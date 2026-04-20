@@ -21,7 +21,12 @@ from app.db.repositories.broker_credential_repository import BrokerCredentialRep
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.daily_signal_repository import DailySignalRepository
 from app.db.repositories.macro_repository import MacroRepository
+from app.db.repositories.market_posture_streak_repository import (
+    MarketPostureStreakRepository,
+)
+from app.db.repositories.market_snapshot_repository import MarketSnapshotRepository
 from app.db.repositories.ticker_repository import TickerRepository
+from app.db.repositories.ticker_snapshot_repository import TickerSnapshotRepository
 from app.db.repositories.user_repository import UserRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.security.auth import decode_token
@@ -103,6 +108,24 @@ def get_daily_signal_repository(
     session: Session = Depends(get_db_session),
 ) -> DailySignalRepository:
     return DailySignalRepository(session)
+
+
+def get_ticker_snapshot_repository(
+    session: Session = Depends(get_db_session),
+) -> TickerSnapshotRepository:
+    return TickerSnapshotRepository(session)
+
+
+def get_market_snapshot_repository(
+    session: Session = Depends(get_db_session),
+) -> MarketSnapshotRepository:
+    return MarketSnapshotRepository(session)
+
+
+def get_market_posture_streak_repository(
+    session: Session = Depends(get_db_session),
+) -> MarketPostureStreakRepository:
+    return MarketPostureStreakRepository(session)
 
 
 def get_data_source_dep(request: Request) -> DataSource:

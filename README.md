@@ -6,11 +6,27 @@ Inspired by Heaton's Sherry trading system. Positioning: systematic decision-sup
 
 ## Status
 
-Phase 2 complete (indicator engine + DailySignal persistence +
-ticker/indicators API). Phase 3 (signal composition, entry/stop
-calculators) is next. See `docs/IMPLEMENTATION_PLAN.md` for the full
-phased plan and `docs/STAFF_REVIEW_DECISIONS.md` for locked technical
-decisions.
+Phase 3 complete (signal composition layer: D1a Direction +
+D1b Timing decision tables, market-posture classifier, 3-tier entry
+prices, dynamic stop-loss, Pros/Cons structured list, TickerSnapshot /
+MarketSnapshot / MarketPostureStreak persistence, two new read
+endpoints). Phase 4 (dashboard UI) is next. See
+`docs/IMPLEMENTATION_PLAN.md` for the full phased plan and
+`docs/STAFF_REVIEW_DECISIONS.md` for locked technical decisions.
+
+### Phase 3 API surface (additive to Phase 1-2)
+
+- `GET    /api/v1/market-posture`                    — latest MarketSnapshot + streak badge + 4 regime indicators rendered as Pros/Cons items
+- `GET    /api/v1/ticker/{symbol}/signal`            — composed Action (D1a) + TimingModifier (D1b) + 3-tier entry prices + stop-loss + Pros/Cons list
+- `POST   /api/v1/data/refresh`                      — now also composes + persists `TickerSnapshot`/`MarketSnapshot` after indicator compute
+
+### Signal composition rules (D1, revised 2026-04-17)
+
+- **D1a (Direction)**: 4 direction indicators vote → one of `強力買入 🟢🟢 / 買入 🟢 / 持有 ✓ / 觀望 👀 / 減倉 ⚠️ / 出場 🔴🔴` via a pure-function decision table (no if/elif chains).
+- **D1b (Timing)**: 2 timing indicators (MACD, BB) → modifier `✓ 時機好 / (mixed, no badge) / ⏳ 等回調`. Only surfaces on buy-side actions (強力買入/買入/持有); suppressed for 觀望/減倉/出場.
+- **Layer 1 (Market Posture)**: 4 regime indicators → `進攻 / 正常 / 防守`. Surfaced as a *context badge* (D2) — never silently downgrades per-ticker actions.
+- **Streaks**: consecutive-day streak tracked only for market posture, not per-indicator (D3).
+- **Pros/Cons output**: indicator results are surfaced as a scannable list of `{category, tone, short_label, detail}` bullets. **No prose / template narrator** (per CLAUDE.md UX rule) — frontend renders the list; any future rich-narrative generation would go through an LLM API with a strict JSON prompt.
 
 ### Phase 2 API surface (additive to Phase 1)
 
