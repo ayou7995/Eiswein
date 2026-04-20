@@ -128,13 +128,17 @@ def compose_and_persist_market(
         indicator_version=INDICATOR_VERSION,
         computed_at=computed_at,
     )
-    MarketSnapshotRepository(db).upsert(snap_row)
-
-    MarketPostureStreakRepository(db).record_posture(
-        as_of_date=trade_date,
-        posture=posture,
-        computed_at=computed_at,
-    )
+    # Both writes MUST succeed together or neither should be visible.
+    # A savepoint isolates the pair from the outer daily_update commit,
+    # so a streak failure rolls back the snapshot too (audit MEDIUM:
+    # streak-and-snapshot-not-co-committed).
+    with db.begin_nested():
+        MarketSnapshotRepository(db).upsert(snap_row)
+        MarketPostureStreakRepository(db).record_posture(
+            as_of_date=trade_date,
+            posture=posture,
+            computed_at=computed_at,
+        )
     return posture
 
 

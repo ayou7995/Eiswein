@@ -15,6 +15,7 @@ Authentication is required (all routes under ``/api/v1`` except
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import cast
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -95,7 +96,7 @@ def get_ticker_indicators(
         # render a "computing..." state distinctly from "symbol not
         # on watchlist".
         raise NotFoundError(
-            details={"symbol": validated, "reason": "no_signals_computed"},
+            details={"symbol": validated, "reason": "indicators_unavailable"},
         )
 
     latest_date = stored[0].date
@@ -106,7 +107,7 @@ def get_ticker_indicators(
             signal=_coerce_signal(r.signal),
             data_sufficient=r.data_sufficient,
             short_label=r.short_label,
-            detail=dict(r.detail or {}),
+            detail=_safe_detail(dict(r.detail or {})),
             indicator_version=r.indicator_version,
         )
         for r in stored
@@ -120,9 +121,15 @@ def get_ticker_indicators(
     )
 
 
+_VALID_TONES: frozenset[SignalToneLiteral] = frozenset({"green", "yellow", "red", "neutral"})
+
+
 def _coerce_signal(raw: str) -> SignalToneLiteral:
-    if raw in ("green", "yellow", "red", "neutral"):
-        return raw  # type: ignore[return-value]
+    if raw in _VALID_TONES:
+        # cast documents intent without a blanket `type: ignore` — keeps
+        # mypy strict-mode enforcement of the Literal contract at this
+        # boundary (security audit HIGH finding).
+        return cast(SignalToneLiteral, raw)
     # Unknown tone (schema drift between indicator versions, corrupted row,
     # or a future tone that hasn't reached this API layer yet). Log so the
     # drift is detectable; fall back to neutral to keep the response valid.
@@ -192,7 +199,7 @@ def get_ticker_signal(
     snapshot = snapshot_repo.get_latest_for_symbol(validated)
     if snapshot is None:
         raise NotFoundError(
-            details={"symbol": validated, "reason": "no_signal_composed"},
+            details={"symbol": validated, "reason": "signal_unavailable"},
         )
 
     action = _coerce_action(snapshot.action)
@@ -268,11 +275,26 @@ def _coerce_posture(raw: str) -> MarketPosture:
         return MarketPosture.NORMAL
 
 
+_SAFE_DETAIL_TYPES: tuple[type, ...] = (int, float, bool, str, type(None))
+
+
+def _safe_detail(raw: dict[str, object]) -> dict[str, object]:
+    """Drop any value that isn't a JSON primitive.
+
+    Belt-and-suspenders against a future indicator placing a raw
+    exception, DataFrame column name, or internal path into its detail
+    dict. ``error_result`` already limits the failure case; this
+    structural guard prevents regression when new indicators are added
+    (security audit MEDIUM: pros-cons-detail-passthrough-no-allowlist).
+    """
+    return {k: v for k, v in raw.items() if isinstance(v, _SAFE_DETAIL_TYPES)}
+
+
 def _to_wire_pros_cons(item: ProsConsItem) -> ProsConsItemResponse:
     return ProsConsItemResponse(
         category=item.category,
         tone=item.tone,
         short_label=item.short_label,
-        detail=dict(item.detail),
+        detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
     )

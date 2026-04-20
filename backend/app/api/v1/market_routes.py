@@ -14,6 +14,7 @@ requires runtime annotations (Phase 1 lesson).
 """
 
 from datetime import date, datetime
+from typing import cast
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -157,11 +158,29 @@ def _load_regime_results(
     return results
 
 
+_VALID_TONES: frozenset[SignalToneLiteral] = frozenset({"green", "yellow", "red", "neutral"})
+
+
 def _coerce_signal(raw: str) -> SignalToneLiteral:
-    if raw in ("green", "yellow", "red", "neutral"):
-        return raw  # type: ignore[return-value]
+    if raw in _VALID_TONES:
+        # cast documents intent without a blanket `type: ignore` — keeps
+        # mypy strict-mode enforcement of the Literal contract at this
+        # boundary (security audit HIGH finding).
+        return cast(SignalToneLiteral, raw)
     logger.warning("unknown_signal_tone_coerced", raw=raw)
     return "neutral"
+
+
+_SAFE_DETAIL_TYPES: tuple[type, ...] = (int, float, bool, str, type(None))
+
+
+def _safe_detail(raw: dict[str, object]) -> dict[str, object]:
+    """Drop any non-JSON-primitive value from indicator detail dicts.
+
+    Belt-and-suspenders against a future indicator leaking internal
+    state (security audit MEDIUM: pros-cons-detail-passthrough).
+    """
+    return {k: v for k, v in raw.items() if isinstance(v, _SAFE_DETAIL_TYPES)}
 
 
 def _to_wire(item: ProsConsItem) -> ProsConsItemResponse:
@@ -169,6 +188,6 @@ def _to_wire(item: ProsConsItem) -> ProsConsItemResponse:
         category=item.category,
         tone=item.tone,
         short_label=item.short_label,
-        detail=dict(item.detail),
+        detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
     )
