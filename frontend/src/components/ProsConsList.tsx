@@ -4,9 +4,8 @@ import type { ProsConsItem, ProsConsTone } from '../api/prosCons';
 // the backend (`short_label`) with the raw detail available behind an
 // expand-on-tap `<details>` element.
 const TONE_DOT: Record<ProsConsTone, { emoji: string; ariaLabel: string }> = {
-  green: { emoji: '🟢', ariaLabel: '利多訊號' },
-  red: { emoji: '🔴', ariaLabel: '利空訊號' },
-  yellow: { emoji: '🟡', ariaLabel: '中性偏保守訊號' },
+  pro: { emoji: '🟢', ariaLabel: '利多訊號' },
+  con: { emoji: '🔴', ariaLabel: '利空訊號' },
   neutral: { emoji: '⚪', ariaLabel: '中性或資料不足' },
 };
 

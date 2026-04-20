@@ -101,7 +101,7 @@ describe('TickerDetailPage', () => {
             pros_cons: [
               {
                 category: 'direction',
-                tone: 'green',
+                tone: 'pro',
                 short_label: '站上 50/200 MA',
                 detail: { ma50: 170.2, ma200: 160.5 },
                 indicator_name: 'price_vs_ma',

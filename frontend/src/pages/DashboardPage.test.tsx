@@ -72,7 +72,7 @@ describe('DashboardPage', () => {
             pros_cons: [
               {
                 category: 'direction',
-                tone: 'green',
+                tone: 'pro',
                 short_label: 'SPX 50/200 多頭排列',
                 detail: { ma50: 5000, ma200: 4800 },
                 indicator_name: 'spx_ma',

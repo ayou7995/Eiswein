@@ -7,14 +7,14 @@ import type { ProsConsItem } from '../api/prosCons';
 const sampleItems: readonly ProsConsItem[] = [
   {
     category: 'direction',
-    tone: 'green',
+    tone: 'pro',
     short_label: 'RSI 66，動能偏強',
     detail: { rsi: 66.2, threshold: 70 },
     indicator_name: 'rsi',
   },
   {
     category: 'direction',
-    tone: 'red',
+    tone: 'con',
     short_label: 'Volume 異常',
     detail: { volume_ratio: 2.4 },
     indicator_name: 'volume_anomaly',
