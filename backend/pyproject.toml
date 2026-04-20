@@ -78,6 +78,7 @@ module = [
     "app.datasources.*",
     "app.ingestion.*",
     "app.indicators.*",
+    "app.signals.*",
 ]
 disallow_any_unimported = false
 warn_return_any = false
