@@ -435,6 +435,32 @@ class Position(Base):
     )
 
 
+class SystemMetadata(Base):
+    """Tiny key-value store for cross-job state (Phase 6).
+
+    Used by the scheduler jobs to record timestamps that don't merit
+    their own table:
+
+    * ``last_daily_update_at`` — last time ``run_daily_update`` finished
+      (market-open runs only).
+    * ``last_backup_at`` — last successful SQLite backup completion.
+    * ``last_vacuum_at`` — last successful ``VACUUM`` (used by
+      ``jobs/vacuum.py`` to skip runs within 25 days).
+
+    Values are stored as ISO-8601 UTC strings. The repository helpers
+    handle the (de)serialization so callers deal in ``datetime``
+    objects.
+    """
+
+    __tablename__ = "system_metadata"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Trade(Base):
     """Immutable ledger entry for a single executed buy or sell (Phase 5).
 

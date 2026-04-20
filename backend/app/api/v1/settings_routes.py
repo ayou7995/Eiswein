@@ -42,6 +42,11 @@ from app.db.repositories.audit_repository import (
     AuditRepository,
 )
 from app.db.repositories.position_repository import PositionRepository
+from app.db.repositories.system_metadata_repository import (
+    KEY_LAST_BACKUP_AT,
+    KEY_LAST_DAILY_UPDATE_AT,
+    SystemMetadataRepository,
+)
 from app.db.repositories.trade_repository import TradeRepository
 from app.db.repositories.user_repository import UserRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
@@ -256,19 +261,24 @@ def system_info(
     caller = users.by_id(user_id)
     is_admin = bool(caller and caller.is_admin)
 
-    # "Last daily update" = most recent Watchlist.last_refresh_at across
-    # all users. We don't store a dedicated scheduler-run row (yet) so
-    # this is the best proxy. TrueNone when nothing's been refreshed.
+    # Phase 6 jobs record their own run timestamps in system_metadata —
+    # prefer those over the old "most-recent Watchlist.last_refresh_at"
+    # proxy. Fall back to that proxy when the key is unset (pre-Phase 6
+    # deploys, fresh DB).
     from app.db.models import Watchlist
 
-    last_refresh = session.execute(select(func.max(Watchlist.last_refresh_at))).scalar_one()
+    metadata = SystemMetadataRepository(session)
+    last_update_at = metadata.get_datetime(KEY_LAST_DAILY_UPDATE_AT)
+    if last_update_at is None:
+        last_update_at = session.execute(select(func.max(Watchlist.last_refresh_at))).scalar_one()
+    last_backup_at = metadata.get_datetime(KEY_LAST_BACKUP_AT)
 
     wl_count = session.execute(select(func.count(Watchlist.id))).scalar_one()
 
     response = SystemInfoResponse(
         db_size_bytes=_db_size_bytes(settings.database_url),
-        last_daily_update_at=last_refresh,
-        last_backup_at=None,  # Phase 6 backup job will populate this.
+        last_daily_update_at=last_update_at,
+        last_backup_at=last_backup_at,
         watchlist_count=int(wl_count),
         positions_count=positions.count_for_user(user_id, include_closed=True),
         trade_count=trades.count_for_user(user_id),

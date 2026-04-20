@@ -84,6 +84,19 @@ class Settings(BaseSettings):
     # degradation per rule 14).
     fred_api_key: SecretStr | None = Field(default=None)
 
+    # Phase 6 — outbound email for daily summary + token expiry alerts.
+    # Fully optional: when SMTP_HOST is unset, email jobs short-circuit
+    # with a "not_configured" log and return so local dev + CI don't
+    # need a real mail relay.
+    smtp_host: str | None = Field(default=None)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = Field(default=None)
+    smtp_password: SecretStr | None = Field(default=None)
+    smtp_from: str | None = Field(default=None)
+    smtp_to: str | None = Field(default=None)
+    smtp_starttls: bool = True
+    smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+
     @field_validator("admin_password_hash")
     @classmethod
     def _require_bcrypt_prefix(cls, v: SecretStr) -> SecretStr:

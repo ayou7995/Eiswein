@@ -8,6 +8,8 @@ alembic==1.13.3
     # via -r requirements.in
 annotated-types==0.7.0
     # via pydantic
+apscheduler==3.10.4
+    # via -r requirements.in
 anyio==4.13.0
     # via
     #   httpx
@@ -74,6 +76,8 @@ idna==3.11
     #   requests
 iniconfig==2.3.0
     # via pytest
+jinja2==3.1.4
+    # via -r requirements.in
 korean-lunar-calendar==0.3.1
     # via exchange-calendars
 limits==5.8.0
@@ -223,6 +227,8 @@ tzdata==2026.1
     # via
     #   exchange-calendars
     #   pandas
+tzlocal==5.3.1
+    # via apscheduler
 urllib3==2.6.3
     # via requests
 uvicorn[standard]==0.32.0

@@ -196,6 +196,13 @@ def app(
     application.state.engine = engine
     application.state.session_factory = session_factory
     application.state.data_source = fake_data_source
+    # Phase 6 starts an APScheduler instance during lifespan. For tests
+    # that exercise the API we explicitly skip it: the scheduler uses
+    # fcntl.flock on a shared path, and the TestClient lifespan cycles
+    # dozens of times per session — churning that lock is both slow
+    # and flaky across parallel pytest-xdist workers. Jobs are tested
+    # directly against their module entry points in tests/jobs/.
+    application.state.scheduler_disabled = True
     return application
 
 
