@@ -351,11 +351,7 @@ def _dispatch(
         # username ("535 5.7.8 Error: authentication failed: user@host").
         # Redact the message in that branch so log aggregators don't
         # collect usernames (security audit MEDIUM: smtp-exception-log-string).
-        safe_error = (
-            "[redacted]"
-            if isinstance(exc, smtplib.SMTPAuthenticationError)
-            else str(exc)
-        )
+        safe_error = "[redacted]" if isinstance(exc, smtplib.SMTPAuthenticationError) else str(exc)
         logger.warning(
             "email_send_failed",
             job=job_name,
