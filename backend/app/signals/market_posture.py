@@ -32,7 +32,9 @@ REGIME_INDICATOR_NAMES: Final[frozenset[str]] = frozenset(
 def classify_market_posture(regime_results: Mapping[str, IndicatorResult]) -> MarketPosture:
     """Classify market posture from the 4 regime indicators."""
     votes = [
-        r for name, r in regime_results.items() if name in REGIME_INDICATOR_NAMES and r.data_sufficient
+        r
+        for name, r in regime_results.items()
+        if name in REGIME_INDICATOR_NAMES and r.data_sufficient
     ]
     if not votes:
         return MarketPosture.NORMAL
@@ -56,7 +58,9 @@ def count_regime_tones(
     of the three — the caller can derive ``neutral = 4 - sum`` if needed.
     """
     votes = [
-        r for name, r in regime_results.items() if name in REGIME_INDICATOR_NAMES and r.data_sufficient
+        r
+        for name, r in regime_results.items()
+        if name in REGIME_INDICATOR_NAMES and r.data_sufficient
     ]
     greens = sum(1 for r in votes if r.signal == SignalTone.GREEN)
     reds = sum(1 for r in votes if r.signal == SignalTone.RED)

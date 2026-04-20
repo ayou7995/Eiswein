@@ -54,9 +54,7 @@ def build_direction_results(greens: int, reds: int, yellows: int = 0) -> dict[st
 
     results: dict[str, IndicatorResult] = {}
     signals: list[str] = (
-        [SignalTone.GREEN] * greens
-        + [SignalTone.RED] * reds
-        + [SignalTone.YELLOW] * yellows
+        [SignalTone.GREEN] * greens + [SignalTone.RED] * reds + [SignalTone.YELLOW] * yellows
     )
     while len(signals) < 4:
         signals.append(SignalTone.YELLOW)
@@ -83,9 +81,7 @@ def build_timing_results(
 def build_regime_results(greens: int, reds: int, yellows: int = 0) -> dict[str, IndicatorResult]:
     names = ["spx_ma", "ad_day", "vix", "yield_spread"]
     signals: list[str] = (
-        [SignalTone.GREEN] * greens
-        + [SignalTone.RED] * reds
-        + [SignalTone.YELLOW] * yellows
+        [SignalTone.GREEN] * greens + [SignalTone.RED] * reds + [SignalTone.YELLOW] * yellows
     )
     while len(signals) < 4:
         signals.append(SignalTone.YELLOW)

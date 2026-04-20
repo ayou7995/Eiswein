@@ -12,9 +12,7 @@ def test_pros_cons_maps_signals_correctly() -> None:
     results = {
         "price_vs_ma": _make_result("price_vs_ma", SignalTone.GREEN, short_label="多頭"),
         "rsi": _make_result("rsi", SignalTone.RED, short_label="超賣"),
-        "volume_anomaly": _make_result(
-            "volume_anomaly", SignalTone.YELLOW, short_label="量能平淡"
-        ),
+        "volume_anomaly": _make_result("volume_anomaly", SignalTone.YELLOW, short_label="量能平淡"),
         "relative_strength": _make_result(
             "relative_strength", data_sufficient=False, short_label="資料不足"
         ),

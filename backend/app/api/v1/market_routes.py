@@ -85,9 +85,7 @@ class MarketPostureResponse(BaseModel):
 def get_market_posture(
     _user_id: int = Depends(current_user_id),
     snapshot_repo: MarketSnapshotRepository = Depends(get_market_snapshot_repository),
-    streak_repo: MarketPostureStreakRepository = Depends(
-        get_market_posture_streak_repository
-    ),
+    streak_repo: MarketPostureStreakRepository = Depends(get_market_posture_streak_repository),
     signals_repo: DailySignalRepository = Depends(get_daily_signal_repository),
 ) -> MarketPostureResponse:
     snapshot = snapshot_repo.get_latest()

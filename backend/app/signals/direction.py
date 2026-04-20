@@ -63,9 +63,7 @@ def classify_direction(
     以判斷" note without collapsing to a harder action.
     """
     votes = [
-        r
-        for name, r in results.items()
-        if name in DIRECTION_INDICATOR_NAMES and r.data_sufficient
+        r for name, r in results.items() if name in DIRECTION_INDICATOR_NAMES and r.data_sufficient
     ]
     if not votes:
         return ActionCategory.WATCH, 0, 0

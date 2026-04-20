@@ -219,9 +219,7 @@ def get_ticker_signal(
     # the stored ``show_timing_modifier`` rather than re-deriving it so
     # a historical row composed under different rules keeps its original
     # flag (audit-ability, A2-style).
-    badge: str | None = (
-        TIMING_BADGES.get(timing) if snapshot.show_timing_modifier else None
-    )
+    badge: str | None = TIMING_BADGES.get(timing) if snapshot.show_timing_modifier else None
 
     return ComposedSignalResponse(
         symbol=validated,

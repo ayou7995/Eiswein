@@ -68,9 +68,7 @@ def test_direction_mixes_insufficient_with_votes() -> None:
     """Insufficient rows are excluded; remaining votes still determine action."""
     results = build_direction_results(3, 0)
     # Mark one as insufficient — that reduces green count to 2 → HOLD.
-    results["volume_anomaly"] = _make_result(
-        "volume_anomaly", data_sufficient=False
-    )
+    results["volume_anomaly"] = _make_result("volume_anomaly", data_sufficient=False)
     action, g, r = classify_direction(results)
     # 2 green, 0 red (one insufficient + one yellow) → HOLD.
     assert action == ActionCategory.HOLD

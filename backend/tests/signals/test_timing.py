@@ -9,30 +9,22 @@ from tests.signals.conftest import build_timing_results
 
 
 def test_timing_both_green_is_favorable() -> None:
-    results = build_timing_results(
-        macd_signal=SignalTone.GREEN, bollinger_signal=SignalTone.GREEN
-    )
+    results = build_timing_results(macd_signal=SignalTone.GREEN, bollinger_signal=SignalTone.GREEN)
     assert classify_timing(results) == TimingModifier.FAVORABLE
 
 
 def test_timing_both_red_is_unfavorable() -> None:
-    results = build_timing_results(
-        macd_signal=SignalTone.RED, bollinger_signal=SignalTone.RED
-    )
+    results = build_timing_results(macd_signal=SignalTone.RED, bollinger_signal=SignalTone.RED)
     assert classify_timing(results) == TimingModifier.UNFAVORABLE
 
 
 def test_timing_mixed_is_mixed() -> None:
-    results = build_timing_results(
-        macd_signal=SignalTone.GREEN, bollinger_signal=SignalTone.RED
-    )
+    results = build_timing_results(macd_signal=SignalTone.GREEN, bollinger_signal=SignalTone.RED)
     assert classify_timing(results) == TimingModifier.MIXED
 
 
 def test_timing_one_yellow_is_mixed() -> None:
-    results = build_timing_results(
-        macd_signal=SignalTone.GREEN, bollinger_signal=SignalTone.YELLOW
-    )
+    results = build_timing_results(macd_signal=SignalTone.GREEN, bollinger_signal=SignalTone.YELLOW)
     assert classify_timing(results) == TimingModifier.MIXED
 
 

@@ -135,7 +135,20 @@
       "Bash(curl -s -b /tmp/ck.txt -X POST http://127.0.0.1:8000/api/v1/data/refresh)",
       "Bash(curl -s -b /tmp/ck.txt -w \"status=%{http_code}\\\\n\" -X POST http://127.0.0.1:8000/api/v1/data/refresh)",
       "Bash(python3 -c \"import json,sys,re; body=sys.stdin.read\\(\\); print\\(body\\)\")",
-      "Bash(python3 -c \"import json,sys; print\\('backend health:', json.load\\(sys.stdin\\)['status']\\)\")"
+      "Bash(python3 -c \"import json,sys; print\\('backend health:', json.load\\(sys.stdin\\)['status']\\)\")",
+      "Bash(curl -s \"https://api.github.com/repos/ayou7995/Eiswein/actions/runs/24641766456/jobs\")",
+      "Bash(grep -rn \"\\\\$2b\\\\$\\\\|AKIA\\\\|ghp_\\\\|sk_live\\\\|BEGIN.*PRIVATE\\\\|BEGIN.*KEY\" backend/.claude/ backend/tests/indicators/ backend/tests/api/test_ticker_routes.py backend/tests/db/test_daily_signal_repository.py)",
+      "Bash(/opt/homebrew/bin/brew install *)",
+      "Bash(/opt/homebrew/bin/gitleaks detect *)",
+      "Bash(git check-ignore *)",
+      "Bash(curl -s 'https://api.github.com/repos/ayou7995/Eiswein/actions/runs?per_page=1')",
+      "Bash(curl -s \"https://api.github.com/repos/ayou7995/Eiswein/actions/runs/$\\(curl -s 'https://api.github.com/repos/ayou7995/Eiswein/actions/runs?per_page=1')",
+      "Bash(curl -s \"https://api.github.com/repos/ayou7995/Eiswein/actions/runs/24642460405/jobs\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('SPY status:', d.get\\('data',{}\\).get\\('data_status'\\) or d\\)\")",
+      "Bash(.venv/bin/python *)",
+      "Bash(curl -s -b /tmp/ck.txt http://127.0.0.1:8000/api/v1/ticker/SPY/indicators)",
+      "Bash(chmod +x /Users/cheyulin/Eiswein/scripts/dev_curl.sh)",
+      "Bash(/Users/cheyulin/Eiswein/scripts/dev_curl.sh)"
     ]
   }
 }

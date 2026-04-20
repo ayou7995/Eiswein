@@ -41,11 +41,7 @@ class MarketPostureStreakRepository:
         self._session = session
 
     def get_latest(self) -> MarketPostureStreak | None:
-        stmt = (
-            select(MarketPostureStreak)
-            .order_by(MarketPostureStreak.as_of_date.desc())
-            .limit(1)
-        )
+        stmt = select(MarketPostureStreak).order_by(MarketPostureStreak.as_of_date.desc()).limit(1)
         return self._session.execute(stmt).scalar_one_or_none()
 
     def get_for_date(self, as_of_date: date) -> MarketPostureStreak | None:

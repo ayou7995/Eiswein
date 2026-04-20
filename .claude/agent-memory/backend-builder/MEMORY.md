@@ -2,3 +2,4 @@
 - [Ingestion Invariants Implemented](phase1_invariants.md) — Where the four production invariants + per-symbol lock live in Phase 1 code.
 - [Testing Pattern: FakeDataSource](phase1_test_pattern.md) — How to intercept DataSource in API/ingestion tests without mocking yfinance directly.
 - [Phase 2 Indicator Contracts](phase2_contracts.md) — Indicator package layout, IndicatorResult shape, orchestrator registry, DailySignal repository + endpoint signatures.
+- [Phase 3 Signal Layer Contracts](phase3_contracts.md) — Signal composition package, ComposedSignal/EntryTiers/MarketPosture, snapshot repositories, market-posture + ticker/{symbol}/signal API.

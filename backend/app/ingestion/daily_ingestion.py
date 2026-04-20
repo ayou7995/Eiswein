@@ -249,9 +249,7 @@ def _compute_and_compose_for_all(
     # Market regime indicators + posture first.
     market_posture: MarketPosture | None = None
     try:
-        regime_results = compute_and_persist_market_regime(
-            session_day, db=db, context=context
-        )
+        regime_results = compute_and_persist_market_regime(session_day, db=db, context=context)
         market_posture = compose_and_persist_market(
             session_day, db=db, regime_results=regime_results
         )

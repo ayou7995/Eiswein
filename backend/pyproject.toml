@@ -42,6 +42,11 @@ ignore = [
 "app/indicators/*" = ["RUF001", "RUF002", "RUF003"]
 "app/indicators/**/*.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/indicators/**/*.py" = ["RUF001", "RUF002", "RUF003"]
+# Signal layer docstrings use math symbols (×, ∈, ≤) and short_labels hold
+# Chinese UX strings — both intentional.
+"app/signals/*" = ["RUF001", "RUF002", "RUF003"]
+"app/signals/**/*.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/signals/**/*.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
 python_version = "3.12"

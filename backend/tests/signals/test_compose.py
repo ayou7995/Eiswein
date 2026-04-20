@@ -27,9 +27,7 @@ from app.signals.types import (
         (ActionCategory.EXIT, False),
     ],
 )
-def test_should_show_timing_only_buy_side(
-    action: ActionCategory, expected_show: bool
-) -> None:
+def test_should_show_timing_only_buy_side(action: ActionCategory, expected_show: bool) -> None:
     """D1b: timing modifier surfaces only for buy-side actions."""
     assert should_show_timing(action) is expected_show
 

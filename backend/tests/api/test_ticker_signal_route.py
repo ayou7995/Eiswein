@@ -93,9 +93,7 @@ def test_ticker_signal_returns_404_when_not_on_watchlist(
     assert resp.status_code == 404
 
 
-def test_ticker_signal_returns_404_when_no_snapshot(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_signal_returns_404_when_no_snapshot(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
     resp = client.get("/api/v1/ticker/AAPL/signal")
@@ -162,9 +160,7 @@ def test_ticker_signal_suppresses_timing_badge_for_exit_action(
     assert body["timing_badge"] is None
 
 
-def test_ticker_signal_rejects_invalid_symbol(
-    client: TestClient, test_password: str
-) -> None:
+def test_ticker_signal_rejects_invalid_symbol(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     resp = client.get("/api/v1/ticker/bad symbol/signal")
     assert resp.status_code == 422

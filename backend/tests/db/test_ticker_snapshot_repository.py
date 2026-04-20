@@ -66,9 +66,7 @@ def test_upsert_replaces_on_conflict(db_session: Session) -> None:
     repo.upsert_many([composed_to_row(_make_composed(action=ActionCategory.HOLD))])
     db_session.commit()
     # Same (symbol, date) with a different action → replaces.
-    repo.upsert_many(
-        [composed_to_row(_make_composed(action=ActionCategory.STRONG_BUY))]
-    )
+    repo.upsert_many([composed_to_row(_make_composed(action=ActionCategory.STRONG_BUY))])
     db_session.commit()
     latest = repo.get_latest_for_symbol("AAPL")
     assert latest is not None
@@ -79,12 +77,8 @@ def test_get_latest_returns_most_recent_date(db_session: Session) -> None:
     repo = TickerSnapshotRepository(db_session)
     old = date(2024, 12, 30)
     new = date(2024, 12, 31)
-    repo.upsert_many(
-        [composed_to_row(_make_composed(trade_date=old, action=ActionCategory.HOLD))]
-    )
-    repo.upsert_many(
-        [composed_to_row(_make_composed(trade_date=new, action=ActionCategory.BUY))]
-    )
+    repo.upsert_many([composed_to_row(_make_composed(trade_date=old, action=ActionCategory.HOLD))])
+    repo.upsert_many([composed_to_row(_make_composed(trade_date=new, action=ActionCategory.BUY))])
     db_session.commit()
     latest = repo.get_latest_for_symbol("AAPL")
     assert latest is not None
