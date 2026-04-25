@@ -54,7 +54,7 @@ def build_context(
     spx_frame = _load_price_frame(prices, _SPX_SYMBOL, today)
     macro_frames: dict[str, pd.DataFrame] = {}
     for series_id in _MACRO_SERIES:
-        frame = _load_macro_frame(macro, series_id)
+        frame = _load_macro_frame(macro, series_id, as_of=today)
         if frame is not None:
             macro_frames[series_id] = frame
     # Defensive deep copies so a misbehaving indicator that does an
@@ -87,7 +87,7 @@ def compute_and_persist(
 
     price_frame = _load_price_frame(prices, symbol, trade_date)
     if price_frame is None:
-        logger.info("indicator_compute_skipped_no_prices", symbol=symbol)
+        logger.info("indicator_compute_skipped_no_prices")
         return {}
 
     results = compute_all(symbol, price_frame, context)
@@ -147,9 +147,16 @@ def _load_price_frame(
 def _load_macro_frame(
     macro: MacroRepository,
     series_id: str,
+    *,
+    as_of: date,
 ) -> pd.DataFrame | None:
-    """Load a macro series as a value-indexed DataFrame."""
-    rows = macro.get_all_for_series(series_id)
+    """Load a macro series as a value-indexed DataFrame.
+
+    ``as_of`` caps the series at the session_day being computed so
+    backfill can't leak future FRED data into historical indicator
+    results (a pure lookahead bias).
+    """
+    rows = macro.get_all_for_series(series_id, as_of=as_of)
     if not rows:
         return None
     records = [{"date": r.date, "value": float(r.value)} for r in rows]

@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.models import Watchlist
 from app.db.repositories.daily_price_repository import (
     DailyPriceRepository,
     DailyPriceRow,
@@ -36,10 +37,31 @@ def _login(client: TestClient, password: str) -> None:
 
 
 def _install_empty_datasource(app: FastAPI, *, symbols: set[str]) -> None:
-    """Swap in a FakeDataSource that treats ``symbols`` as empty so the
-    cold-start backfill doesn't seed OHLCV rows during POST /watchlist.
+    """Swap in a FakeDataSource that treats ``symbols`` as empty.
+
+    Phase 1 UX overhaul note: ``POST /watchlist`` now pre-flights the
+    symbol via this DataSource, so ``empty_for={X}`` makes the symbol
+    invalid from the API's perspective. These tests therefore bypass
+    the POST route entirely by inserting Watchlist rows directly — see
+    :func:`_seed_watchlist_row`.
     """
     app.state.data_source = FakeDataSource(FakeDataSourceConfig(empty_for=symbols))
+
+
+def _seed_watchlist_row(
+    session_factory: sessionmaker[Session],
+    *,
+    symbol: str,
+    user_id: int = 1,
+) -> None:
+    """Insert a watchlist row directly so these tests can exercise the
+    price-history endpoint without running the onboarding pipeline.
+    """
+    with session_factory() as session:
+        existing = session.query(Watchlist).filter_by(user_id=user_id, symbol=symbol).one_or_none()
+        if existing is None:
+            session.add(Watchlist(user_id=user_id, symbol=symbol, data_status="ready"))
+            session.commit()
 
 
 def _seed_prices(
@@ -93,22 +115,28 @@ def test_prices_rejects_invalid_symbol(client: TestClient, test_password: str) -
     assert resp.status_code == 422
 
 
-def test_prices_rejects_invalid_range(client: TestClient, test_password: str, app: FastAPI) -> None:
-    _install_empty_datasource(app, symbols={"AAPL"})
+def test_prices_rejects_invalid_range(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
     _login(client, test_password)
-    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    _seed_watchlist_row(session_factory, symbol="AAPL")
     resp = client.get("/api/v1/ticker/AAPL/prices?range=2W")
     assert resp.status_code == 422
 
 
 def test_prices_empty_when_no_rows_stored(
-    client: TestClient, test_password: str, app: FastAPI
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
 ) -> None:
     """A watchlist row with no DailyPrice rows yet returns an empty list,
     NOT 404 — the chart UI distinguishes "loading" from "not found"."""
-    _install_empty_datasource(app, symbols={"AAPL"})
     _login(client, test_password)
-    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    _seed_watchlist_row(session_factory, symbol="AAPL")
     resp = client.get("/api/v1/ticker/AAPL/prices")
     assert resp.status_code == 200
     body = resp.json()
@@ -124,9 +152,8 @@ def test_prices_returns_bars_ascending_by_date(
     app: FastAPI,
     session_factory: sessionmaker[Session],
 ) -> None:
-    _install_empty_datasource(app, symbols={"AAPL"})
     _login(client, test_password)
-    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    _seed_watchlist_row(session_factory, symbol="AAPL")
     with session_factory() as session:
         _seed_prices(session, symbol="AAPL", end=date.today(), days=10)
         session.commit()
@@ -155,9 +182,8 @@ def test_prices_range_1m_excludes_older_rows(
     app: FastAPI,
     session_factory: sessionmaker[Session],
 ) -> None:
-    _install_empty_datasource(app, symbols={"AAPL"})
     _login(client, test_password)
-    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    _seed_watchlist_row(session_factory, symbol="AAPL")
     today = date.today()
     with session_factory() as session:
         # 120 calendar days — well past the 1M (≈30d) window.
@@ -183,9 +209,8 @@ def test_prices_all_capped_to_five_years(
 ) -> None:
     """``ALL`` is bounded server-side so a user with 8 years of stored
     history can't blow up the chart renderer or JSON payload."""
-    _install_empty_datasource(app, symbols={"AAPL"})
     _login(client, test_password)
-    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    _seed_watchlist_row(session_factory, symbol="AAPL")
     today = date.today()
     with session_factory() as session:
         # 8 full years of daily rows (calendar-day spacing).

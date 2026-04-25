@@ -4,8 +4,13 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ActionBadge } from '../components/ActionBadge';
 import { SignalBadge, type SignalTone } from '../components/SignalBadge';
 import { ProsConsList } from '../components/ProsConsList';
+import {
+  MarketRegimeIndicatorList,
+  type ChartNameResolver,
+} from '../components/MarketRegimeIndicatorList';
 import { DataStatusBadge } from '../components/DataStatusBadge';
 import { useMarketPosture } from '../hooks/useMarketPosture';
+import { marketIndicatorSeriesNameSchema } from '../api/marketIndicatorSeries';
 import {
   useDashboardWatchlistSignals,
   type WatchlistSignalRow,
@@ -22,12 +27,15 @@ import { ROUTES } from '../lib/constants';
 // any given day — we read from the first ready watchlist signal.
 const MACRO_BACKDROP_NAMES: ReadonlySet<string> = new Set(['dxy', 'fed_rate']);
 
+const MACRO_CHART_NAME: ChartNameResolver = (indicatorName) => {
+  if (indicatorName === 'dxy') return 'dxy';
+  if (indicatorName === 'fed_rate') return 'fed_rate';
+  return null;
+};
+
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = ['strong_buy', 'reduce', 'exit'];
 
-function dominantTone(
-  greenCount: number,
-  redCount: number,
-): SignalTone {
+function dominantTone(greenCount: number, redCount: number): SignalTone {
   if (greenCount === 0 && redCount === 0) return 'neutral';
   if (greenCount > redCount) return 'green';
   if (redCount > greenCount) return 'red';
@@ -99,6 +107,12 @@ function MarketPostureCard(): JSX.Element {
       );
     }
 
+    const regimeItems = data.pros_cons.filter(
+      (item) => marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
+    );
+    const nonRegimeItems = data.pros_cons.filter(
+      (item) => !marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
+    );
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -113,16 +127,15 @@ function MarketPostureCard(): JSX.Element {
               {data.streak_badge}
             </span>
           )}
-          <span className="text-xs text-slate-500">
-            最近交易日：{data.date}
-          </span>
+          <span className="text-xs text-slate-500">最近交易日：{data.date}</span>
         </div>
         <dl className="flex flex-wrap gap-4 text-sm">
           <RegimeCount tone="green" count={data.regime_green_count} label="進攻訊號" />
           <RegimeCount tone="yellow" count={data.regime_yellow_count} label="中性訊號" />
           <RegimeCount tone="red" count={data.regime_red_count} label="防守訊號" />
         </dl>
-        <ProsConsList items={data.pros_cons} />
+        <MarketRegimeIndicatorList items={regimeItems} />
+        {nonRegimeItems.length > 0 && <ProsConsList items={nonRegimeItems} />}
       </div>
     );
   }, [data, error, isError, isLoading, refetch]);
@@ -202,13 +215,10 @@ function AttentionAlertsCard(): JSX.Element {
                   to={ROUTES.TICKER.replace(':symbol', row.item.symbol)}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:border-sky-500/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                 >
-                  <span className="font-mono font-semibold text-slate-100">
-                    {row.item.symbol}
-                  </span>
+                  <span className="font-mono font-semibold text-slate-100">{row.item.symbol}</span>
                   <ActionBadge action={signal.action} timingBadge={signal.timing_badge} />
                   <span className="text-xs text-slate-400">
-                    綠燈 {signal.direction_green_count} · 紅燈{' '}
-                    {signal.direction_red_count}
+                    綠燈 {signal.direction_green_count} · 紅燈 {signal.direction_red_count}
                   </span>
                 </Link>
               </li>
@@ -331,9 +341,7 @@ function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
           <DataStatusBadge status={row.item.dataStatus} />
         )}
       </td>
-      <td className="px-3 py-2 text-xs text-slate-400">
-        {formatRefresh(row.item.lastRefreshAt)}
-      </td>
+      <td className="px-3 py-2 text-xs text-slate-400">{formatRefresh(row.item.lastRefreshAt)}</td>
     </tr>
   );
 }
@@ -374,8 +382,8 @@ function PositionsSummaryCard(): JSX.Element {
     totalUnrealizedPnl > 0
       ? 'text-signal-green'
       : totalUnrealizedPnl < 0
-      ? 'text-signal-red'
-      : 'text-slate-300';
+        ? 'text-signal-red'
+        : 'text-slate-300';
 
   return (
     <section
@@ -420,10 +428,7 @@ function PositionsSummaryCard(): JSX.Element {
         </p>
       )}
       {!isLoading && !isError && data && data.data.length > 0 && (
-        <dl
-          data-testid="positions-summary"
-          className="grid grid-cols-3 gap-4 text-sm"
-        >
+        <dl data-testid="positions-summary" className="grid grid-cols-3 gap-4 text-sm">
           <div className="flex flex-col">
             <dt className="text-xs text-slate-500">持倉數</dt>
             <dd className="text-xl font-semibold text-slate-100">{openCount}</dd>
@@ -475,7 +480,10 @@ function MacroBackdropCard(): JSX.Element {
           等待首次運算（需要至少一個觀察清單標的完成分析）。
         </p>
       ) : (
-        <ProsConsList items={macroItems} collapseNeutrals={false} />
+        <MarketRegimeIndicatorList
+          items={macroItems}
+          resolveChartName={MACRO_CHART_NAME}
+        />
       )}
     </section>
   );

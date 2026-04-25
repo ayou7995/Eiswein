@@ -7,9 +7,9 @@ describe('PostureTimelineChart', () => {
     render(
       <PostureTimelineChart
         data={[
-          { date: '2026-04-15', posture: 'offensive', regime_green_count: 3, regime_red_count: 1, regime_yellow_count: 0 },
-          { date: '2026-04-16', posture: 'normal', regime_green_count: 2, regime_red_count: 1, regime_yellow_count: 1 },
-          { date: '2026-04-17', posture: 'defensive', regime_green_count: 1, regime_red_count: 3, regime_yellow_count: 0 },
+          { date: '2026-04-15', posture: 'offensive', regime_green_count: 3, regime_red_count: 1, regime_yellow_count: 0, indicator_version: 'v1' },
+          { date: '2026-04-16', posture: 'normal', regime_green_count: 2, regime_red_count: 1, regime_yellow_count: 1, indicator_version: 'v1' },
+          { date: '2026-04-17', posture: 'defensive', regime_green_count: 1, regime_red_count: 3, regime_yellow_count: 0, indicator_version: 'v1' },
         ]}
       />,
     );

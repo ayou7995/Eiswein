@@ -112,6 +112,10 @@ After completing a module: run `security-auditor` then `test-writer`.
 
 ## Hard Operational Invariants (DO NOT VIOLATE)
 - **Indicators are pure functions**: `DataFrame -> IndicatorResult`. They NEVER call external APIs. All data fetching is centralized in `backend/app/ingestion/`.
+- **Indicator series endpoints** (`GET /api/v1/ticker/{sym}/indicator/{name}/series` and `/api/v1/market/indicator/{name}/series`) use the canonical `NAME` constants from `app/indicators/` as URL slugs. Backend slug ↔ frontend slug must match exactly — don't introduce friendly aliases (`bollinger_bands`/`fed_funds`/`dxy_trend` are wrong; the correct slugs are `bollinger`, `fed_rate`, `dxy`).
+- **summary_zh strings are GENERATED in Python**, not LLM-produced and not templated prose. Each series builder emits a one-line plain-Chinese judgment from rule-based logic (zone label + delta). Same rule as the existing UX Output Rule — scannable judgment, no narrator.
+- **Broker CSV import is generic**: a single `BrokerCsvImporter` instance per `broker_key` lives in `app/ingestion/importers/__init__.py::IMPORTERS`. The broker_key flows through as `Trade.source` AND as the prefix in the deterministic `external_id` SHA-256, so trades from different brokers cannot collide on dedup even with identical (date, qty, price) tuples. Adding a broker = appending a tuple to `SUPPORTED_BROKERS` (no new code).
+- **Watchlist onboardings queue; revalidations are exclusive**: `SymbolOnboardingService.start()` only rejects when an active `revalidation` BackfillJob exists. Concurrent onboardings spawn separate threads that serialize at `snapshot_write_mutex`. Revalidation start (`BackfillService`) keeps the broader "any active job" rejection.
 - **One yfinance bulk call per daily_update**: `yf.download(" ".join(all_symbols), threads=False, ...)`. Never loop per-ticker.
 - **SQLite WAL mode** via event listener (NOT connect_args `pragma`).
 - **uvicorn --workers 1** hardcoded in docker-compose. APScheduler protected with fcntl.flock as belt-and-suspenders.

@@ -12,6 +12,11 @@ export const watchlistItemSchema = z.object({
   data_status: dataStatusSchema,
   added_at: z.string(),
   last_refresh_at: z.string().nullable(),
+  // New Phase 1 fields. `is_system=true` pins SPY (system benchmark) so
+  // the delete button is suppressed. `active_onboarding_job_id` lets
+  // the UI subscribe to onboarding progress without a second round-trip.
+  is_system: z.boolean(),
+  active_onboarding_job_id: z.number().int().nonnegative().nullable(),
 });
 export type WatchlistItemRaw = z.infer<typeof watchlistItemSchema>;
 
@@ -20,6 +25,8 @@ export interface WatchlistItem {
   dataStatus: DataStatus;
   addedAt: Date;
   lastRefreshAt: Date | null;
+  isSystem: boolean;
+  activeOnboardingJobId: number | null;
 }
 
 function toWatchlistItem(raw: WatchlistItemRaw): WatchlistItem {
@@ -28,6 +35,8 @@ function toWatchlistItem(raw: WatchlistItemRaw): WatchlistItem {
     dataStatus: raw.data_status,
     addedAt: new Date(raw.added_at),
     lastRefreshAt: raw.last_refresh_at ? new Date(raw.last_refresh_at) : null,
+    isSystem: raw.is_system,
+    activeOnboardingJobId: raw.active_onboarding_job_id,
   };
 }
 
@@ -39,7 +48,13 @@ export const watchlistListResponseSchema = z.object({
 
 export const watchlistCreateResponseSchema = z.object({
   data: watchlistItemSchema,
+  job_id: z.number().int().nonnegative(),
 });
+
+export interface WatchlistCreateResult {
+  data: WatchlistItem;
+  jobId: number;
+}
 
 export const okResponseSchema = z.object({ ok: z.literal(true) });
 
@@ -73,13 +88,16 @@ export async function listWatchlist(): Promise<WatchlistListResult> {
   };
 }
 
-export async function addToWatchlist(symbol: string): Promise<WatchlistItem> {
+export async function addToWatchlist(symbol: string): Promise<WatchlistCreateResult> {
   const raw = await apiRequest('/api/v1/watchlist', {
     method: 'POST',
     body: { symbol },
     schema: watchlistCreateResponseSchema,
   });
-  return toWatchlistItem(raw.data);
+  return {
+    data: toWatchlistItem(raw.data),
+    jobId: raw.job_id,
+  };
 }
 
 export function removeFromWatchlist(symbol: string): Promise<z.infer<typeof okResponseSchema>> {

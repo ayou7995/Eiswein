@@ -21,13 +21,20 @@ import sys
 import urllib.parse
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 _LOGIN_FAILURE = "login.failure"
 _LOGIN_LOCKOUT = "login.lockout"
 _LOGIN_SUCCESS = "login.success"
 
 
 def _resolve_db_path() -> Path:
-    url = os.environ.get("DATABASE_URL", "sqlite:///./data/eiswein.db")
+    load_dotenv(Path(__file__).resolve().parent.parent / "backend" / ".env", override=False)
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise SystemExit(
+            "DATABASE_URL is not set. Configure it in backend/.env or export it."
+        )
     if not url.startswith("sqlite:///"):
         raise SystemExit(f"Only SQLite URLs are supported here, got: {url}")
     # sqlite:///./data/eiswein.db -> ./data/eiswein.db

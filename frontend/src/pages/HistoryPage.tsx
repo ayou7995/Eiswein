@@ -112,8 +112,17 @@ function MarketPostureSection(): JSX.Element {
 
 function SignalAccuracySection(): JSX.Element {
   const watchlist = useWatchlist();
+  // Exclude system symbols (SPY) — SPY is the SPX proxy, so its
+  // relative-strength indicator is always NEUTRAL against itself and
+  // the per-ticker action is permanently "watch". That produces 0/0
+  // on the accuracy query, which is confusing. Hide from the dropdown.
   const symbols = useMemo(
-    () => (watchlist.data?.data.map((w) => w.symbol) ?? []).slice().sort((a, b) => a.localeCompare(b)),
+    () =>
+      (watchlist.data?.data ?? [])
+        .filter((w) => !w.isSystem)
+        .map((w) => w.symbol)
+        .slice()
+        .sort((a, b) => a.localeCompare(b)),
     [watchlist.data],
   );
   const [symbol, setSymbol] = useState<string>('');
@@ -134,6 +143,9 @@ function SignalAccuracySection(): JSX.Element {
         <h2 id="history-accuracy-heading" className="text-lg font-semibold">
           訊號準確率
         </h2>
+        <p className="text-xs text-slate-400 mt-1" data-testid="accuracy-disclaimer">
+          此統計基於歷史計算，僅供參考。
+        </p>
         <p className="text-xs text-slate-500">以過去運算的建議動作與 N 日後收盤方向比對。</p>
       </header>
 

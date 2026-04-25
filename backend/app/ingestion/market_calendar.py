@@ -54,3 +54,28 @@ def last_trading_day_et(*, reference: date | None = None) -> date:
     if isinstance(last, pd.Timestamp):
         return last.date()
     return ref
+
+
+def get_trading_days(start: date, end: date) -> list[date]:
+    """NYSE trading days in ``[start, end]`` inclusive, ascending.
+
+    Used by the gap-aware daily-update flow to compute which dates we
+    *expected* price rows for. Anything missing from DailyPrice within
+    that set is a real gap (weekends + market holidays never show up
+    here, so they are never reported as gaps).
+
+    Returns plain ``date`` objects — not timestamps — so callers can
+    diff against DailyPrice.date without tz/time coercion quirks.
+    Empty list when ``end < start`` or the span contains no session.
+    """
+    if end < start:
+        return []
+    schedule = _NYSE.schedule(start_date=start, end_date=end)
+    if schedule.empty:
+        return []
+    days: list[date] = []
+    for ts in schedule.index:
+        if isinstance(ts, pd.Timestamp):
+            days.append(ts.date())
+    days.sort()
+    return days

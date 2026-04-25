@@ -5,15 +5,15 @@ export interface TradeLogTableProps {
   trades: readonly TradeResponse[];
 }
 
-function formatDateTime(iso: string): string {
+// Trades are recorded with end-of-day timestamps; the time portion is a
+// midnight-ET → UTC artifact that adds noise without information.
+function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('zh-TW', {
+  return date.toLocaleDateString('zh-TW', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
   });
 }
 
@@ -84,7 +84,7 @@ export function TradeLogTable({ trades }: TradeLogTableProps): JSX.Element {
             {trades.map((trade) => (
               <tr key={trade.id} className="bg-slate-950/40">
                 <td className="px-3 py-2 text-xs text-slate-400">
-                  {formatDateTime(trade.executed_at)}
+                  {formatDate(trade.executed_at)}
                 </td>
                 <td className="px-3 py-2">
                   <span
@@ -133,7 +133,7 @@ export function TradeLogTable({ trades }: TradeLogTableProps): JSX.Element {
                 {sideLabel(trade.side)}
               </span>
               <span className="text-xs text-slate-400">
-                {formatDateTime(trade.executed_at)}
+                {formatDate(trade.executed_at)}
               </span>
             </div>
             <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">

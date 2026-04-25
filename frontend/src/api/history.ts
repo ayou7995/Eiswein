@@ -10,6 +10,9 @@ export const postureHistoryItemSchema = z.object({
   regime_green_count: z.number().int().nonnegative(),
   regime_red_count: z.number().int().nonnegative(),
   regime_yellow_count: z.number().int().nonnegative(),
+  // Optional + default: older snapshots predate this column. Keeps
+  // backward compat without raising a SchemaValidationError on legacy data.
+  indicator_version: z.string().optional().default(''),
 });
 export type PostureHistoryItem = z.infer<typeof postureHistoryItemSchema>;
 

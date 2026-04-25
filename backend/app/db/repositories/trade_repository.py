@@ -41,6 +41,8 @@ class TradeRepository:
         executed_at: datetime,
         realized_pnl: Decimal | None = None,
         note: str | None = None,
+        source: str = "manual",
+        external_id: str | None = None,
     ) -> Trade:
         row = Trade(
             user_id=user_id,
@@ -52,10 +54,28 @@ class TradeRepository:
             executed_at=executed_at,
             realized_pnl=realized_pnl,
             note=note,
+            source=source,
+            external_id=external_id,
         )
         self._session.add(row)
         self._session.flush()
         return row
+
+    def find_by_external_id(self, *, user_id: int, source: str, external_id: str) -> Trade | None:
+        """Lookup a trade by its broker-supplied identifier.
+
+        Used by broker-CSV importers to skip rows that have already been
+        ingested. The uniqueness is enforced at the DB level by the
+        partial unique index ``uq_trades_source_external_id`` — this
+        method is a convenience read-only helper, not a correctness
+        guard.
+        """
+        stmt = select(Trade).where(
+            Trade.user_id == user_id,
+            Trade.source == source,
+            Trade.external_id == external_id,
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
 
     def list_for_user(
         self,

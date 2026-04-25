@@ -3,6 +3,11 @@
 * ``GET /api/v1/market-posture`` — latest :class:`MarketSnapshot`,
   the current posture streak, and pros/cons items built from the
   4 regime indicators' most recent :class:`DailySignal` rows.
+* ``GET /api/v1/market/indicator/{name}/series`` — 60-day rolling
+  series + zh-TW summary for the 6 supported market-regime / macro
+  indicators (``spx_ma``, ``vix``, ``yield_spread``, ``ad_day``,
+  ``dxy``, ``fed_rate``). All math lives in :mod:`_market_series`;
+  this module owns DB I/O and dispatch only.
 
 Authentication required (like every ``/api/v1`` route except
 ``/health`` and ``/login``). No user-filtering on the data itself:
@@ -13,8 +18,8 @@ because Pydantic response-model resolution with slowapi's decorator
 requires runtime annotations (Phase 1 lesson).
 """
 
-from datetime import date, datetime
-from typing import cast
+from datetime import date, datetime, timedelta
+from typing import Literal, cast
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -22,11 +27,30 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.dependencies import (
     current_user_id,
+    get_daily_price_repository,
     get_daily_signal_repository,
+    get_macro_repository,
     get_market_posture_streak_repository,
     get_market_snapshot_repository,
 )
+from app.api.v1._market_series import (
+    DXY_MACRO_SERIES,
+    DXY_MIN_BARS,
+    FED_FUNDS_MACRO_SERIES,
+    SERIES_DAYS,
+    SUPPORTED_MARKET_INDICATORS,
+    build_ad_day_payload,
+    build_dxy_payload,
+    build_fed_rate_payload,
+    build_macro_value_series,
+    build_spx_ma_payload,
+    build_spy_frame,
+    build_vix_payload,
+    build_yield_spread_payload,
+)
+from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.daily_signal_repository import DailySignalRepository
+from app.db.repositories.macro_repository import MacroRepository
 from app.db.repositories.market_posture_streak_repository import (
     MarketPostureStreakRepository,
 )
@@ -39,6 +63,9 @@ from app.signals.pros_cons import build_pros_cons_items
 from app.signals.types import MarketPosture, ProsConsItem
 
 _SPX_SYMBOL = "SPY"
+_SPX_MA_MIN_BARS = 200
+_AD_DAY_MIN_BARS = SERIES_DAYS + 1
+_SPY_LOOKBACK_DAYS = 400
 
 router = APIRouter(tags=["market"])
 logger = structlog.get_logger("eiswein.api.market")
@@ -191,3 +218,266 @@ def _to_wire(item: ProsConsItem) -> ProsConsItemResponse:
         detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
     )
+
+
+# --- Per-indicator 60-day market-series endpoint --------------------------
+
+
+class SpxMaPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    price: float | None
+    ma50: float | None
+    ma200: float | None
+
+
+class SpxMaCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    price: float | None
+    ma50: float | None
+    ma200: float | None
+    above_both_days: int
+
+
+class SpxMaSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    indicator: Literal["spx_ma"]
+    series: list[SpxMaPoint]
+    summary_zh: str
+    current: SpxMaCurrent
+
+
+class VixPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    level: float | None
+
+
+class VixCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: float | None
+    ten_day_change: float | None
+    trend: Literal["rising", "falling", "flat", "unknown"]
+    zone: Literal["low", "normal", "elevated", "panic"]
+    percentile_1y: float | None
+
+
+class VixThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    low: int
+    normal_high: int
+    elevated_high: int
+
+
+class VixSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    indicator: Literal["vix"]
+    series: list[VixPoint]
+    summary_zh: str
+    current: VixCurrent
+    thresholds: VixThresholds
+
+
+class YieldSpreadPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    spread: float | None
+    ten_year: float | None
+    two_year: float | None
+
+
+class YieldSpreadCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    spread: float | None
+    ten_year: float | None
+    two_year: float | None
+    days_since_inversion: int | None
+    last_inversion_end: str | None
+
+
+class YieldSpreadSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    indicator: Literal["yield_spread"]
+    series: list[YieldSpreadPoint]
+    summary_zh: str
+    current: YieldSpreadCurrent
+
+
+class AdDayPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    classification: Literal["accum", "distrib", "neutral"]
+    spx_change: float | None
+    volume_ratio: float | None
+
+
+class AdDayCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    accum_count_25d: int
+    distrib_count_25d: int
+    net_25d: int
+    accum_count_5d: int
+    distrib_count_5d: int
+    net_5d: int
+
+
+class AdDaySeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    indicator: Literal["ad_day"]
+    series: list[AdDayPoint]
+    summary_zh: str
+    current: AdDayCurrent
+
+
+class DxyPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    level: float | None
+    ma20: float | None
+
+
+class DxyCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: float | None
+    ma20: float | None
+    streak_rising: bool
+    streak_falling: bool
+    streak_days: int
+    ma20_change_5d: float | None
+
+
+class DxySeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    indicator: Literal["dxy"]
+    series: list[DxyPoint]
+    summary_zh: str
+    current: DxyCurrent
+
+
+class FedRatePoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    rate: float | None
+
+
+class FedRateCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    current_rate: float | None
+    prior_30d_rate: float | None
+    delta_30d: float | None
+    days_since_last_change: int | None
+    last_change_date: str | None
+    last_change_direction: Literal["hike", "cut"] | None
+
+
+class FedRateSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    indicator: Literal["fed_rate"]
+    series: list[FedRatePoint]
+    summary_zh: str
+    current: FedRateCurrent
+
+
+MarketIndicatorSeriesResponse = (
+    SpxMaSeriesResponse
+    | VixSeriesResponse
+    | YieldSpreadSeriesResponse
+    | AdDaySeriesResponse
+    | DxySeriesResponse
+    | FedRateSeriesResponse
+)
+
+
+def _insufficient(name: str) -> NotFoundError:
+    return NotFoundError(
+        details={"name": name, "reason": "insufficient_history"},
+    )
+
+
+@router.get(
+    "/market/indicator/{name}/series",
+    response_model=MarketIndicatorSeriesResponse,
+    summary="60-day rolling series + zh-TW summary for a single market indicator",
+)
+def get_market_indicator_series(
+    name: str,
+    _user_id: int = Depends(current_user_id),
+    prices: DailyPriceRepository = Depends(get_daily_price_repository),
+    macro: MacroRepository = Depends(get_macro_repository),
+) -> MarketIndicatorSeriesResponse:
+    if name not in SUPPORTED_MARKET_INDICATORS:
+        raise NotFoundError(
+            details={"reason": "unknown_indicator", "name": name},
+        )
+
+    if name == "spx_ma":
+        end = date.today()
+        start = end - timedelta(days=_SPY_LOOKBACK_DAYS)
+        rows = prices.get_range(_SPX_SYMBOL, start=start, end=end)
+        frame = build_spy_frame(rows)
+        if frame.empty or len(frame) < _SPX_MA_MIN_BARS:
+            raise _insufficient(name)
+        return SpxMaSeriesResponse.model_validate(build_spx_ma_payload(frame))
+
+    if name == "ad_day":
+        end = date.today()
+        start = end - timedelta(days=_SPY_LOOKBACK_DAYS)
+        rows = prices.get_range(_SPX_SYMBOL, start=start, end=end)
+        frame = build_spy_frame(rows)
+        if frame.empty or len(frame) < _AD_DAY_MIN_BARS:
+            raise _insufficient(name)
+        return AdDaySeriesResponse.model_validate(build_ad_day_payload(frame))
+
+    if name == "vix":
+        vix_series = build_macro_value_series(macro.get_all_for_series("VIXCLS"))
+        if vix_series.empty or len(vix_series.dropna()) < SERIES_DAYS:
+            raise _insufficient(name)
+        return VixSeriesResponse.model_validate(build_vix_payload(vix_series))
+
+    if name == "yield_spread":
+        ten_series = build_macro_value_series(macro.get_all_for_series("DGS10"))
+        two_series = build_macro_value_series(macro.get_all_for_series("DGS2"))
+        if (
+            ten_series.empty
+            or two_series.empty
+            or len(ten_series.dropna()) < SERIES_DAYS
+            or len(two_series.dropna()) < SERIES_DAYS
+        ):
+            raise _insufficient(name)
+        return YieldSpreadSeriesResponse.model_validate(
+            build_yield_spread_payload(ten_series, two_series)
+        )
+
+    if name == "dxy":
+        dxy_series = build_macro_value_series(macro.get_all_for_series(DXY_MACRO_SERIES))
+        if dxy_series.empty or len(dxy_series.dropna()) < DXY_MIN_BARS:
+            raise _insufficient(name)
+        return DxySeriesResponse.model_validate(build_dxy_payload(dxy_series))
+
+    # fed_rate: SUPPORTED_MARKET_INDICATORS already gates this branch.
+    fed_series = build_macro_value_series(macro.get_all_for_series(FED_FUNDS_MACRO_SERIES))
+    # FEDFUNDS is monthly; the builder forward-fills onto a 365-calendar-day
+    # output. A single posted rate is enough to render a step chart, but
+    # an empty series has nothing to anchor against.
+    if fed_series.empty or len(fed_series.dropna()) < 1:
+        raise _insufficient(name)
+    return FedRateSeriesResponse.model_validate(build_fed_rate_payload(fed_series))

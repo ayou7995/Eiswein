@@ -203,6 +203,12 @@ def app(
     # and flaky across parallel pytest-xdist workers. Jobs are tested
     # directly against their module entry points in tests/jobs/.
     application.state.scheduler_disabled = True
+    # Phase 1 UX overhaul: watchlist POST spawns a SymbolOnboardingService
+    # runner thread; tests using StaticPool + in-memory SQLite cannot hand
+    # the shared connection to a real thread safely, so we force inline
+    # execution. The route reads this flag via app.state on every request.
+    application.state.onboarding_run_inline = True
+    application.state.backfill_run_inline = True
     return application
 
 

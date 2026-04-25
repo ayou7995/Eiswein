@@ -20,7 +20,8 @@ def _login(client: TestClient, password: str) -> None:
 
 def _add_watchlist(client: TestClient, symbol: str) -> None:
     resp = client.post("/api/v1/watchlist", json={"symbol": symbol})
-    assert resp.status_code == 200, resp.text
+    # Phase 1 UX overhaul: watchlist POST is always 201 (async onboarding).
+    assert resp.status_code == 201, resp.text
 
 
 def _open_payload(symbol: str = "SPY", shares: str = "10", price: str = "100") -> dict:

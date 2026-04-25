@@ -1,4 +1,4 @@
-import type { ZodSchema } from 'zod';
+import type { ZodType, ZodTypeDef } from 'zod';
 import { API_BASE_URL } from '../lib/constants';
 import {
   EisweinApiError,
@@ -12,7 +12,11 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export interface RequestOptions<TResponse> {
   method?: HttpMethod;
   body?: unknown;
-  schema: ZodSchema<TResponse>;
+  // ZodType<Output, Def, Input> — using explicit Input = unknown so schemas
+  // with input/output divergence (e.g. `.optional().default(…)` for
+  // backward-compat fields) still satisfy this constraint when the caller
+  // annotates the return type as the output shape.
+  schema: ZodType<TResponse, ZodTypeDef, unknown>;
   signal?: AbortSignal;
   // Some endpoints (refresh, logout) must not themselves trigger a refresh on
   // 401 — otherwise a failed refresh would retry itself indefinitely.
@@ -89,7 +93,9 @@ async function dispatch<TResponse>(
 // Coalesces concurrent 401s onto a single refresh call (STAFF_REVIEW_DECISIONS.md
 // B2). All callers wait on the same promise; success replays their request,
 // failure bubbles a 401 up through the unauthorized handler.
-async function ensureRefresh(): Promise<void> {
+// Exported so non-JSON transports (e.g. multipart import uploads) can reuse
+// the same single-flight dedupe without re-implementing it.
+export async function ensureRefresh(): Promise<void> {
   if (!refreshFn) {
     throw new EisweinApiError(401, 'unauthenticated', '尚未登入');
   }

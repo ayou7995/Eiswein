@@ -220,3 +220,69 @@ async def test_data_refresh_returns_job_id_and_records_audit(
     assert len(rows) == 1
     assert rows[0].details is not None
     assert "job_id" in rows[0].details
+
+
+def test_data_refresh_response_includes_gap_fill_counts(
+    client: TestClient,
+    test_password: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DataRefreshResponse must surface gaps_filled_rows and gaps_filled_symbols.
+
+    We stub run_daily_update to return a crafted result so this test
+    does not depend on a real DB full of price data.
+    """
+    from datetime import UTC
+    from datetime import datetime as dt
+
+    from app.ingestion.daily_ingestion import DailyUpdateResult
+
+    fake_result = DailyUpdateResult(
+        market_open=True,
+        session_date=dt.now(UTC).date(),
+        symbols_requested=2,
+        symbols_succeeded=2,
+        symbols_failed=0,
+        symbols_delisted=0,
+        price_rows_upserted=7,
+        macro_rows_upserted=0,
+        macro_series_failed=0,
+        indicators_computed_symbols=0,
+        indicators_failed_symbols=0,
+        snapshots_composed=0,
+        snapshots_failed=0,
+        market_posture=None,
+        gaps_filled_rows=3,
+        gaps_filled_symbols=1,
+    )
+
+    async def _fake_run(**_kw: object) -> DailyUpdateResult:
+        return fake_result
+
+    monkeypatch.setattr("app.api.v1.settings_routes.run_daily_update", _fake_run)
+
+    _login(client, test_password)
+    resp = client.post("/api/v1/settings/data-refresh")
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["gaps_filled_rows"] == 3
+    assert body["gaps_filled_symbols"] == 1
+
+
+def test_data_refresh_requires_auth(client: TestClient) -> None:
+    """Unauthenticated request to data-refresh must return 401."""
+    resp = client.post("/api/v1/settings/data-refresh")
+    assert resp.status_code == 401
+
+
+def test_data_refresh_rate_limited_second_call(
+    client: TestClient,
+    test_password: str,
+) -> None:
+    """Second call within the hour must be rejected with 429."""
+    _login(client, test_password)
+    first = client.post("/api/v1/settings/data-refresh")
+    assert first.status_code == 202
+
+    second = client.post("/api/v1/settings/data-refresh")
+    assert second.status_code == 429

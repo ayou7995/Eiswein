@@ -102,9 +102,13 @@ class YFinanceSource(DataSource):
     def name(self) -> str:
         return "yfinance"
 
-    def _cache_path_for(self, symbols: list[str]) -> Path:
+    def _cache_path_for(self, symbols: list[str], *, period: str) -> Path:
+        # Cache key includes ``period`` because the same symbol set at
+        # different windows (e.g. ``5d`` for pre-flight validation vs
+        # ``2y`` for cold-start backfill) must not share a file —
+        # otherwise the shorter window poisons the longer one.
         today = datetime.now(UTC).strftime("%Y-%m-%d")
-        return self._cache_root / f"{today}_{_symbols_hash(symbols)}.parquet"
+        return self._cache_root / f"{today}_{period}_{_symbols_hash(symbols)}.parquet"
 
     async def bulk_download(
         self,
@@ -158,7 +162,7 @@ class YFinanceSource(DataSource):
     # --- Internal helpers (executed in a worker thread) ---
 
     def _fetch_with_cache(self, symbols: list[str], *, period: str) -> pd.DataFrame:
-        cache_path = self._cache_path_for(symbols)
+        cache_path = self._cache_path_for(symbols, period=period)
         if cache_path.exists():
             try:
                 return pd.read_parquet(cache_path)

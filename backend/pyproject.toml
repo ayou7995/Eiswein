@@ -56,6 +56,25 @@ ignore = [
 # macro_repository uses a multiplication sign in a code comment to
 # explain row * column arithmetic. Same intentional-symbol rationale.
 "app/db/repositories/macro_repository.py" = ["RUF003"]
+# The per-indicator series helper builds zh-TW summary strings; same
+# intentional fullwidth-punctuation rationale as the indicator modules.
+"app/api/v1/_indicator_series.py" = ["RUF001", "RUF002", "RUF003"]
+"app/api/v1/_market_series.py" = ["RUF001", "RUF002", "RUF003"]
+# Schwab/watchlist/import zh-TW user-facing error and confirmation
+# messages legitimately use fullwidth commas/colons.
+"app/api/v1/broker_routes.py" = ["RUF001"]
+"app/api/v1/watchlist_routes.py" = ["RUF001"]
+"app/services/trade_import_service.py" = ["RUF001"]
+"app/ingestion/importers/broker_csv.py" = ["RUF001"]
+# En-dash range markers in test docstrings are intentional.
+"tests/ingestion/test_daily_ingestion.py" = ["RUF003"]
+"tests/ingestion/test_market_calendar.py" = ["RUF003"]
+# Schwab oauth tests use deeply nested patches — flat-with rewrite is
+# noisier than the SIM117 finding warrants. Token strings are placeholder
+# fixtures, not real secrets.
+"tests/datasources/test_schwab_oauth.py" = ["SIM117"]
+"tests/services/test_schwab_session.py" = ["S107", "SIM117"]
+"tests/jobs/test_schwab_token_refresh.py" = ["S107"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -105,6 +124,25 @@ ignore_missing_imports = true
 # the security / api / db boundaries.
 [[tool.mypy.overrides]]
 module = ["app.jobs.*"]
+disallow_any_unimported = false
+warn_return_any = false
+ignore_missing_imports = true
+
+# The per-indicator series helper consumes pandas DataFrames at
+# runtime (sma / wilder_rsi / macd / bollinger primitives) so it
+# can't keep pandas behind ``TYPE_CHECKING`` like the indicator
+# modules do. Same pragmatic relaxation as ``app.indicators.*``.
+[[tool.mypy.overrides]]
+module = ["app.api.v1._indicator_series"]
+disallow_any_unimported = false
+warn_return_any = false
+ignore_missing_imports = true
+
+# Same rationale as ``_indicator_series``: this market-regime series
+# helper consumes pandas at runtime (sma + per-day mask logic) so we
+# relax import-Any. All other api/v1 modules stay strict.
+[[tool.mypy.overrides]]
+module = ["app.api.v1._market_series"]
 disallow_any_unimported = false
 warn_return_any = false
 ignore_missing_imports = true

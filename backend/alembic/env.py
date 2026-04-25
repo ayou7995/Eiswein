@@ -1,8 +1,9 @@
 """Alembic migration environment.
 
-Uses the app's Settings to resolve DATABASE_URL so migrations and the
-running app always target the same DB. Models are imported so
-`target_metadata = Base.metadata` sees every table.
+`.env` is the single source of truth for ``DATABASE_URL``, matching how
+the FastAPI app loads config via pydantic-settings. This ensures
+migrations and the running app always target the same DB. Models are
+imported so ``target_metadata = Base.metadata`` sees every table.
 """
 
 from __future__ import annotations
@@ -10,10 +11,13 @@ from __future__ import annotations
 import os
 from logging.config import fileConfig
 
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.db.models import Base
+
+load_dotenv(override=False)
 
 config = context.config
 
@@ -22,9 +26,15 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-_db_url_override = os.environ.get("DATABASE_URL")
-if _db_url_override:
-    config.set_main_option("sqlalchemy.url", _db_url_override)
+_db_url = os.environ.get("DATABASE_URL")
+if not _db_url:
+    msg = (
+        "DATABASE_URL is not set. Configure it in backend/.env or export "
+        "it inline before running alembic (e.g. "
+        "`DATABASE_URL=sqlite:///./data/ci.db alembic upgrade head`)."
+    )
+    raise RuntimeError(msg)
+config.set_main_option("sqlalchemy.url", _db_url)
 
 
 def run_migrations_offline() -> None:

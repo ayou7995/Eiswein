@@ -27,6 +27,9 @@ POSITION_OPENED = "position.opened"
 POSITION_CLOSED = "position.closed"
 POSITION_ADD = "position.add"
 POSITION_REDUCE = "position.reduce"
+SCHWAB_CONNECTED = "schwab.connected"
+SCHWAB_DISCONNECTED = "schwab.disconnected"
+SCHWAB_REAUTH_REQUIRED = "schwab.reauth_required"
 
 
 class AuditRepository:

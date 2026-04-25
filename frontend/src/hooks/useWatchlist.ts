@@ -4,7 +4,7 @@ import {
   getTickerStatus,
   listWatchlist,
   removeFromWatchlist,
-  type WatchlistItem,
+  type WatchlistCreateResult,
   type WatchlistListResult,
 } from '../api/watchlist';
 
@@ -21,7 +21,7 @@ export function useWatchlist(): ReturnType<typeof useQuery<WatchlistListResult>>
 }
 
 export function useAddTicker(): ReturnType<
-  typeof useMutation<WatchlistItem, Error, string>
+  typeof useMutation<WatchlistCreateResult, Error, string>
 > {
   const qc = useQueryClient();
   return useMutation({

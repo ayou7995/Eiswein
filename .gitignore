@@ -86,3 +86,7 @@ logs/
 
 # Docker
 .docker/
+
+# Statement
+statement/
+

@@ -12,7 +12,7 @@ Bulk path batches all rows into a single SQL statement — N individual
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import TypedDict
 
@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.db.models import DailyPrice
+from app.ingestion.market_calendar import get_trading_days, last_trading_day_et, today_et
 
 
 class DailyPriceRow(TypedDict):
@@ -87,3 +88,83 @@ class DailyPriceRepository:
     def count_for_symbol(self, symbol: str) -> int:
         stmt = select(DailyPrice.id).where(DailyPrice.symbol == symbol.upper())
         return len(self._session.execute(stmt).scalars().all())
+
+    def find_missing_dates(self, symbol: str, lookback_days: int = 60) -> list[date]:
+        """Trading days within the lookback window with no DailyPrice row.
+
+        ``lookback_days`` is expressed in NYSE **trading** days — the
+        caller never has to reason about weekends or holidays.
+        Computes the expected session set from the market calendar,
+        diffs against rows already present for ``symbol``, returns the
+        sorted list of missing session dates. Bounded window prevents a
+        corrupted DB from triggering an unbounded refetch (invariant).
+        """
+        if lookback_days <= 0:
+            return []
+        end_date = last_trading_day_et(reference=today_et())
+        # 2x the trading-day count (plus a small floor) gives a safe
+        # calendar-day window — weekends + holidays eat at most ~30% of
+        # calendar days, so 2x is a generous buffer before we slice.
+        calendar_span = max(lookback_days * 2, lookback_days + 14)
+        start_date = end_date - timedelta(days=calendar_span)
+        expected = get_trading_days(start_date, end_date)
+        if not expected:
+            return []
+        # Take only the last ``lookback_days`` sessions — the calendar
+        # span above is generous on purpose so we trim here.
+        expected = expected[-lookback_days:]
+        window_start = expected[0]
+        window_end = expected[-1]
+
+        upper = symbol.upper()
+        stmt = select(DailyPrice.date).where(
+            DailyPrice.symbol == upper,
+            DailyPrice.date >= window_start,
+            DailyPrice.date <= window_end,
+        )
+        existing: set[date] = set(self._session.execute(stmt).scalars().all())
+        return [d for d in expected if d not in existing]
+
+    def find_gaps_for_symbols(
+        self, symbols: list[str], lookback_days: int = 60
+    ) -> dict[str, list[date]]:
+        """Batch gap detection across many symbols in one round-trip.
+
+        Returns a dict with an entry for every input symbol (empty list
+        when that symbol has no gaps). Uses a single ``IN (...)`` query
+        to avoid N+1 (rule 10) — the parameterized SQLAlchemy ``in_()``
+        operator handles escaping.
+        """
+        if not symbols or lookback_days <= 0:
+            return {s.upper(): [] for s in symbols}
+
+        end_date = last_trading_day_et(reference=today_et())
+        calendar_span = max(lookback_days * 2, lookback_days + 14)
+        start_date = end_date - timedelta(days=calendar_span)
+        expected = get_trading_days(start_date, end_date)
+        if not expected:
+            return {s.upper(): [] for s in symbols}
+        expected = expected[-lookback_days:]
+        expected_set = set(expected)
+        window_start = expected[0]
+        window_end = expected[-1]
+
+        uppers = sorted({s.upper() for s in symbols if s.strip()})
+        if not uppers:
+            return {}
+
+        stmt = select(DailyPrice.symbol, DailyPrice.date).where(
+            DailyPrice.symbol.in_(uppers),
+            DailyPrice.date >= window_start,
+            DailyPrice.date <= window_end,
+        )
+        present: dict[str, set[date]] = {sym: set() for sym in uppers}
+        for sym, d in self._session.execute(stmt).all():
+            if sym in present:
+                present[sym].add(d)
+
+        gaps: dict[str, list[date]] = {}
+        for sym in uppers:
+            missing = sorted(expected_set - present[sym])
+            gaps[sym] = missing
+        return gaps

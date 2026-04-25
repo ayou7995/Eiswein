@@ -70,6 +70,8 @@ export const dataRefreshResponseSchema = z.object({
   job_id: z.string(),
   started_at: z.string(),
   market_open: z.boolean(),
+  gaps_filled_rows: z.number().int().nonnegative(),
+  gaps_filled_symbols: z.number().int().nonnegative(),
 });
 export type DataRefreshResponse = z.infer<typeof dataRefreshResponseSchema>;
 

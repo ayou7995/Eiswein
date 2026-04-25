@@ -9,6 +9,12 @@ The hard cap (default 100, per B3) is enforced at insert time and
 surfaces as a :class:`WatchlistFullError` 422 — yfinance's bulk
 download degrades past ~100 symbols and that's why this ceiling
 exists.
+
+Hard-delete: DELETE requests physically remove the row. ``added_at``
+remains the sole audit timestamp ("when did I add this?"). Historical
+backfill uses :meth:`distinct_symbols_across_users` (current-watchlist
+semantics); there is no per-day membership reconstruction, so
+tombstones carried no real value.
 """
 
 from __future__ import annotations
@@ -70,12 +76,20 @@ class WatchlistRepository:
             raise DuplicateWatchlistEntryError(details={"symbol": normalized})
         if self.count_for_user(user_id) >= max_size:
             raise WatchlistFullError(details={"max_size": max_size})
+
+        # Plain INSERT. The UNIQUE constraint on (user_id, symbol) backs
+        # the duplicate check above — the explicit ``get`` avoids an
+        # IntegrityError round-trip on the common path but the DB
+        # constraint remains the source of truth.
         row = Watchlist(user_id=user_id, symbol=normalized, data_status="pending")
         self._session.add(row)
         self._session.flush()
         return row
 
     def remove(self, *, user_id: int, symbol: str) -> None:
+        """Hard-delete the row. Raises :class:`NotFoundError` when absent
+        so the API contract (404 on unknown symbol) is preserved.
+        """
         row = self.get(user_id=user_id, symbol=symbol)
         if row is None:
             raise NotFoundError(details={"symbol": symbol.upper()})
@@ -100,7 +114,8 @@ class WatchlistRepository:
         return row
 
     def distinct_symbols_across_users(self) -> Sequence[str]:
-        """All symbols in any user's watchlist — used by ``run_daily_update``.
+        """All symbols in any user's watchlist — used by
+        ``run_daily_update`` and backfill.
 
         Returns uppercased symbols sorted deterministically so the bulk
         download request is reproducible (helps cache hit rates).

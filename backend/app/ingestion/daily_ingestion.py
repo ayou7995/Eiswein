@@ -2,12 +2,19 @@
 
 Flow:
 1. Market calendar gate — skip if today is not an NYSE session.
-2. ONE bulk yfinance call for all distinct watchlist symbols.
-3. UPSERT DailyPrice rows per symbol, with per-ticker try/except so
-   one symbol failure doesn't abort the job (rule 14: graceful
-   degradation).
-4. FRED macro fetch (best-effort — failures log + continue).
-5. UPSERT MacroIndicator rows.
+2. Gap detection — for each watchlist symbol, diff expected NYSE
+   sessions (bounded 60 trading days back) against existing DailyPrice
+   rows. Produces a per-symbol set of missing dates.
+3. ONE bulk yfinance call that covers the widest-needed window across
+   all symbols' gap sets. Scheduled runs with zero gaps short-circuit
+   here; manual runs still fetch the last trading day so the "立即更新"
+   click is never a no-op.
+4. UPSERT DailyPrice rows per symbol — **only** for dates in that
+   symbol's gap set (or the last trading day on a manual-no-gap run).
+   Per-ticker try/except so one symbol failure doesn't abort the job
+   (rule 14: graceful degradation).
+5. FRED macro fetch (best-effort — failures log + continue).
+6. UPSERT MacroIndicator rows.
 
 Not tied to APScheduler — Phase 6 wires the scheduler trigger, this
 function is what it calls.
@@ -21,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 import structlog
@@ -45,6 +52,7 @@ from app.ingestion.signals import (
     compose_and_persist_ticker,
 )
 from app.security.exceptions import DataSourceError
+from app.services.snapshot_write_mutex import snapshot_write_mutex
 from app.signals.types import MarketPosture
 
 if TYPE_CHECKING:
@@ -53,9 +61,31 @@ if TYPE_CHECKING:
 logger = structlog.get_logger("eiswein.ingestion.daily")
 
 
+TriggerMode = Literal["scheduled", "manual"]
+
+# Trading-day lookback cap for gap detection. 60 ≈ 3 months of
+# sessions — deep enough to catch a week-long VM outage but shallow
+# enough to bound the yfinance fetch window if the DB is corrupted.
+_GAP_LOOKBACK_TRADING_DAYS = 60
+
+# System symbols fetched on every daily_update regardless of watchlist
+# membership. SPY is the SPX proxy every market-regime + relative-
+# strength indicator depends on; the migration 0014 seed plus this
+# union guarantee a live SPY price series even if no user has SPY on
+# their watchlist. Migration 0014 adds SPY to the admin watchlist too —
+# this set is the belt against the suspenders of the seed row.
+SYSTEM_SYMBOLS: frozenset[str] = frozenset({"SPY"})
+
+
 @dataclass(frozen=True)
 class DailyUpdateResult:
-    """Summary returned by ``run_daily_update``. All counts are non-negative."""
+    """Summary returned by ``run_daily_update``. All counts are non-negative.
+
+    ``gaps_filled_rows`` / ``gaps_filled_symbols`` let the API surface
+    a "filled N rows across M symbols" note in the manual-refresh
+    success banner (Workstream B). A scheduled run that found no gaps
+    also reports 0/0 — the scheduler job shortcircuits before fetching.
+    """
 
     market_open: bool
     session_date: date
@@ -72,6 +102,11 @@ class DailyUpdateResult:
     snapshots_composed: int
     snapshots_failed: int
     market_posture: MarketPosture | None
+    # Workstream B (2026-04-21): gap-aware refresh counters. Defaulted
+    # to 0 so older test fixtures that construct DailyUpdateResult
+    # positionally keep compiling.
+    gaps_filled_rows: int = 0
+    gaps_filled_symbols: int = 0
 
 
 async def run_daily_update(
@@ -79,78 +114,130 @@ async def run_daily_update(
     db: Session,
     data_source: DataSource,
     settings: Settings,
+    trigger: TriggerMode = "scheduled",
 ) -> DailyUpdateResult:
     """Run the daily ingestion job once.
 
     Idempotent: safe to re-run the same day — UNIQUE constraints +
     UPSERT keep state stable (rule 12).
+
+    ``trigger`` distinguishes the scheduled nightly job (which
+    short-circuits when no gaps are detected) from a manual click on
+    "立即更新" (which always fetches at least the last trading day, so
+    the user never gets a silent no-op).
     """
     session_day = last_trading_day_et()
     if not is_trading_day_et():
         logger.info("daily_update_skipped_market_closed", date=str(session_day))
-        return DailyUpdateResult(
-            market_open=False,
-            session_date=session_day,
-            symbols_requested=0,
-            symbols_succeeded=0,
-            symbols_failed=0,
-            symbols_delisted=0,
-            price_rows_upserted=0,
-            macro_rows_upserted=0,
-            macro_series_failed=0,
-            indicators_computed_symbols=0,
-            indicators_failed_symbols=0,
-            snapshots_composed=0,
-            snapshots_failed=0,
-            market_posture=None,
-        )
+        return _empty_result(session_day, market_open=False)
 
     watchlist = WatchlistRepository(db)
     prices = DailyPriceRepository(db)
     macro = MacroRepository(db)
 
-    symbols = list(watchlist.distinct_symbols_across_users())
-    logger.info("daily_update_start", symbols=len(symbols), date=str(session_day))
+    # Union with SYSTEM_SYMBOLS so SPY is fetched even when no user has
+    # added it — indicators that reference the SPX proxy (relative
+    # strength, A/D Day Count) would otherwise degrade to
+    # data_sufficient=False on a freshly installed system.
+    symbols = sorted(set(watchlist.distinct_symbols_across_users()) | SYSTEM_SYMBOLS)
+    logger.info(
+        "daily_update_start",
+        symbols=len(symbols),
+        date=str(session_day),
+        trigger=trigger,
+    )
 
     price_rows_total = 0
+    gaps_filled_rows = 0
+    gaps_filled_symbols = 0
     succeeded = 0
     failed = 0
     delisted = 0
 
     if symbols:
-        try:
-            bulk = await data_source.bulk_download(symbols, period="2y")
-        except DataSourceError as exc:
-            logger.warning("daily_update_bulk_failed", details=exc.details)
-            bulk = {}
+        # Compute per-symbol gaps up front. Bounded lookback prevents a
+        # corrupt/empty DB from triggering an unbounded backfill.
+        gaps = prices.find_gaps_for_symbols(symbols, lookback_days=_GAP_LOOKBACK_TRADING_DAYS)
+        any_gaps = any(dates for dates in gaps.values())
 
-        for sym in symbols:
-            frame = bulk.get(sym)
+        if not any_gaps and trigger == "scheduled":
+            logger.debug(
+                "daily_update_no_gaps_scheduled_skip",
+                date=str(session_day),
+                symbols=len(symbols),
+            )
+            # Still run macro + compose passes — scheduled job owes the
+            # nightly indicator / snapshot refresh even if no price rows
+            # need filling (e.g., market closed tomorrow but macro moved).
+        else:
+            # Widest window: from the oldest missing date across all
+            # symbols to the last trading day. Manual runs with no gaps
+            # collapse to just the last trading day (end==start).
+            oldest_gap = _oldest_gap(gaps) if any_gaps else session_day
+            start_date = oldest_gap
+            end_date = session_day
+            period = _period_for_window(start_date=start_date, end_date=end_date)
+
             try:
-                upserted = await _persist_symbol(sym, frame, prices=prices, watchlist=watchlist)
+                bulk = await data_source.bulk_download(symbols, period=period)
             except DataSourceError as exc:
-                reason = exc.details.get("reason") if isinstance(exc.details, dict) else None
-                if reason == "delisted_or_invalid":
-                    delisted += 1
-                else:
-                    failed += 1
-                continue
-            except Exception as exc:
-                failed += 1
-                logger.warning(
-                    "daily_update_symbol_failed",
-                    symbol=sym,
-                    error_type=type(exc).__name__,
-                    error=str(exc),
-                )
-                continue
-            if upserted == 0:
-                failed += 1
-                continue
-            price_rows_total += upserted
-            succeeded += 1
+                logger.warning("daily_update_bulk_failed", details=exc.details)
+                bulk = {}
 
-        db.commit()
+            # When no gaps + manual trigger, treat every symbol as
+            # needing just ``session_day`` so we persist the latest
+            # close but stay idempotent on re-click.
+            effective_gaps: dict[str, set[date]] = {
+                sym.upper(): (set(gaps.get(sym.upper(), [])) if any_gaps else {session_day})
+                for sym in symbols
+            }
+
+            for sym in symbols:
+                frame = bulk.get(sym)
+                allowed = effective_gaps.get(sym.upper(), set())
+                try:
+                    upserted = await _persist_symbol(
+                        sym,
+                        frame,
+                        prices=prices,
+                        watchlist=watchlist,
+                        allowed_dates=allowed,
+                    )
+                except DataSourceError as exc:
+                    reason = exc.details.get("reason") if isinstance(exc.details, dict) else None
+                    if reason == "delisted_or_invalid":
+                        delisted += 1
+                    else:
+                        failed += 1
+                    continue
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "daily_update_symbol_failed",
+                        symbol=sym,
+                        error_type=type(exc).__name__,
+                    )
+                    logger.debug(
+                        "daily_update_symbol_failed_detail",
+                        symbol=sym,
+                        error=str(exc),
+                    )
+                    continue
+                if upserted == 0:
+                    # No rows written — if gaps were expected, count as
+                    # a soft failure. The manual-no-gap path also lands
+                    # here when yfinance returned no row for session_day
+                    # yet (common pre-close) which is benign.
+                    if any_gaps and allowed:
+                        failed += 1
+                    continue
+                price_rows_total += upserted
+                if any_gaps and sym.upper() in gaps and gaps[sym.upper()]:
+                    gaps_filled_rows += upserted
+                    gaps_filled_symbols += 1
+                succeeded += 1
+
+            db.commit()
 
     macro_rows_total, macro_series_failed = await _ingest_macro(
         macro=macro,
@@ -164,20 +251,29 @@ async def run_daily_update(
     # once against the SPX frame + macro series.
     # Phase 3: compose + persist signals using the already-in-memory
     # IndicatorResult dicts (avoids a DB round-trip).
-    compute_outcome = _compute_and_compose_for_all(
-        db=db,
-        symbols=symbols,
-        session_day=session_day,
-    )
+    #
+    # Snapshot-write mutex held only around the sync compute+persist
+    # phase — never across the ``await`` calls above, which would
+    # stall the event loop. A concurrent backfill waiting here for
+    # the mutex is the intended design.
+    with snapshot_write_mutex():
+        compute_outcome = _compute_and_compose_for_all(
+            db=db,
+            symbols=symbols,
+            session_day=session_day,
+        )
 
     logger.info(
         "daily_update_complete",
         date=str(session_day),
+        trigger=trigger,
         symbols_requested=len(symbols),
         symbols_succeeded=succeeded,
         symbols_failed=failed,
         symbols_delisted=delisted,
         price_rows=price_rows_total,
+        gaps_filled_rows=gaps_filled_rows,
+        gaps_filled_symbols=gaps_filled_symbols,
         macro_rows=macro_rows_total,
         indicators_ok=compute_outcome.indicators_ok,
         indicators_failed=compute_outcome.indicators_failed,
@@ -204,7 +300,72 @@ async def run_daily_update(
         snapshots_composed=compute_outcome.snapshots_ok,
         snapshots_failed=compute_outcome.snapshots_failed,
         market_posture=compute_outcome.market_posture,
+        gaps_filled_rows=gaps_filled_rows,
+        gaps_filled_symbols=gaps_filled_symbols,
     )
+
+
+def _empty_result(session_day: date, *, market_open: bool) -> DailyUpdateResult:
+    """Zero-filled :class:`DailyUpdateResult` for the market-closed path."""
+    return DailyUpdateResult(
+        market_open=market_open,
+        session_date=session_day,
+        symbols_requested=0,
+        symbols_succeeded=0,
+        symbols_failed=0,
+        symbols_delisted=0,
+        price_rows_upserted=0,
+        macro_rows_upserted=0,
+        macro_series_failed=0,
+        indicators_computed_symbols=0,
+        indicators_failed_symbols=0,
+        snapshots_composed=0,
+        snapshots_failed=0,
+        market_posture=None,
+        gaps_filled_rows=0,
+        gaps_filled_symbols=0,
+    )
+
+
+def _oldest_gap(gaps: dict[str, list[date]]) -> date:
+    """Earliest missing date across every symbol's gap set.
+
+    Caller is expected to have verified ``gaps`` contains at least one
+    non-empty entry — we still guard against the empty case so callers
+    don't need a defensive check either.
+    """
+    oldest: date | None = None
+    for dates in gaps.values():
+        if not dates:
+            continue
+        candidate = dates[0]  # lists from find_gaps_for_symbols are sorted ascending
+        if oldest is None or candidate < oldest:
+            oldest = candidate
+    if oldest is None:
+        # Should not happen when any_gaps is True, but keep the type
+        # narrowed and fall back to today_et — yfinance will return the
+        # most recent session.
+        return last_trading_day_et()
+    return oldest
+
+
+def _period_for_window(*, start_date: date, end_date: date) -> str:
+    """yfinance ``period`` string covering the ``[start_date, end_date]`` span.
+
+    The DataSource abstraction speaks ``period`` strings (not
+    start/end dates) to stay uniform across providers. We convert the
+    calendar span into ``"{N}d"`` and add a small buffer so the
+    upstream response definitely covers the oldest gap. Gap-specific
+    filtering happens downstream in :func:`_persist_symbol`.
+    """
+    # Calendar-day span + small buffer so boundary sessions are covered
+    # even if yfinance trims the earliest row in its rolling window.
+    span_days = max((end_date - start_date).days + 1, 1)
+    buffered = span_days + 5
+    # Floor at 5 days so the manual-no-gap path doesn't emit "1d"
+    # (yfinance's "1d" is intraday — we want a daily bar).
+    buffered = max(buffered, 5)
+    return f"{buffered}d"
 
 
 @dataclass(frozen=True)
@@ -320,12 +481,19 @@ async def _persist_symbol(
     *,
     prices: DailyPriceRepository,
     watchlist: WatchlistRepository,
+    allowed_dates: set[date] | None = None,
 ) -> int:
     """Persist + update watchlist rows for a single ticker.
 
     Acquires the per-symbol lock so a concurrent cold-start backfill
     for the same ticker doesn't race the daily job (even though daily
     should be the only writer at 06:30 ET, belt-and-suspenders).
+
+    ``allowed_dates``: when provided, only rows whose date is in the
+    set are UPSERTed. The rest of the frame is dropped silently.
+    Enables the gap-aware flow to persist exactly the missing days
+    without touching already-correct history (idempotency — rule 12).
+    Pass ``None`` to accept every row (legacy full-ingest behavior).
     """
     lock = await get_symbol_lock(symbol)
     async with lock:
@@ -333,6 +501,14 @@ async def _persist_symbol(
             _mark_watchlist_rows(watchlist, symbol=symbol, status="delisted", mark_refreshed=False)
             raise DataSourceError(details={"reason": "delisted_or_invalid", "symbol": symbol})
         rows = list(iter_daily_price_rows(symbol, frame))
+        if allowed_dates is not None:
+            if not allowed_dates:
+                # Symbol had no gaps on a gap-aware run — persist zero
+                # rows but still mark the watchlist row refreshed so
+                # the UI knows we visited this ticker.
+                _mark_watchlist_rows(watchlist, symbol=symbol, status="ready", mark_refreshed=True)
+                return 0
+            rows = [r for r in rows if r["date"] in allowed_dates]
         upserted = prices.upsert_many(rows)
         _mark_watchlist_rows(watchlist, symbol=symbol, status="ready", mark_refreshed=True)
         return upserted

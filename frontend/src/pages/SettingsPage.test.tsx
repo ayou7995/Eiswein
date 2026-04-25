@@ -92,6 +92,9 @@ describe('SettingsPage', () => {
           body: { data: [], total: 0, has_more: false },
         };
       }
+      if (url.includes('/broker/schwab/status')) {
+        return { status: 200, body: { connected: false } };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
@@ -123,6 +126,9 @@ describe('SettingsPage', () => {
       }
       if (url.endsWith('/api/v1/watchlist')) {
         return { status: 200, body: { data: [], total: 0, has_more: false } };
+      }
+      if (url.includes('/broker/schwab/status')) {
+        return { status: 200, body: { connected: false } };
       }
       if (url.includes('/settings/password')) {
         return {
@@ -170,6 +176,9 @@ describe('SettingsPage', () => {
       }
       if (url.endsWith('/api/v1/watchlist')) {
         return { status: 200, body: { data: [], total: 0, has_more: false } };
+      }
+      if (url.includes('/broker/schwab/status')) {
+        return { status: 200, body: { connected: false } };
       }
       throw new Error(`unexpected fetch ${url}`);
     });

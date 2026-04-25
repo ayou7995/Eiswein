@@ -298,6 +298,10 @@ class DataRefreshResponse(BaseModel):
     job_id: str
     started_at: datetime
     market_open: bool
+    # Workstream B: gap-fill counts so the frontend can render the
+    # "filled N rows across M symbols" success banner in zh-TW.
+    gaps_filled_rows: int = 0
+    gaps_filled_symbols: int = 0
 
 
 @router.post(
@@ -328,6 +332,7 @@ async def data_refresh(
         db=session,
         data_source=data_source,
         settings=settings,
+        trigger="manual",
     )
     duration = (_server_now() - started_at).total_seconds()
     if duration > 10.0:
@@ -347,6 +352,8 @@ async def data_refresh(
             "symbols_requested": result.symbols_requested,
             "symbols_succeeded": result.symbols_succeeded,
             "symbols_failed": result.symbols_failed,
+            "gaps_filled_rows": result.gaps_filled_rows,
+            "gaps_filled_symbols": result.gaps_filled_symbols,
             "duration_seconds": round(duration, 3),
         },
     )
@@ -355,6 +362,8 @@ async def data_refresh(
         job_id=job_id,
         started_at=started_at,
         market_open=result.market_open,
+        gaps_filled_rows=result.gaps_filled_rows,
+        gaps_filled_symbols=result.gaps_filled_symbols,
     )
 
 

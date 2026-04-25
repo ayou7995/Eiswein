@@ -89,6 +89,8 @@ describe('HistoryPage', () => {
                 data_status: 'ready',
                 added_at: '2026-04-10T00:00:00Z',
                 last_refresh_at: '2026-04-17T21:00:00Z',
+                is_system: false,
+                active_onboarding_job_id: null,
               },
             ],
             total: 1,

@@ -1,11 +1,11 @@
-"""WatchlistRepository — CRUD + UNIQUE + 100 cap."""
+"""WatchlistRepository — CRUD + UNIQUE + 100 cap + hard-delete."""
 
 from __future__ import annotations
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models import User, Watchlist
 from app.db.repositories.watchlist_repository import (
     DuplicateWatchlistEntryError,
     WatchlistFullError,
@@ -55,11 +55,55 @@ def test_watchlist_cap_enforced(db_session: Session) -> None:
         repo.add(user_id=uid, symbol="DDD", max_size=3)
 
 
+def test_remove_hard_deletes_row(db_session: Session) -> None:
+    uid = _mk_user(db_session, "alice")
+    repo = WatchlistRepository(db_session)
+    repo.add(user_id=uid, symbol="SPY", max_size=100)
+    repo.remove(user_id=uid, symbol="SPY")
+
+    # Row is physically gone — no tombstone, no history.
+    raw = db_session.query(Watchlist).filter(Watchlist.user_id == uid).all()
+    assert raw == []
+    assert list(repo.list_for_user(uid)) == []
+    assert repo.count_for_user(uid) == 0
+    assert repo.get(user_id=uid, symbol="SPY") is None
+
+
 def test_remove_raises_not_found_when_absent(db_session: Session) -> None:
     uid = _mk_user(db_session, "alice")
     repo = WatchlistRepository(db_session)
     with pytest.raises(NotFoundError):
         repo.remove(user_id=uid, symbol="NONEX")
+
+
+def test_re_add_after_remove_yields_fresh_row(db_session: Session) -> None:
+    uid = _mk_user(db_session, "alice")
+    repo = WatchlistRepository(db_session)
+    original = repo.add(user_id=uid, symbol="SPY", max_size=100)
+    original_added_at = original.added_at
+    repo.remove(user_id=uid, symbol="SPY")
+
+    revived = repo.add(user_id=uid, symbol="SPY", max_size=100)
+    # Fresh INSERT — status reset, added_at refreshed. (Without
+    # AUTOINCREMENT SQLite may reuse the PK value, so id equality is
+    # not a reliable proxy for "same row" — we pin on the observable
+    # state instead.)
+    assert revived.data_status == "pending"
+    assert revived.added_at >= original_added_at
+    assert revived.last_refresh_at is None
+    raw = db_session.query(Watchlist).filter(Watchlist.user_id == uid).all()
+    assert len(raw) == 1
+
+
+def test_cap_does_not_count_removed(db_session: Session) -> None:
+    uid = _mk_user(db_session, "alice")
+    repo = WatchlistRepository(db_session)
+    for sym in ("AAA", "BBB", "CCC"):
+        repo.add(user_id=uid, symbol=sym, max_size=3)
+    repo.remove(user_id=uid, symbol="AAA")
+    # Cap is 3 and one row was hard-deleted — we can add one more.
+    repo.add(user_id=uid, symbol="DDD", max_size=3)
+    assert repo.count_for_user(uid) == 3
 
 
 def test_set_status_updates_and_marks_refreshed(db_session: Session) -> None:

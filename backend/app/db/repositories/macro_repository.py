@@ -58,19 +58,26 @@ class MacroRepository:
         )
         return self._session.execute(stmt).scalar_one_or_none()
 
-    def get_all_for_series(self, series_id: str) -> list[MacroIndicator]:
+    def get_all_for_series(
+        self,
+        series_id: str,
+        *,
+        as_of: date | None = None,
+    ) -> list[MacroIndicator]:
         """All stored rows for the series, oldest-first.
 
-        Used by the Phase 2 indicator context builder: macro windows
-        are bounded (20-day SMA, 30-day delta) but we still read the
-        full series because FRED sometimes back-revises historical
-        values and we want the latest snapshot in the in-memory frame.
+        ``as_of`` is the lookahead-safe cutoff: when set, only rows with
+        ``date <= as_of`` are returned. Backfill MUST pass the
+        ``session_day`` it is computing for — otherwise the indicator
+        context would see future macro values and produce bogus signals
+        (a pure lookahead bias). Live ``daily_update`` calls with
+        ``session_day = last_trading_day_et()`` get identical behaviour
+        to the old unbounded query since no post-today rows exist.
         """
-        stmt = (
-            select(MacroIndicator)
-            .where(MacroIndicator.series_id == series_id.upper())
-            .order_by(MacroIndicator.date.asc())
-        )
+        stmt = select(MacroIndicator).where(MacroIndicator.series_id == series_id.upper())
+        if as_of is not None:
+            stmt = stmt.where(MacroIndicator.date <= as_of)
+        stmt = stmt.order_by(MacroIndicator.date.asc())
         return list(self._session.execute(stmt).scalars().all())
 
     def count_for_series(self, series_id: str) -> int:

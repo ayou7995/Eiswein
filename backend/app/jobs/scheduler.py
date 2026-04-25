@@ -38,6 +38,7 @@ from app.config import Settings
 from app.datasources.base import DataSource
 from app.jobs import backup as backup_job
 from app.jobs import daily_update as daily_update_job
+from app.jobs import schwab_token_refresh as schwab_token_refresh_job
 from app.jobs import token_reminder as token_reminder_job
 from app.jobs import vacuum as vacuum_job
 
@@ -47,7 +48,13 @@ _DEFAULT_LOCK_PATH = Path("data/scheduler.lock")
 _TIMEZONE = "America/New_York"
 
 
-JobId = Literal["daily_update", "backup", "token_reminder", "vacuum"]
+JobId = Literal[
+    "daily_update",
+    "backup",
+    "token_reminder",
+    "vacuum",
+    "schwab_token_refresh",
+]
 
 
 @dataclass(frozen=True)
@@ -238,6 +245,27 @@ def _register_jobs(
             "session_factory": session_factory,
         },
     )
+    # Schwab access tokens live 30 min; we refresh every 20 min so any
+    # user-initiated call in the remaining 10m has a warm token.
+    # Scheduler gate: if Schwab isn't configured the job is a no-op
+    # at run time anyway, but skipping registration avoids a noisy
+    # "skipped" log every 20 min in dev environments that don't have
+    # broker credentials.
+    if settings.schwab_enabled:
+        scheduler.add_job(
+            _schwab_token_refresh_wrapper,
+            trigger=CronTrigger(minute="*/20", timezone=_TIMEZONE),
+            id="schwab_token_refresh",
+            name="schwab_token_refresh",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=600,
+            kwargs={
+                "session_factory": session_factory,
+                "settings": settings,
+            },
+        )
 
 
 # --- apscheduler entry points --------------------------------------------
@@ -262,6 +290,10 @@ async def _token_reminder_wrapper(**kwargs: Any) -> None:
 
 async def _vacuum_wrapper(**kwargs: Any) -> None:
     await vacuum_job.run(**kwargs)
+
+
+async def _schwab_token_refresh_wrapper(**kwargs: Any) -> None:
+    await schwab_token_refresh_job.run(**kwargs)
 
 
 def get_scheduler_status(handle: SchedulerHandle | None) -> SchedulerStatus:

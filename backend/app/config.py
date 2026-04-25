@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -96,6 +96,29 @@ class Settings(BaseSettings):
     smtp_to: str | None = Field(default=None)
     smtp_starttls: bool = True
     smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+
+    # --- Schwab (Broker OAuth) ---
+    # Secrets are SecretStr so structlog/log_sanitizer can't accidentally
+    # dump them. URLs are plain strings (not secrets). All fields are
+    # optional: the app boots without Schwab credentials; routes and the
+    # token-refresh scheduler register only when `schwab_enabled` is True.
+    schwab_client_id: SecretStr | None = None
+    schwab_client_secret: SecretStr | None = None
+    schwab_redirect_uri: str = "https://127.0.0.1:8182/api/v1/broker/schwab/callback"
+    schwab_oauth_authorize_url: str = "https://api.schwabapi.com/v1/oauth/authorize"
+    schwab_oauth_token_url: str = "https://api.schwabapi.com/v1/oauth/token"
+    schwab_api_base_url: str = "https://api.schwabapi.com/trader/v1"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def schwab_enabled(self) -> bool:
+        """True iff both Schwab client id + secret are configured.
+
+        Gating flag for conditional route/scheduler registration. Kept as
+        a computed property so the rest of the app doesn't need to know
+        the individual secret fields exist.
+        """
+        return self.schwab_client_id is not None and self.schwab_client_secret is not None
 
     @field_validator("admin_password_hash")
     @classmethod

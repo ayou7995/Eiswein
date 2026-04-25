@@ -46,6 +46,7 @@ from app.security.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.security.rate_limit import limiter as app_limiter
+from app.services.backfill_service import mark_orphaned_backfills_failed
 
 
 def _seed_admin_if_needed(settings: Settings, users: UserRepository) -> None:
@@ -82,6 +83,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     with session_factory() as session:
         try:
             _seed_admin_if_needed(settings, UserRepository(session))
+            # Reap any backfill_job rows left in pending/running by a
+            # prior crash. Running this inside the admin-seed session
+            # keeps startup to a single commit.
+            mark_orphaned_backfills_failed(session=session)
             session.commit()
         except EisweinError:
             session.rollback()

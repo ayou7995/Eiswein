@@ -58,6 +58,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -169,6 +170,40 @@ class BrokerCredential(Base):
     token_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     token_tag: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
+    # Schwab-specific metadata (nullable — other brokers, or Schwab rows
+    # that haven't completed the post-OAuth "user preferences" fetch
+    # yet, leave these NULL). Each encrypted blob carries its own
+    # nonce/tag pair — AES-GCM requires a fresh nonce per ciphertext.
+    encrypted_streamer_customer_id: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    streamer_customer_id_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    streamer_customer_id_tag: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+    encrypted_streamer_correl_id: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    streamer_correl_id_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    streamer_correl_id_tag: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+    # JSON list [{plaintext_acct, hash_value, display_id}] encrypted as
+    # a single blob. The plaintext account number is PII; hash_value is
+    # what Schwab API calls expect; display_id is a short masked form
+    # for the UI.
+    encrypted_account_hashes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    account_hashes_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    account_hashes_tag: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+    # Streamer WebSocket URL (e.g. "wss://streamer-api.schwab.com/ws").
+    # Not a secret — Schwab publishes the endpoint; storing plain makes
+    # debugging easier.
+    streamer_socket_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Schwab market-data permission: "NP" (non-pro), "PRO", etc.
+    mkt_data_permission: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # Last "can we hit the Schwab API?" health check recorded by the
+    # token-refresh / broker-test code paths.
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_test_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_test_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_refreshed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -193,6 +228,12 @@ class Watchlist(Base):
     backfill path: ``pending`` → ``ready`` (success) or ``failed`` / ``delisted``.
     The frontend polls ``GET /api/v1/ticker/{symbol}?only_status=1`` to
     display the appropriate UI while backfill finishes.
+
+    Hard-delete: DELETE requests remove the row. ``added_at`` remains as
+    the sole audit timestamp ("when did I add this?"). Historical-replay
+    backfill uses :meth:`WatchlistRepository.distinct_symbols_across_users`
+    (current-watchlist semantics) rather than reconstructing per-day
+    membership, so the soft-delete tombstone carried no real value.
     """
 
     __tablename__ = "watchlist"
@@ -479,6 +520,19 @@ class Trade(Base):
     __table_args__ = (
         Index("ix_trades_user_executed_at", "user_id", "executed_at"),
         Index("ix_trades_user_symbol_executed_at", "user_id", "symbol", "executed_at"),
+        # Partial unique for idempotent broker-CSV imports. Kept in sync
+        # with migration 0008. Both dialect predicates set so the
+        # declarative schema (used by tests' create_all) matches the
+        # Alembic-produced schema on SQLite and Postgres alike.
+        Index(
+            "uq_trades_source_external_id",
+            "user_id",
+            "source",
+            "external_id",
+            unique=True,
+            sqlite_where=text("external_id IS NOT NULL"),
+            postgresql_where=text("external_id IS NOT NULL"),
+        ),
         CheckConstraint("shares > 0", name="ck_trades_shares_positive"),
         CheckConstraint("price > 0", name="ck_trades_price_positive"),
         CheckConstraint("side IN ('buy','sell')", name="ck_trades_side_valid"),
@@ -500,6 +554,85 @@ class Trade(Base):
     )
     realized_pnl: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Provenance of this trade row. "manual" for UI-entered rows;
+    # "robinhood"/"moomoo"/"schwab" for CSV/API imports. NOT NULL with a
+    # server default so Alembic can backfill existing rows on upgrade.
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="manual", default="manual"
+    )
+    # Broker-supplied (or deterministically-derived) trade identifier used
+    # to dedup re-imports. Nullable — manual rows don't have one.
+    external_id: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class BackfillJob(Base):
+    """State row for one long-running job (onboarding or revalidation).
+
+    Two ``kind`` values share this table:
+
+    * ``onboarding`` — a single watchlist symbol's cold-start price
+      fetch plus gap-fill of ticker_snapshot rows against every
+      existing market_snapshot date. ``symbol`` is non-NULL; ``force``
+      is always False (we never overwrite during onboarding).
+    * ``revalidation`` — the full historical replay fired when a user
+      clicks "re-run indicators". ``symbol`` is NULL; ``force`` is
+      True (the whole point is to rewrite stale rows). ``from_date``
+      / ``to_date`` span the oldest stored market_snapshot to today.
+
+    Only one row is ever ``pending``/``running`` at a time — the
+    repository's :meth:`get_active` helper is the server-side guard
+    (repositories don't hold locks, so the scheduler + HTTP layers
+    cooperate). Terminal states are ``completed``, ``cancelled``,
+    ``failed``; terminal rows set ``finished_at``.
+
+    ``cancel_requested`` is the cooperative-cancel flag flipped by the
+    HTTP ``cancel`` endpoint. The orchestrator polls it between days
+    and exits cleanly, marking ``state='cancelled'``.
+
+    ``created_by_user_id`` is a plain integer column (no FK) — SQLite
+    FK enforcement is off in this codebase and the user table is
+    tiny, so adding a constraint here would be ceremony without
+    runtime value.
+    """
+
+    __tablename__ = "backfill_job"
+    __table_args__ = (Index("ix_backfill_job_state_created_at", "state", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # ``kind`` discriminates onboarding vs revalidation runs. Migration
+    # 0014 gives legacy rows a server default of 'revalidation' so they
+    # surface sensibly in the jobs UI.
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="revalidation", server_default="revalidation"
+    )
+    # Non-NULL for onboarding jobs. NULL for revalidation jobs (they
+    # span every symbol in the watchlist). Stored upper-cased by the
+    # service layer; no FK — the watchlist row can disappear mid-run.
+    symbol: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    from_date: Mapped[date] = mapped_column(Date, nullable=False)
+    to_date: Mapped[date] = mapped_column(Date, nullable=False)
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    force: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    processed_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    total_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped_existing_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    failed_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    created_by_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
     )

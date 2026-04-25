@@ -3,10 +3,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { WatchlistSection } from '../components/WatchlistSection';
+import { SchwabConnectCard } from '../components/SchwabConnectCard';
+import { WatchlistManager } from '../components/WatchlistManager';
 import { useAuditLog, useChangePassword, useDataRefresh, useSystemInfo } from '../hooks/useSettings';
 import { EisweinApiError } from '../api/errors';
 import type { AuditEntry } from '../api/settings';
+import { relativeTime } from '../lib/time';
 
 function formatBytes(bytes: number | null): string {
   if (bytes == null) return '—';
@@ -14,25 +16,6 @@ function formatBytes(bytes: number | null): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return '尚未執行';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const diffMs = Date.now() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return '剛剛';
-  if (diffMin < 60) return `${diffMin} 分鐘前`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr} 小時前`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay} 天前`;
-  return date.toLocaleString('zh-TW', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
 }
 
 const EVENT_LABELS: Record<string, string> = {
@@ -58,8 +41,9 @@ export function SettingsPage(): JSX.Element {
       </header>
 
       <SystemInfoCard />
+      <SchwabConnectCard />
       <DataRefreshCard />
-      <WatchlistSection />
+      <WatchlistManager />
       <PasswordChangeCard />
       <AuditLogCard />
     </div>
@@ -139,11 +123,17 @@ function DataRefreshCard(): JSX.Element {
     setErrorMessage(null);
     try {
       const result = await mutation.mutateAsync();
-      setSuccessMessage(
-        result.market_open
-          ? '資料已更新。'
-          : '資料更新完成（今日市場未開盤，僅同步最近交易日）。',
-      );
+      if (result.gaps_filled_rows > 0) {
+        setSuccessMessage(
+          `補齊了 ${result.gaps_filled_rows} 筆資料，覆蓋 ${result.gaps_filled_symbols} 個股票。`,
+        );
+      } else {
+        setSuccessMessage(
+          result.market_open
+            ? '已是最新。'
+            : '已是最新（今日市場未開盤，僅同步最近交易日）。',
+        );
+      }
     } catch (err) {
       if (err instanceof EisweinApiError) {
         if (err.code === 'rate_limited') {

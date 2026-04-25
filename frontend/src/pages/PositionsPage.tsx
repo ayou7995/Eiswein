@@ -1,15 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { Modal } from '../components/Modal';
 import { PositionForm, type PositionFormValues } from '../components/PositionForm';
-import { TradeLogTable } from '../components/TradeLogTable';
+import { PositionsTable } from '../components/PositionsTable';
 import { AllocationPieChart, type PieSlice } from '../components/charts/AllocationPieChart';
 import {
   useAddToPosition,
   useClosePosition,
   useCreatePosition,
-  usePosition,
   usePositions,
   useReducePosition,
 } from '../hooks/usePositions';
@@ -17,7 +15,6 @@ import { useWatchlist } from '../hooks/useWatchlist';
 import { EisweinApiError } from '../api/errors';
 import { parseDecimalString } from '../api/tickerSignal';
 import type { PositionResponse } from '../api/positions';
-import { ROUTES } from '../lib/constants';
 
 type PositionsTab = 'open' | 'all';
 
@@ -476,166 +473,4 @@ function Stat({ label, value, valueClass = 'text-slate-100' }: StatProps): JSX.E
       <dd className={`mt-0.5 font-mono text-lg ${valueClass}`}>{value}</dd>
     </div>
   );
-}
-
-interface PositionsTableProps {
-  positions: readonly PositionResponse[];
-  expandedId: number | null;
-  onToggle: (id: number) => void;
-  onAdd: (p: PositionResponse) => void;
-  onReduce: (p: PositionResponse) => void;
-  onClose: (p: PositionResponse) => void;
-}
-
-function PositionsTable({
-  positions,
-  expandedId,
-  onToggle,
-  onAdd,
-  onReduce,
-  onClose,
-}: PositionsTableProps): JSX.Element {
-  return (
-    <div className="flex flex-col gap-2" data-testid="positions-list">
-      {positions.map((p) => (
-        <PositionRow
-          key={p.id}
-          position={p}
-          expanded={expandedId === p.id}
-          onToggle={() => onToggle(p.id)}
-          onAdd={() => onAdd(p)}
-          onReduce={() => onReduce(p)}
-          onClose={() => onClose(p)}
-        />
-      ))}
-    </div>
-  );
-}
-
-interface PositionRowProps {
-  position: PositionResponse;
-  expanded: boolean;
-  onToggle: () => void;
-  onAdd: () => void;
-  onReduce: () => void;
-  onClose: () => void;
-}
-
-function PositionRow({
-  position,
-  expanded,
-  onToggle,
-  onAdd,
-  onReduce,
-  onClose,
-}: PositionRowProps): JSX.Element {
-  const unrealized = parseDecimalString(position.unrealized_pnl);
-  const currentPrice = parseDecimalString(position.current_price);
-  const isClosed = position.closed_at != null;
-
-  return (
-    <article className="rounded-md border border-slate-800 bg-slate-950/40">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-controls={`position-detail-${position.id}`}
-        className="flex w-full flex-wrap items-center justify-between gap-3 px-3 py-3 text-left hover:bg-slate-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-      >
-        <div className="flex flex-col">
-          <Link
-            to={ROUTES.TICKER.replace(':symbol', position.symbol)}
-            onClick={(e) => e.stopPropagation()}
-            className="font-mono text-base font-semibold text-slate-100 hover:underline"
-          >
-            {position.symbol}
-          </Link>
-          {isClosed && (
-            <span className="text-xs text-slate-500">已平倉</span>
-          )}
-        </div>
-        <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
-          <dt className="text-slate-500">股數</dt>
-          <dd className="font-mono text-slate-200">{formatShares(position.shares)}</dd>
-          <dt className="text-slate-500">均成本</dt>
-          <dd className="font-mono text-slate-200">
-            {formatCurrency(parseDecimalString(position.avg_cost))}
-          </dd>
-          <dt className="text-slate-500">現價</dt>
-          <dd className="font-mono text-slate-200">{formatCurrency(currentPrice)}</dd>
-          <dt className="text-slate-500">未實現損益</dt>
-          <dd className={`font-mono ${pnlClass(unrealized)}`}>{formatCurrency(unrealized)}</dd>
-        </dl>
-      </button>
-
-      {!isClosed && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 bg-slate-900/40 px-3 py-2">
-          <ActionButton onClick={onAdd}>加碼</ActionButton>
-          <ActionButton onClick={onReduce}>減碼</ActionButton>
-          <ActionButton onClick={onClose} destructive>
-            關閉
-          </ActionButton>
-        </div>
-      )}
-
-      {expanded && (
-        <div id={`position-detail-${position.id}`} className="border-t border-slate-800 p-3">
-          <PositionDetailPanel positionId={position.id} />
-        </div>
-      )}
-    </article>
-  );
-}
-
-interface ActionButtonProps {
-  onClick: () => void;
-  children: React.ReactNode;
-  destructive?: boolean;
-}
-
-function ActionButton({ onClick, children, destructive = false }: ActionButtonProps): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        destructive
-          ? 'rounded-md border border-signal-red/40 bg-slate-900 px-3 py-1 text-xs text-signal-red hover:border-signal-red hover:bg-signal-red/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-red'
-          : 'rounded-md border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:border-sky-500 hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400'
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-interface PositionDetailPanelProps {
-  positionId: number;
-}
-
-function PositionDetailPanel({ positionId }: PositionDetailPanelProps): JSX.Element {
-  const { data, isLoading, isError, refetch } = usePosition(positionId);
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        <LoadingSpinner label="載入交易紀錄…" />
-        <span>載入交易紀錄…</span>
-      </div>
-    );
-  }
-  if (isError || !data) {
-    return (
-      <div className="flex items-center justify-between rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">
-        <span>載入交易紀錄失敗。</span>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="underline hover:text-signal-red"
-        >
-          重試
-        </button>
-      </div>
-    );
-  }
-  return <TradeLogTable trades={data.recent_trades} />;
 }

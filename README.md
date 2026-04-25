@@ -6,13 +6,42 @@ Inspired by Heaton's Sherry trading system. Positioning: systematic decision-sup
 
 ## Status
 
-Phase 3 complete (signal composition layer: D1a Direction +
-D1b Timing decision tables, market-posture classifier, 3-tier entry
-prices, dynamic stop-loss, Pros/Cons structured list, TickerSnapshot /
-MarketSnapshot / MarketPostureStreak persistence, two new read
-endpoints). Phase 4 (dashboard UI) is next. See
-`docs/IMPLEMENTATION_PLAN.md` for the full phased plan and
-`docs/STAFF_REVIEW_DECISIONS.md` for locked technical decisions.
+Phases 1-6 complete. Frontend wired through Dashboard, History,
+Positions, Settings, and per-ticker detail pages. APScheduler
+running daily ingestion + nightly backups + email summary. Schwab
+S1 OAuth + Robinhood/moomoo CSV import + watchlist-driven onboarding
+all live. Deploy to a Cloudflare-Tunnel-fronted VM is the next
+remaining milestone — see `docs/IMPLEMENTATION_PLAN.md`.
+
+### Recent additions (post Phase 6)
+
+- **Indicator series + zh-TW summary** — every ticker indicator card
+  (RSI / MACD / BB / 50-200 MA / volume / relative strength) and
+  every market-regime card (SPX MA / VIX / yield spread / A/D Day /
+  DXY / Fed Funds) lazy-loads a 60-day chart + one-line plain-Chinese
+  judgment. Five chart components cover four visual archetypes:
+  `IndicatorMultiLine` (with optional shaded band, histogram, step
+  interpolation), `IndicatorBoundedLine` (threshold zones for RSI /
+  VIX), `IndicatorCategoricalBars` (A/D Day calendar strip),
+  `IndicatorVolumeBars` (volume bars colored by daily price direction).
+- **Generic broker CSV importer** — single `BrokerCsvImporter` powers
+  imports for 14 brokers (Robinhood, moomoo, Schwab, Fidelity, E*TRADE,
+  TD Ameritrade, Chase, Interactive Brokers, Vanguard, Webull, Merrill
+  Edge, SoFi, Public, Other). User picks broker at upload time;
+  `Trade.source` and dedup namespace track it.
+- **Watchlist concurrent onboarding queue** — adding 5+ tickers in
+  rapid succession now queues at the snapshot mutex instead of failing
+  with HTTP 409. Only revalidations remain exclusive.
+- **Positions page redesign** — dense sortable table (sort by market
+  value / P&L / shares), allocation %, single overflow menu replacing
+  the duplicate action button rows. Trade log dates are date-only.
+
+### Indicator series + import API surface (additive to Phase 3)
+
+- `GET    /api/v1/ticker/{symbol}/indicator/{name}/series` — 60-day series + `current` + `summary_zh` for `price_vs_ma | rsi | macd | bollinger | volume_anomaly | relative_strength`
+- `GET    /api/v1/market/indicator/{name}/series`    — 60-day (or 365 for `fed_rate`) series + `current` + `summary_zh` for `spx_ma | vix | yield_spread | ad_day | dxy | fed_rate`
+- `GET    /api/v1/import/brokers`                    — list of 14 supported broker keys + display labels for the upload-modal dropdown
+- `POST   /api/v1/import/trades/{preview,apply}`     — multipart upload with `broker` form field; `BrokerCsvImporter` parses any Robinhood-shaped CSV
 
 ### Phase 3 API surface (additive to Phase 1-2)
 
