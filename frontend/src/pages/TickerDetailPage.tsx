@@ -17,6 +17,7 @@ import { IndicatorVolumeBars } from '../components/charts/IndicatorVolumeBars';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ActionBadge } from '../components/ActionBadge';
 import { SignalBadge } from '../components/SignalBadge';
+import { Tooltip } from '../components/Tooltip';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
@@ -202,12 +203,11 @@ function TickerHeader({
             {signal.stop_loss && (
               <span data-testid="stop-loss-pill">
                 停損參考：
-                <span
-                  title="Sherry 系統：200MA × 0.97（3% 緩衝避免單日下影線假觸發）"
-                  className="cursor-help underline decoration-dotted decoration-slate-600 underline-offset-2"
-                >
-                  ${signal.stop_loss}
-                </span>
+                <Tooltip text="Sherry 系統：200MA × 0.97（3% 緩衝避免單日下影線假觸發）">
+                  <span className="cursor-help underline decoration-dotted decoration-slate-600 underline-offset-2">
+                    ${signal.stop_loss}
+                  </span>
+                </Tooltip>
               </span>
             )}
             <span>最近交易日：{signal.date}</span>

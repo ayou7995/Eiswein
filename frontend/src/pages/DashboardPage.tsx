@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ActionBadge } from '../components/ActionBadge';
 import { SignalBadge, type SignalTone } from '../components/SignalBadge';
+import { Tooltip } from '../components/Tooltip';
 import { ProsConsList } from '../components/ProsConsList';
 import {
   MarketRegimeIndicatorList,
@@ -262,7 +263,7 @@ function WatchlistOverviewCard(): JSX.Element {
         </p>
       )}
       {rows.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-slate-800">
+        <div className="rounded-md border border-slate-800">
           <table className="w-full text-sm" data-testid="watchlist-table">
             <thead className="bg-slate-900/80 text-xs uppercase text-slate-400">
               <tr>
@@ -408,17 +409,17 @@ function ToneDotGroup({ title, keys, byName }: ToneDotGroupProps): JSX.Element {
           const display = INDICATOR_DISPLAY[key] ?? key;
           const label = entry?.short_label ?? '尚無資料';
           return (
-            <span
-              key={key}
-              role="img"
-              aria-label={`${display}：${PROS_CONS_TONE_LABEL[tone]}（${label}）`}
-              title={`${display}：${label}`}
-              data-testid={`watchlist-tone-${key}`}
-              data-tone={tone}
-              className={`text-base leading-none ${entry ? PROS_CONS_TONE_CLASS[tone] : 'text-slate-700'}`}
-            >
-              ●
-            </span>
+            <Tooltip key={key} text={`${display}：${label}`} side="bottom">
+              <span
+                role="img"
+                aria-label={`${display}：${PROS_CONS_TONE_LABEL[tone]}（${label}）`}
+                data-testid={`watchlist-tone-${key}`}
+                data-tone={tone}
+                className={`text-base leading-none ${entry ? PROS_CONS_TONE_CLASS[tone] : 'text-slate-700'}`}
+              >
+                ●
+              </span>
+            </Tooltip>
           );
         })}
       </span>
