@@ -214,8 +214,9 @@ describe('TickerDetailPage', () => {
       // Timing modifier badge flows through the ActionBadge.
       expect(screen.getByTestId('action-badge-timing')).toHaveTextContent('✓ 時機好');
       expect(screen.getByTestId('range-6M')).toHaveAttribute('aria-checked', 'true');
-      // Entry tiers should show up as three PriceBars.
-      expect(screen.getAllByTestId('price-bar').length).toBeGreaterThanOrEqual(4);
+      // Stop loss reference (Sherry-style 200MA × 0.97) shown in header
+      // with the formula on a hover tooltip.
+      expect(screen.getByTestId('stop-loss-pill')).toBeInTheDocument();
     } finally {
       restore();
     }

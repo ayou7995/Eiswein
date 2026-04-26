@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CandlestickChart } from '../components/charts/CandlestickChart';
 import {
@@ -17,16 +17,11 @@ import { IndicatorVolumeBars } from '../components/charts/IndicatorVolumeBars';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ActionBadge } from '../components/ActionBadge';
 import { SignalBadge } from '../components/SignalBadge';
-import { ProsConsList } from '../components/ProsConsList';
-import { PriceBar } from '../components/PriceBar';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useIndicatorSeries } from '../hooks/useIndicatorSeries';
-import {
-  parseDecimalString,
-  type TickerSignalResponse,
-} from '../api/tickerSignal';
+import type { TickerSignalResponse } from '../api/tickerSignal';
 import type { IndicatorResult } from '../api/tickerIndicators';
 import type { PriceRange } from '../api/tickerPrices';
 import type {
@@ -120,12 +115,6 @@ export function TickerDetailPage(): JSX.Element {
   const indicatorsQuery = useTickerIndicators(symbol);
   const pricesQuery = useTickerPrices(symbol, range);
 
-  const latestClose = useMemo(() => {
-    const bars = pricesQuery.data?.bars ?? [];
-    const last = bars[bars.length - 1];
-    return last?.close ?? null;
-  }, [pricesQuery.data]);
-
   const signal = signalQuery.data;
   const signalError = signalQuery.error;
 
@@ -171,10 +160,6 @@ export function TickerDetailPage(): JSX.Element {
         indicators={indicatorsQuery.data?.indicators ?? null}
         isLoading={indicatorsQuery.isLoading}
       />
-
-      <EntryTiersCard signal={signal ?? null} latestClose={latestClose} />
-      <StopLossCard signal={signal ?? null} latestClose={latestClose} />
-      <ProsConsCard signal={signal ?? null} isLoading={signalQuery.isLoading} />
     </div>
   );
 }
@@ -214,6 +199,17 @@ function TickerHeader({
         </div>
         {signal && (
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            {signal.stop_loss && (
+              <span data-testid="stop-loss-pill">
+                停損參考：
+                <span
+                  title="Sherry 系統：200MA × 0.97（3% 緩衝避免單日下影線假觸發）"
+                  className="cursor-help underline decoration-dotted decoration-slate-600 underline-offset-2"
+                >
+                  ${signal.stop_loss}
+                </span>
+              </span>
+            )}
             <span>最近交易日：{signal.date}</span>
             <span>
               市場態勢：
@@ -530,131 +526,6 @@ function TimingCard({
           keys={TIMING_INDICATORS}
           emptyMessage="尚無時機指標資料。"
         />
-      )}
-    </section>
-  );
-}
-
-interface EntryTiersCardProps {
-  signal: TickerSignalResponse | null;
-  latestClose: number | null;
-}
-
-function EntryTiersCard({ signal, latestClose }: EntryTiersCardProps): JSX.Element {
-  const tiers = signal?.entry_tiers ?? null;
-  const [a, b, c] = tiers?.split_suggestion ?? [30, 40, 30];
-  return (
-    <section
-      aria-labelledby="entry-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header className="flex items-baseline justify-between">
-        <h2 id="entry-heading" className="text-lg font-semibold">
-          進場參考價位
-        </h2>
-        <span className="text-xs text-slate-500">僅供參考（{a}/{b}/{c}）</span>
-      </header>
-      {!signal && (
-        <p role="status" className="text-sm text-slate-400">
-          尚無進場參考。待下一次運算。
-        </p>
-      )}
-      {signal && tiers && (
-        <div className="flex flex-col gap-4">
-          <PriceBar
-            label="積極進場（50MA）"
-            currentPrice={latestClose}
-            targetPrice={parseDecimalString(tiers.aggressive)}
-            toneAboveTarget="neutral"
-            toneBelowTarget="green"
-          />
-          <PriceBar
-            label="理想進場（20MA / BB 中軌）"
-            currentPrice={latestClose}
-            targetPrice={parseDecimalString(tiers.ideal)}
-            toneAboveTarget="neutral"
-            toneBelowTarget="green"
-          />
-          <PriceBar
-            label="保守進場（200MA）"
-            currentPrice={latestClose}
-            targetPrice={parseDecimalString(tiers.conservative)}
-            toneAboveTarget="neutral"
-            toneBelowTarget="green"
-          />
-        </div>
-      )}
-    </section>
-  );
-}
-
-interface StopLossCardProps {
-  signal: TickerSignalResponse | null;
-  latestClose: number | null;
-}
-
-function StopLossCard({ signal, latestClose }: StopLossCardProps): JSX.Element {
-  const stopLoss = parseDecimalString(signal?.stop_loss ?? null);
-  const triggered =
-    stopLoss !== null && latestClose !== null && latestClose <= stopLoss;
-  return (
-    <section
-      aria-labelledby="stop-loss-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header>
-        <h2 id="stop-loss-heading" className="text-lg font-semibold">
-          停損參考
-        </h2>
-      </header>
-      {triggered && (
-        <div
-          role="alert"
-          className="rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-sm text-signal-red"
-        >
-          ⚠️ 現價已跌破停損參考，請檢視持倉。
-        </div>
-      )}
-      {!signal?.stop_loss && !signal && (
-        <p role="status" className="text-sm text-slate-400">
-          尚無停損參考。
-        </p>
-      )}
-      {signal && (
-        <PriceBar
-          label="停損參考"
-          currentPrice={latestClose}
-          targetPrice={stopLoss}
-          toneAboveTarget="green"
-          toneBelowTarget="red"
-        />
-      )}
-    </section>
-  );
-}
-
-interface ProsConsCardProps {
-  signal: TickerSignalResponse | null;
-  isLoading: boolean;
-}
-
-function ProsConsCard({ signal, isLoading }: ProsConsCardProps): JSX.Element {
-  return (
-    <section
-      aria-labelledby="pros-cons-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header>
-        <h2 id="pros-cons-heading" className="text-lg font-semibold">
-          Pros / Cons 總表
-        </h2>
-      </header>
-      {isLoading && <LoadingSpinner label="讀取 Pros/Cons…" />}
-      {signal && <ProsConsList items={signal.pros_cons} />}
-      {!isLoading && !signal && (
-        <p role="status" className="text-sm text-slate-400">
-          尚無 Pros/Cons 資料。
-        </p>
       )}
     </section>
   );
