@@ -203,7 +203,7 @@ function TickerHeader({
             {signal.stop_loss && (
               <span data-testid="stop-loss-pill">
                 停損參考：
-                <Tooltip text="Sherry 系統：200MA × 0.97（3% 緩衝避免單日下影線假觸發）">
+                <Tooltip text="200MA × 0.97">
                   <span className="cursor-help underline decoration-dotted decoration-slate-600 underline-offset-2">
                     ${signal.stop_loss}
                   </span>
