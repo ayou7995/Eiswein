@@ -10,6 +10,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { IndicatorMultiLine } from './charts/IndicatorMultiLine';
 import { IndicatorBoundedLine } from './charts/IndicatorBoundedLine';
 import { IndicatorCategoricalBars } from './charts/IndicatorCategoricalBars';
+import { SpxMaEnhancedDetail, SpxMaHeadlineExplainable } from './SpxMaEnhancedDetail';
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
   pro: { emoji: '🟢', ariaLabel: '利多訊號' },
@@ -99,7 +100,16 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:text-white"
         >
           <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
-          <span className="flex-1">{item.short_label}</span>
+          <span className="flex-1">
+            {item.indicator_name === 'spx_ma' ? (
+              <SpxMaHeadlineExplainable
+                shortLabel={item.short_label}
+                detail={item.detail}
+              />
+            ) : (
+              item.short_label
+            )}
+          </span>
           {(detailEntries.length > 0 || chartName !== null) && (
             <span aria-hidden="true" className="text-xs text-slate-500">
               詳細
@@ -108,15 +118,19 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
         </summary>
         <div className="border-t border-slate-800 bg-slate-950/40">
           {chartName !== null && hasOpened && <RegimeChartSection name={chartName} />}
-          {detailEntries.length > 0 && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
-              {detailEntries.map(([key, value]) => (
-                <div key={key} className="contents">
-                  <dt className="font-mono text-slate-500">{humanizeKey(key)}</dt>
-                  <dd className="font-mono text-slate-200">{renderValue(value)}</dd>
-                </div>
-              ))}
-            </dl>
+          {item.indicator_name === 'spx_ma' ? (
+            <SpxMaEnhancedDetail detail={item.detail} />
+          ) : (
+            detailEntries.length > 0 && (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
+                {detailEntries.map(([key, value]) => (
+                  <div key={key} className="contents">
+                    <dt className="font-mono text-slate-500">{humanizeKey(key)}</dt>
+                    <dd className="font-mono text-slate-200">{renderValue(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )
           )}
         </div>
       </details>
