@@ -35,13 +35,6 @@ const MACRO_CHART_NAME: ChartNameResolver = (indicatorName) => {
 
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = ['strong_buy', 'reduce', 'exit'];
 
-function dominantTone(greenCount: number, redCount: number): SignalTone {
-  if (greenCount === 0 && redCount === 0) return 'neutral';
-  if (greenCount > redCount) return 'green';
-  if (redCount > greenCount) return 'red';
-  return 'yellow';
-}
-
 function formatRefresh(refresh: Date | null): string {
   if (!refresh) return '尚未更新';
   return refresh.toLocaleString('zh-TW', {
@@ -280,7 +273,7 @@ function WatchlistOverviewCard(): JSX.Element {
                   建議動作
                 </th>
                 <th scope="col" className="px-3 py-2 text-left">
-                  方向訊號
+                  訊號分布
                 </th>
                 <th scope="col" className="px-3 py-2 text-left">
                   最近更新
@@ -303,12 +296,38 @@ interface WatchlistRowProps {
   row: WatchlistSignalRow;
 }
 
+const DIRECTION_INDICATOR_NAMES: readonly string[] = [
+  'price_vs_ma',
+  'rsi',
+  'volume_anomaly',
+  'relative_strength',
+];
+const TIMING_INDICATOR_NAMES: readonly string[] = ['macd', 'bollinger'];
+
+const INDICATOR_DISPLAY: Record<string, string> = {
+  price_vs_ma: '價格 vs MA',
+  rsi: 'RSI',
+  volume_anomaly: '成交量',
+  relative_strength: '相對強度',
+  macd: 'MACD',
+  bollinger: 'BB',
+};
+
+const PROS_CONS_TONE_CLASS: Record<'pro' | 'con' | 'neutral', string> = {
+  pro: 'text-signal-green',
+  con: 'text-signal-red',
+  neutral: 'text-amber-400',
+};
+
+const PROS_CONS_TONE_LABEL: Record<'pro' | 'con' | 'neutral', string> = {
+  pro: '綠燈',
+  con: '紅燈',
+  neutral: '黃燈',
+};
+
 function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
   const { symbol } = row.item;
   const signal = row.signal;
-  const tone: SignalTone = signal
-    ? dominantTone(signal.direction_green_count, signal.direction_red_count)
-    : 'neutral';
 
   return (
     <tr className="bg-slate-950/40 hover:bg-slate-900/60">
@@ -333,16 +352,77 @@ function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
       </td>
       <td className="px-3 py-2">
         {signal ? (
-          <SignalBadge
-            tone={tone}
-            ariaLabel={`方向訊號：${signal.direction_green_count} 綠、${signal.direction_red_count} 紅`}
-          />
+          <ToneDistributionStrip prosCons={signal.pros_cons} />
         ) : (
           <DataStatusBadge status={row.item.dataStatus} />
         )}
       </td>
       <td className="px-3 py-2 text-xs text-slate-400">{formatRefresh(row.item.lastRefreshAt)}</td>
     </tr>
+  );
+}
+
+interface ToneDistributionStripProps {
+  prosCons: ReadonlyArray<{
+    indicator_name: string;
+    tone: 'pro' | 'con' | 'neutral';
+    short_label: string;
+  }>;
+}
+
+function ToneDistributionStrip({ prosCons }: ToneDistributionStripProps): JSX.Element {
+  const byName = new Map(prosCons.map((item) => [item.indicator_name, item]));
+  return (
+    <div
+      data-testid="tone-distribution-strip"
+      className="flex items-center gap-3 text-xs text-slate-400"
+    >
+      <ToneDotGroup
+        title="方向"
+        keys={DIRECTION_INDICATOR_NAMES}
+        byName={byName}
+      />
+      <ToneDotGroup
+        title="時機"
+        keys={TIMING_INDICATOR_NAMES}
+        byName={byName}
+      />
+    </div>
+  );
+}
+
+interface ToneDotGroupProps {
+  title: string;
+  keys: readonly string[];
+  byName: Map<string, ToneDistributionStripProps['prosCons'][number]>;
+}
+
+function ToneDotGroup({ title, keys, byName }: ToneDotGroupProps): JSX.Element {
+  return (
+    <div role="group" aria-label={`${title}指標訊號`} className="flex items-center gap-1">
+      <span>{title}：</span>
+      <span className="flex items-center gap-0.5">
+        {keys.map((key) => {
+          const entry = byName.get(key);
+          const tone = entry?.tone ?? 'neutral';
+          const display = INDICATOR_DISPLAY[key] ?? key;
+          const label = entry?.short_label ?? '尚無資料';
+          return (
+            <span
+              key={key}
+              role="img"
+              aria-label={`${display}：${PROS_CONS_TONE_LABEL[tone]}（${label}）`}
+              title={`${display}：${label}`}
+              data-testid={`watchlist-tone-${key}`}
+              data-tone={tone}
+              className={`text-base leading-none ${entry ? PROS_CONS_TONE_CLASS[tone] : 'text-slate-700'}`}
+            >
+              ●
+            </span>
+          );
+        })}
+      </span>
+    </div>
   );
 }
 
