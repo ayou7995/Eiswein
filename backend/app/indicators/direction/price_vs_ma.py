@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float, sma
+from app.indicators._helpers import detect_ma_crosses, last_float, sma
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -44,6 +44,7 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
         return insufficient_result(NAME)
 
     signal, short_label = _classify(price=price, ma50=ma50, ma200=ma200)
+    golden_cross, death_cross = detect_ma_crosses(ma50_series, ma200_series)
     return IndicatorResult(
         name=NAME,
         value=price,
@@ -56,16 +57,24 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
             "ma200": ma200,
             "price_vs_ma50_pct": ((price - ma50) / ma50) * 100.0,
             "price_vs_ma200_pct": ((price - ma200) / ma200) * 100.0,
+            "golden_cross_10d": golden_cross,
+            "death_cross_10d": death_cross,
         },
         computed_at=datetime.now(UTC),
     )
 
 
 def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLiteral, str]:
+    """Same 3-tier rule as the SPX market regime indicator (C1).
+
+    Labels are intentionally short and parallel to ``spx_ma`` so the
+    per-ticker UI can reuse the same Pros/Cons rendering — the surrounding
+    page context already tells the user this is about an individual stock.
+    """
     if price > ma50 and price > ma200:
-        return SignalTone.GREEN, "價格站上 50/200MA"
+        return SignalTone.GREEN, "多頭排列"
     # Price at-or-above the long-term MA is holding the line — YELLOW,
     # not RED. RED means strictly below 200MA.
     if price >= ma200:
-        return SignalTone.YELLOW, "價格在 200MA 上、50MA 下"
-    return SignalTone.RED, "價格跌破 200MA"
+        return SignalTone.YELLOW, "中期多頭、短期偏弱"
+    return SignalTone.RED, "空頭趨勢"

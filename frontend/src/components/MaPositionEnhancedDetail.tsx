@@ -1,20 +1,25 @@
 import { z } from 'zod';
 import { Explainable, RuleTable } from './Explainable';
 
-// Detail fields written by `app/indicators/market_regime/spx_ma.py`. The
-// derived (cross-state / stretch / watchpoints) layer is computed here on
-// the client so the prototype shows up immediately on existing snapshots —
-// no daily_update re-run needed. If the backend later persists these
-// derivations as canonical fields, this component can swap to read them
-// without changing its public interface.
+// Detail fields written by `app/indicators/market_regime/spx_ma.py` and
+// `app/indicators/direction/price_vs_ma.py`. The derived
+// (cross-state / stretch / watchpoints) layer is computed here on the
+// client so the prototype shows up immediately on existing snapshots —
+// no daily_update re-run needed.
+//
+// `golden_cross_10d` / `death_cross_10d` are optional because per-ticker
+// rows written before INDICATOR_VERSION 1.1.0 don't have them. When
+// missing we default to false; the cross-state classifier degrades to
+// "已成立" tier (still correct, just lacks the "近期" detection until
+// the next daily_update overwrites the row).
 const baseDetailSchema = z.object({
   price: z.number(),
   ma50: z.number(),
   ma200: z.number(),
   price_vs_ma50_pct: z.number(),
   price_vs_ma200_pct: z.number(),
-  golden_cross_10d: z.boolean(),
-  death_cross_10d: z.boolean(),
+  golden_cross_10d: z.boolean().optional().default(false),
+  death_cross_10d: z.boolean().optional().default(false),
 });
 
 type BaseDetail = z.infer<typeof baseDetailSchema>;
@@ -129,17 +134,27 @@ const LEVEL_LABEL: Record<Watchpoint['level'], string> = {
   ma200: '200MA',
 };
 
-// Renders the indicator's headline ("SPX 多頭排列" / 中期多頭、短期偏弱
-// / 空頭趨勢) wrapped in an Explainable that exposes the 3-tier signal
+// Per-call labels for the headline rule popover. The two consumers (SPX
+// market regime, per-ticker direction) share the same 3-tier classification
+// but differ in the popover title and the trailing rationale note.
+export interface MaPositionHeadlineLabels {
+  ruleTitle: string;
+  ruleNote: string;
+}
+
+// Renders the indicator's headline (e.g. "多頭排列" / "中期多頭、短期偏弱"
+// / "空頭趨勢") wrapped in an Explainable that exposes the 3-tier signal
 // classification rule, with the current row highlighted. Used in the
-// market regime list summary so users can hover/click the headline
-// without expanding the row.
-export function SpxMaHeadlineExplainable({
+// market regime list summary AND the per-ticker direction list so users
+// can hover/click the headline without expanding the row.
+export function MaPositionHeadlineExplainable({
   shortLabel,
   detail,
+  labels,
 }: {
   shortLabel: string;
   detail: Record<string, unknown>;
+  labels: MaPositionHeadlineLabels;
 }): JSX.Element {
   const parsed = baseDetailSchema.safeParse(detail);
   if (!parsed.success) return <span>{shortLabel}</span>;
@@ -147,7 +162,7 @@ export function SpxMaHeadlineExplainable({
   const signal = classifySignal(d);
   return (
     <Explainable
-      title="SPX 紅黃綠燈規則"
+      title={labels.ruleTitle}
       explanation={
         <RuleTable
           preface="收盤價對 50MA / 200MA 位置決定主訊號："
@@ -169,7 +184,7 @@ export function SpxMaHeadlineExplainable({
             },
           ]}
           currentValueText={`你目前: 收盤=${d.price.toFixed(2)}, 50MA=${d.ma50.toFixed(2)}, 200MA=${d.ma200.toFixed(2)}`}
-          note="此燈號是市場態勢 4 票之 1（綠/紅/黃 → 進攻/防守/正常）；展開列可看更深入的距離尺標與看點。"
+          note={labels.ruleNote}
         />
       }
     >
@@ -178,13 +193,13 @@ export function SpxMaHeadlineExplainable({
   );
 }
 
-export interface SpxMaEnhancedDetailProps {
+export interface MaPositionEnhancedDetailProps {
   detail: Record<string, unknown>;
 }
 
-export function SpxMaEnhancedDetail({
+export function MaPositionEnhancedDetail({
   detail,
-}: SpxMaEnhancedDetailProps): JSX.Element | null {
+}: MaPositionEnhancedDetailProps): JSX.Element | null {
   const parsed = baseDetailSchema.safeParse(detail);
   if (!parsed.success) return null;
   const d = parsed.data;
@@ -295,7 +310,7 @@ function DistanceRow({ label, pct, stretch }: DistanceRowProps): JSX.Element {
                   },
                 ]}
                 currentValueText={`你目前 ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% → ${STRETCH_LABEL[stretch]}`}
-                note="2% 與 10% 是 SPX-style 指數調的閾值；個股可能用其他閾值。"
+                note="2% 與 10% 是統一閾值；個股 volatility 較高時，過度延伸線可能要再往上調。"
               />
             }
           >

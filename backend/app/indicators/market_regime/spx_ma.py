@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float, sma
+from app.indicators._helpers import detect_ma_crosses, last_float, sma
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -53,7 +53,7 @@ def compute_spx_ma(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
         return insufficient_result(NAME)
 
     signal, short_label = _classify(price=price, ma50=ma50, ma200=ma200)
-    golden_cross, death_cross = _detect_crosses(ma50_series, ma200_series)
+    golden_cross, death_cross = detect_ma_crosses(ma50_series, ma200_series)
 
     return IndicatorResult(
         name=NAME,
@@ -84,24 +84,3 @@ def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLit
     return SignalTone.RED, "SPX 空頭趨勢"
 
 
-def _detect_crosses(
-    ma50: pd.Series,
-    ma200: pd.Series,
-    lookback: int = 10,
-) -> tuple[bool, bool]:
-    """Detect a bullish/bearish 50×200 cross within the last ``lookback`` bars.
-
-    Returns ``(golden_cross, death_cross)`` — only one should be
-    truthy in normal market action, but both may be false when the
-    lines aren't near each other.
-    """
-    joined = ma50.to_frame("s50").join(ma200.to_frame("s200"), how="inner").dropna()
-    if len(joined) < 2:
-        return False, False
-    joined = joined.tail(lookback + 1)
-    if len(joined) < 2:
-        return False, False
-    diff = joined["s50"] - joined["s200"]
-    bullish = (diff.shift(1) <= 0) & (diff > 0)
-    bearish = (diff.shift(1) >= 0) & (diff < 0)
-    return bool(bullish.any()), bool(bearish.any())

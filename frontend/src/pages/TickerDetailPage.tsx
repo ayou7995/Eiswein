@@ -18,6 +18,10 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ActionBadge } from '../components/ActionBadge';
 import { SignalBadge } from '../components/SignalBadge';
 import { Tooltip } from '../components/Tooltip';
+import {
+  MaPositionEnhancedDetail,
+  MaPositionHeadlineExplainable,
+} from '../components/MaPositionEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
@@ -269,6 +273,12 @@ interface IndicatorRowProps {
   result: IndicatorResult;
 }
 
+const PRICE_VS_MA_HEADLINE_LABELS = {
+  ruleTitle: '價格 vs 50/200MA 規則',
+  ruleNote:
+    '此燈號是個股方向 4 項中的「位階」項；展開列可看距離尺標、近期黃金/死亡交叉、與看點。',
+};
+
 function IndicatorRow({
   symbol,
   indicatorKey,
@@ -280,34 +290,57 @@ function IndicatorRow({
   const hasChart = seriesName !== undefined;
   const expandable = hasDetail || hasChart;
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
+  const isPriceVsMa = indicatorKey === 'price_vs_ma';
+
+  // Non-expandable rows (insufficient data, no chart, no detail) keep
+  // the simple flat row — no <details> needed.
+  if (!expandable) {
+    return (
+      <li className="bg-slate-900/40">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+          <span className="min-w-[120px] text-slate-300">{title}</span>
+          <SignalBadge
+            tone={result.signal}
+            ariaLabel={`${title}：${result.short_label}`}
+          />
+          <span className="flex-1 text-slate-400">{result.short_label}</span>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <li className="bg-slate-900/40">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={`indicator-${indicatorKey}-body`}
-        disabled={!expandable}
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-default"
+      <details
+        onToggle={(event) =>
+          setOpen((event.currentTarget as HTMLDetailsElement).open)
+        }
       >
-        <span className="min-w-[120px] text-slate-300">{title}</span>
-        <SignalBadge
-          tone={result.signal}
-          ariaLabel={`${title}：${result.short_label}`}
-        />
-        <span className="flex-1 text-slate-400">{result.short_label}</span>
-        {expandable && (
+        <summary
+          data-testid={`indicator-row-${indicatorKey}-summary`}
+          className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+        >
+          <span className="min-w-[120px] text-slate-300">{title}</span>
+          <SignalBadge
+            tone={result.signal}
+            ariaLabel={`${title}：${result.short_label}`}
+          />
+          <span className="flex-1 text-slate-400">
+            {isPriceVsMa ? (
+              <MaPositionHeadlineExplainable
+                shortLabel={result.short_label}
+                detail={result.detail}
+                labels={PRICE_VS_MA_HEADLINE_LABELS}
+              />
+            ) : (
+              result.short_label
+            )}
+          </span>
           <span aria-hidden="true" className="text-xs text-slate-500">
             {open ? '收合' : '詳細'}
           </span>
-        )}
-      </button>
-      {open && (
-        <div
-          id={`indicator-${indicatorKey}-body`}
-          className="border-t border-slate-800 bg-slate-950/40"
-        >
+        </summary>
+        <div className="border-t border-slate-800 bg-slate-950/40">
           {seriesName && (
             <IndicatorChartSection
               symbol={symbol}
@@ -316,20 +349,26 @@ function IndicatorRow({
               enabled={open}
             />
           )}
-          {hasDetail && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
-              {Object.entries(result.detail).map(([k, v]) => (
-                <div key={k} className="contents">
-                  <dt className="font-mono text-slate-500">
-                    {k.replace(/_/g, ' ')}
-                  </dt>
-                  <dd className="font-mono text-slate-200">{formatDetail(v)}</dd>
-                </div>
-              ))}
-            </dl>
+          {isPriceVsMa ? (
+            <MaPositionEnhancedDetail detail={result.detail} />
+          ) : (
+            hasDetail && (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
+                {Object.entries(result.detail).map(([k, v]) => (
+                  <div key={k} className="contents">
+                    <dt className="font-mono text-slate-500">
+                      {k.replace(/_/g, ' ')}
+                    </dt>
+                    <dd className="font-mono text-slate-200">
+                      {formatDetail(v)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )
           )}
         </div>
-      )}
+      </details>
     </li>
   );
 }

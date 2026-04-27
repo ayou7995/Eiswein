@@ -118,3 +118,26 @@ def last_two_floats(series: pd.Series) -> tuple[float, float] | None:
     if len(cleaned) < 2:
         return None
     return (float(cleaned.iloc[-2]), float(cleaned.iloc[-1]))
+
+
+def detect_ma_crosses(
+    short_ma: pd.Series,
+    long_ma: pd.Series,
+    lookback: int = 10,
+) -> tuple[bool, bool]:
+    """Detect bullish/bearish MA cross within the last ``lookback`` bars.
+
+    Returns ``(golden_cross, death_cross)``. Used by both the SPX market
+    regime indicator and per-ticker price-vs-MA — same definition,
+    moved here so the formula has a single home.
+    """
+    joined = short_ma.to_frame("s").join(long_ma.to_frame("l"), how="inner").dropna()
+    if len(joined) < 2:
+        return False, False
+    joined = joined.tail(lookback + 1)
+    if len(joined) < 2:
+        return False, False
+    diff = joined["s"] - joined["l"]
+    bullish = (diff.shift(1) <= 0) & (diff > 0)
+    bearish = (diff.shift(1) >= 0) & (diff < 0)
+    return bool(bullish.any()), bool(bearish.any())

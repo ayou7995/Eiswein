@@ -10,7 +10,16 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { IndicatorMultiLine } from './charts/IndicatorMultiLine';
 import { IndicatorBoundedLine } from './charts/IndicatorBoundedLine';
 import { IndicatorCategoricalBars } from './charts/IndicatorCategoricalBars';
-import { SpxMaEnhancedDetail, SpxMaHeadlineExplainable } from './SpxMaEnhancedDetail';
+import {
+  MaPositionEnhancedDetail,
+  MaPositionHeadlineExplainable,
+} from './MaPositionEnhancedDetail';
+
+const SPX_MA_HEADLINE_LABELS = {
+  ruleTitle: 'SPX 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是市場態勢 4 票之 1（綠/紅/黃 → 進攻/防守/正常）；展開列可看距離尺標與看點。',
+};
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
   pro: { emoji: '🟢', ariaLabel: '利多訊號' },
@@ -102,9 +111,10 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
           <span className="flex-1">
             {item.indicator_name === 'spx_ma' ? (
-              <SpxMaHeadlineExplainable
+              <MaPositionHeadlineExplainable
                 shortLabel={item.short_label}
                 detail={item.detail}
+                labels={SPX_MA_HEADLINE_LABELS}
               />
             ) : (
               item.short_label
@@ -119,7 +129,7 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
         <div className="border-t border-slate-800 bg-slate-950/40">
           {chartName !== null && hasOpened && <RegimeChartSection name={chartName} />}
           {item.indicator_name === 'spx_ma' ? (
-            <SpxMaEnhancedDetail detail={item.detail} />
+            <MaPositionEnhancedDetail detail={item.detail} />
           ) : (
             detailEntries.length > 0 && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
