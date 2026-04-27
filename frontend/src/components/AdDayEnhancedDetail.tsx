@@ -133,6 +133,9 @@ function PositionSection({
           <span className="text-signal-red">🔴 出 {distrib}</span>
           <span className="mx-1 text-slate-600">·</span>
           <span className="text-slate-300">⚪ 中 {neutral}</span>
+          <span className="mx-1 text-slate-600">·</span>
+          <span className="font-mono tabular-nums text-slate-100">{formatNet(net)}</span>
+          <span className="ml-1 text-[10px] text-slate-500">淨值</span>
         </span>
       </div>
       <PositionGauge
@@ -141,7 +144,6 @@ function PositionSection({
         max={GAUGE_MAX}
         zones={ZONES}
         ariaLabel={`A/D Day ${windowDays} 日累計淨值 ${formatNet(net)}`}
-        valueSuffix="淨值"
         highlightCurrentZone
       />
     </section>

@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import type { ProsConsItem } from '../api/prosCons';
 import {
+  DEFAULT_RANGE_BY_INDICATOR,
+  MARKET_INDICATOR_RANGES,
   marketIndicatorSeriesNameSchema,
+  type MarketIndicatorRangeKey,
   type MarketIndicatorSeriesName,
   type MarketIndicatorSeriesResponse,
 } from '../api/marketIndicatorSeries';
 import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
+import { IndicatorRangeSelector } from './IndicatorRangeSelector';
 import { LoadingSpinner } from './LoadingSpinner';
 import { IndicatorMultiLine } from './charts/IndicatorMultiLine';
 import { IndicatorBoundedLine } from './charts/IndicatorBoundedLine';
 import { AdDayCandleClassificationChart } from './charts/AdDayCandleClassificationChart';
+import { YieldSpreadDualPaneChart } from './charts/YieldSpreadDualPaneChart';
 import {
   MaPositionEnhancedDetail,
   MaPositionHeadlineExplainable,
@@ -22,6 +27,10 @@ import {
   AdDayEnhancedDetail,
   AdDayHeadlineExplainable,
 } from './AdDayEnhancedDetail';
+import {
+  YieldSpreadEnhancedDetail,
+  YieldSpreadHeadlineExplainable,
+} from './YieldSpreadEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
@@ -39,6 +48,12 @@ const AD_DAY_HEADLINE_LABELS = {
   ruleTitle: 'A/D Day 紅黃綠燈規則',
   ruleNote:
     '此燈號是市場態勢 4 票之 1。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。',
+};
+
+const YIELD_SPREAD_HEADLINE_LABELS = {
+  ruleTitle: '10Y-2Y 利差紅黃綠燈規則',
+  ruleNote:
+    '此燈號是市場態勢 4 票之 1。倒掛 (spread<0) 是衰退領先指標，過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -148,6 +163,12 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
                 detail={item.detail}
                 labels={AD_DAY_HEADLINE_LABELS}
               />
+            ) : item.indicator_name === 'yield_spread' ? (
+              <YieldSpreadHeadlineExplainable
+                shortLabel={item.short_label}
+                detail={item.detail}
+                labels={YIELD_SPREAD_HEADLINE_LABELS}
+              />
             ) : (
               item.short_label
             )}
@@ -166,6 +187,8 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
             <VixEnhancedDetail detail={item.detail} />
           ) : item.indicator_name === 'ad_day' ? (
             <AdDayEnhancedDetail detail={item.detail} />
+          ) : item.indicator_name === 'yield_spread' ? (
+            <YieldSpreadEnhancedDetail detail={item.detail} />
           ) : (
             detailEntries.length > 0 && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
@@ -193,36 +216,43 @@ interface RegimeChartSectionProps {
   name: MarketIndicatorSeriesName;
 }
 
-function RegimeChartSection({ name }: RegimeChartSectionProps): JSX.Element {
-  const { data, isLoading, isError, error, refetch } = useMarketIndicatorSeries(name);
+function rangeToDays(range: MarketIndicatorRangeKey): number {
+  return MARKET_INDICATOR_RANGES.find((r) => r.key === range)?.days ?? 60;
+}
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-3 text-slate-400">
-        <LoadingSpinner label="載入指標走勢…" />
-        <span className="text-xs">載入中…</span>
-      </div>
-    );
-  }
-  if (isError || !data) {
-    return (
-      <div className="flex items-center justify-between px-3 py-3 text-xs text-signal-red">
-        <span>無法載入走勢圖。{error instanceof Error ? error.message : ''}</span>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="underline hover:text-signal-red"
-        >
-          重試
-        </button>
-      </div>
-    );
-  }
+function RegimeChartSection({ name }: RegimeChartSectionProps): JSX.Element {
+  const [range, setRange] = useState<MarketIndicatorRangeKey>(
+    DEFAULT_RANGE_BY_INDICATOR[name],
+  );
+  const { data, isLoading, isError, error, refetch } = useMarketIndicatorSeries(name, {
+    days: rangeToDays(range),
+  });
 
   return (
     <div className="flex flex-col gap-2 px-3 py-3">
-      <p className="text-xs text-slate-300">{data.summary_zh}</p>
-      <IndicatorChart response={data} />
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-slate-300">{data?.summary_zh ?? ''}</p>
+        <IndicatorRangeSelector value={range} onChange={setRange} indicatorLabel={name} />
+      </header>
+      {isLoading && (
+        <div className="flex items-center gap-2 text-slate-400">
+          <LoadingSpinner label="載入指標走勢…" />
+          <span className="text-xs">載入中…</span>
+        </div>
+      )}
+      {!isLoading && (isError || !data) && (
+        <div className="flex items-center justify-between text-xs text-signal-red">
+          <span>無法載入走勢圖。{error instanceof Error ? error.message : ''}</span>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="underline hover:text-signal-red"
+          >
+            重試
+          </button>
+        </div>
+      )}
+      {data && <IndicatorChart response={data} />}
     </div>
   );
 }
@@ -276,21 +306,7 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
     );
   }
   if (response.indicator === 'yield_spread') {
-    return (
-      <IndicatorBoundedLine
-        series={response.series}
-        lines={[{ key: 'spread', label: '10Y-2Y 利差 (%)', color: '#e2e8f0' }]}
-        thresholds={[
-          {
-            value: 0,
-            label: '倒掛線',
-            color: '#ef4444',
-            fillBetween: 'below',
-          },
-        ]}
-        ariaLabel="10Y-2Y 利差 60 日走勢"
-      />
-    );
+    return <YieldSpreadDualPaneChart response={response} />;
   }
   if (response.indicator === 'dxy') {
     return (

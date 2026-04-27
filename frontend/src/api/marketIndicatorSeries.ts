@@ -17,8 +17,11 @@ const spxMaResponseSchema = z.object({
     z.object({
       date: z.string(),
       price: z.number(),
-      ma50: z.number(),
-      ma200: z.number(),
+      // ma50 / ma200 can be null on the leading bars when the display
+      // window is wider than the MA warm-up (e.g. 2Y view starts before
+      // the 200-bar warmup completes).
+      ma50: z.number().nullable(),
+      ma200: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),
@@ -111,7 +114,9 @@ const dxyTrendResponseSchema = z.object({
     z.object({
       date: z.string(),
       level: z.number(),
-      ma20: z.number(),
+      // ma20 can be null on the leading bars when the display window is
+      // wider than the 20-bar SMA warm-up.
+      ma20: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),
@@ -161,10 +166,38 @@ export type AdDaySeriesResponse = z.infer<typeof adDayResponseSchema>;
 export type DxyTrendSeriesResponse = z.infer<typeof dxyTrendResponseSchema>;
 export type FedFundsSeriesResponse = z.infer<typeof fedFundsResponseSchema>;
 
+// Range options (1M / 3M / 6M / 1Y / 2Y) mapped to trading days. Server
+// validates 21 ≤ days ≤ 1260, so any of these is accepted.
+export const MARKET_INDICATOR_RANGES = [
+  { key: '1M' as const, days: 21, label: '1 月' },
+  { key: '3M' as const, days: 60, label: '3 月' },
+  { key: '6M' as const, days: 126, label: '6 月' },
+  { key: '1Y' as const, days: 252, label: '1 年' },
+  { key: '2Y' as const, days: 504, label: '2 年' },
+] as const;
+
+export type MarketIndicatorRangeKey = (typeof MARKET_INDICATOR_RANGES)[number]['key'];
+
+// Per-indicator default range — picked so each indicator's chart shows
+// the most decision-useful window without further user input.
+export const DEFAULT_RANGE_BY_INDICATOR: Record<MarketIndicatorSeriesName, MarketIndicatorRangeKey> = {
+  spx_ma: '3M',
+  vix: '3M',
+  ad_day: '3M',
+  yield_spread: '1Y',
+  dxy: '3M',
+  fed_rate: '1Y',
+};
+
 export function getMarketIndicatorSeries(
   name: MarketIndicatorSeriesName,
+  days?: number,
 ): Promise<MarketIndicatorSeriesResponse> {
-  return apiRequest(`/api/v1/market/indicator/${name}/series`, {
+  const path =
+    days === undefined
+      ? `/api/v1/market/indicator/${name}/series`
+      : `/api/v1/market/indicator/${name}/series?days=${days}`;
+  return apiRequest(path, {
     method: 'GET',
     schema: marketIndicatorSeriesResponseSchema,
   });

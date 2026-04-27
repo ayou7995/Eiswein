@@ -411,7 +411,9 @@ def test_yield_spread_series_shape_positive_spread(
     assert resp.status_code == 200
     body = resp.json()
     assert body["indicator"] == "yield_spread"
-    assert len(body["series"]) == 60
+    # yield_spread defaults to a 1-year (252 trading day) window so the
+    # inversion → recovery cycle (typically 1-2 years) fits on screen.
+    assert len(body["series"]) == 252
     point = body["series"][-1]
     assert "spread" in point and "ten_year" in point and "two_year" in point
     current = body["current"]

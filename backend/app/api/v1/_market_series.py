@@ -113,16 +113,21 @@ def build_macro_value_series(rows: Sequence[MacroIndicator]) -> pd.Series:
 # --- spx_ma ---------------------------------------------------------------
 
 
-def build_spx_ma_payload(frame: pd.DataFrame) -> dict[str, object]:
+def build_spx_ma_payload(frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     """SPX MA series payload — mirrors the per-ticker ``price_vs_ma`` shape
-    sans the ``symbol`` field (market-level)."""
+    sans the ``symbol`` field (market-level).
+
+    ``days`` controls the trailing slice used for the chart payload. The
+    50/200 MA series are computed over the full frame so the tail values
+    are valid even when ``days`` is small.
+    """
     close = frame["close"].astype("float64")
     ma50_full = sma(close, _MA50)
     ma200_full = sma(close, _MA200)
 
-    tail_close = close.iloc[-SERIES_DAYS:]
-    tail_ma50 = ma50_full.iloc[-SERIES_DAYS:]
-    tail_ma200 = ma200_full.iloc[-SERIES_DAYS:]
+    tail_close = close.iloc[-days:]
+    tail_ma50 = ma50_full.iloc[-days:]
+    tail_ma200 = ma200_full.iloc[-days:]
 
     series = [
         {
@@ -224,9 +229,9 @@ _VIX_THRESHOLDS: Final[dict[str, float]] = {
 }
 
 
-def build_vix_payload(value_series: pd.Series) -> dict[str, object]:
+def build_vix_payload(value_series: pd.Series, days: int = SERIES_DAYS) -> dict[str, object]:
     cleaned = value_series.dropna()
-    tail = cleaned.iloc[-SERIES_DAYS:]
+    tail = cleaned.iloc[-days:]
     series = [
         {"date": _index_to_date(idx), "level": _round_or_none(level)}
         for idx, level in zip(tail.index, tail, strict=True)
@@ -323,14 +328,18 @@ def _vix_summary(
 # --- yield_spread ---------------------------------------------------------
 
 
-def build_yield_spread_payload(ten_year: pd.Series, two_year: pd.Series) -> dict[str, object]:
+def build_yield_spread_payload(
+    ten_year: pd.Series,
+    two_year: pd.Series,
+    days: int = SERIES_DAYS,
+) -> dict[str, object]:
     joined = pd.concat([ten_year.rename("ten"), two_year.rename("two")], axis=1).dropna()
-    if joined.empty or len(joined) < SERIES_DAYS:
+    if joined.empty or len(joined) < min(days, SERIES_DAYS):
         return _yield_spread_insufficient()
 
     spread_full = joined["ten"] - joined["two"]
-    tail = joined.iloc[-SERIES_DAYS:]
-    spread_tail = spread_full.iloc[-SERIES_DAYS:]
+    tail = joined.iloc[-days:]
+    spread_tail = spread_full.iloc[-days:]
     series = [
         {
             "date": _index_to_date(idx),
@@ -428,7 +437,7 @@ def _yield_spread_summary(*, spread: float, days_since_inversion: int | None) ->
 AdClassification = Literal["accum", "distrib", "neutral"]
 
 
-def build_ad_day_payload(frame: pd.DataFrame) -> dict[str, object]:
+def build_ad_day_payload(frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     """Build A/D Day series + 25-day / 5-day aggregates.
 
     The per-day classification rule mirrors the indicator
@@ -439,7 +448,12 @@ def build_ad_day_payload(frame: pd.DataFrame) -> dict[str, object]:
     here because the indicator function returns 25-day net counts, not
     per-day classifications.
     """
-    if frame.empty or len(frame) < SERIES_DAYS + 1:
+    # Need either ``days+1`` for the chart slice OR ``_AD_25D_WINDOW+1``
+    # for the rolling 25-day net summary, whichever is larger. The 25-day
+    # window is fixed by the indicator rule; ``days`` only affects what's
+    # rendered in the chart.
+    min_required = max(days, _AD_25D_WINDOW) + 1
+    if frame.empty or len(frame) < min_required:
         return _ad_day_insufficient()
 
     open_ = frame["open"].astype("float64")
@@ -467,15 +481,15 @@ def build_ad_day_payload(frame: pd.DataFrame) -> dict[str, object]:
     spx_change_pct = ((close - open_) / open_) * 100.0
     volume_ratio = volume / prev_volume
 
-    tail_idx = frame.index[-SERIES_DAYS:]
-    tail_class = classifications[-SERIES_DAYS:]
-    tail_change = spx_change_pct.iloc[-SERIES_DAYS:]
-    tail_vol_ratio = volume_ratio.iloc[-SERIES_DAYS:]
-    tail_open = open_.iloc[-SERIES_DAYS:]
-    tail_high = high.iloc[-SERIES_DAYS:]
-    tail_low = low.iloc[-SERIES_DAYS:]
-    tail_close = close.iloc[-SERIES_DAYS:]
-    tail_volume = volume.iloc[-SERIES_DAYS:]
+    tail_idx = frame.index[-days:]
+    tail_class = classifications[-days:]
+    tail_change = spx_change_pct.iloc[-days:]
+    tail_vol_ratio = volume_ratio.iloc[-days:]
+    tail_open = open_.iloc[-days:]
+    tail_high = high.iloc[-days:]
+    tail_low = low.iloc[-days:]
+    tail_close = close.iloc[-days:]
+    tail_volume = volume.iloc[-days:]
 
     series = [
         {
@@ -581,7 +595,7 @@ def _ad_day_summary(
 # --- dxy ------------------------------------------------------------------
 
 
-def build_dxy_payload(value_series: pd.Series) -> dict[str, object]:
+def build_dxy_payload(value_series: pd.Series, days: int = SERIES_DAYS) -> dict[str, object]:
     """DXY series payload — emits 60 (level, ma20) rows + a streak
     summary that mirrors the canonical :func:`compute_dxy` semantics.
 
@@ -594,8 +608,8 @@ def build_dxy_payload(value_series: pd.Series) -> dict[str, object]:
     cleaned = value_series.dropna().sort_index()
     ma20_full = sma(cleaned, DXY_MA_WINDOW)
 
-    tail_levels = cleaned.iloc[-SERIES_DAYS:]
-    tail_ma20 = ma20_full.iloc[-SERIES_DAYS:]
+    tail_levels = cleaned.iloc[-days:]
+    tail_ma20 = ma20_full.iloc[-days:]
 
     series = [
         {
@@ -701,27 +715,28 @@ def _dxy_summary(
 # --- fed_rate -------------------------------------------------------------
 
 
-def build_fed_rate_payload(value_series: pd.Series) -> dict[str, object]:
-    """Forward-fill the FFR series across the trailing 365 trading days.
+def build_fed_rate_payload(
+    value_series: pd.Series,
+    days: int = FED_FUNDS_SERIES_DAYS,
+) -> dict[str, object]:
+    """Forward-fill the FFR series across the trailing ``days`` calendar days.
 
     FRED's ``FEDFUNDS`` is monthly; the daily ``DFF`` is more granular
     but we follow the canonical indicator (which reads ``FEDFUNDS``).
-    Step-chart semantics: every trading day inherits the most recent
-    posted rate, so a chart over the year shows clear plateaus between
-    FOMC decisions. The ``last_change_*`` fields surface the most
-    recent date inside the 365-day window where rate[d] != rate[d-1].
+    Step-chart semantics: every day inherits the most recent posted rate,
+    so a chart over the year shows clear plateaus between FOMC decisions.
+    The ``last_change_*`` fields surface the most recent date inside the
+    chosen window where rate[d] != rate[d-1].
     """
     cleaned = value_series.dropna().sort_index()
     if cleaned.empty:
         return _fed_rate_insufficient()
 
     # Daily forward-fill onto a continuous date index covering the
-    # trailing FED_FUNDS_SERIES_DAYS days (calendar). This matches what
-    # the API contract calls a "trading-day" step chart — FRED already
-    # forward-fills weekends, so the calendar-day reindex preserves
-    # the level on every output row.
+    # trailing ``days`` (calendar). FRED forward-fills weekends, so the
+    # calendar-day reindex preserves the level on every output row.
     end_ts = pd.Timestamp(cleaned.index[-1])
-    start_ts = end_ts - pd.Timedelta(days=FED_FUNDS_SERIES_DAYS - 1)
+    start_ts = end_ts - pd.Timedelta(days=days - 1)
     full_idx = pd.date_range(start=start_ts, end=end_ts, freq="D")
     forward = cleaned.reindex(full_idx, method="ffill").dropna()
 

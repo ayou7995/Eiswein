@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react';
-
 // Generic 1-D position gauge: a horizontal bar split into colored zones,
 // with a marker pinned at the current value.
 //
@@ -10,6 +8,10 @@ import type { ReactNode } from 'react';
 // the next covers `z[0].upTo..z[1].upTo`, and so on. The final zone implicitly
 // extends to `max`. Each zone supplies its own color so callers can decide
 // the semantics (e.g. for VIX both end zones are yellow, middle is green).
+//
+// The numeric value display is intentionally NOT rendered here — consumers
+// inline it into their section header (next to other secondary stats) so
+// the gauge stays focused on the visual band + zone labels.
 
 export interface PositionGaugeZone {
   upTo: number;
@@ -26,10 +28,8 @@ export interface PositionGaugeProps {
   min: number;
   max: number;
   zones: ReadonlyArray<PositionGaugeZone>;
-  // Optional label rendered next to the value below the marker.
-  valueSuffix?: ReactNode;
   ariaLabel: string;
-  // Whether to mark the current zone label with a chevron / bold style.
+  // Whether to mark the current zone label with a bold/coloured style.
   // Useful when the gauge is the only visual representation; superfluous
   // when the headline already names the zone.
   highlightCurrentZone?: boolean;
@@ -40,7 +40,6 @@ export function PositionGauge({
   min,
   max,
   zones,
-  valueSuffix,
   ariaLabel,
   highlightCurrentZone = false,
 }: PositionGaugeProps): JSX.Element {
@@ -99,14 +98,6 @@ export function PositionGauge({
             {seg.label}
           </div>
         ))}
-      </div>
-      <div className="flex justify-end text-[11px] text-slate-400">
-        <span className="font-mono tabular-nums text-slate-100">
-          {value.toFixed(2)}
-          {valueSuffix !== undefined && (
-            <span className="ml-1 text-[10px] text-slate-400">{valueSuffix}</span>
-          )}
-        </span>
       </div>
     </div>
   );

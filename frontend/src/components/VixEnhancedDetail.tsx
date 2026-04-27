@@ -195,7 +195,28 @@ function PositionSection({
   const percentile = d.percentile_1y ?? null;
   return (
     <section aria-label="VIX 位置條" className="flex flex-col gap-2 text-xs">
-      <h3 className="text-slate-400">位置（0–{VIX_GAUGE_MAX} 區間）</h3>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-slate-400">位置（0–{VIX_GAUGE_MAX} 區間）</h3>
+        <span className="text-slate-400">
+          <span className="font-mono tabular-nums text-slate-100">
+            {d.level.toFixed(2)}
+          </span>
+          {percentile !== null && (
+            <>
+              <span className="mx-1 text-slate-600">·</span>
+              <span>
+                過去 1 年{' '}
+                <span className="font-mono tabular-nums text-slate-200">
+                  {Math.round(percentile * 100)}%
+                </span>
+                <span className="ml-1 text-slate-500">
+                  ({describePercentile(percentile)})
+                </span>
+              </span>
+            </>
+          )}
+        </span>
+      </div>
       <PositionGauge
         value={d.level}
         min={VIX_GAUGE_MIN}
@@ -204,17 +225,6 @@ function PositionSection({
         ariaLabel={`VIX 位置 ${d.level.toFixed(2)}，落在 ${zoneAxisLabel} 區`}
         highlightCurrentZone
       />
-      {percentile !== null && (
-        <p className="text-[11px] text-slate-500">
-          過去 1 年百分位：
-          <span className="ml-1 font-mono tabular-nums text-slate-200">
-            {Math.round(percentile * 100)}%
-          </span>
-          <span className="ml-2 text-slate-500">
-            ({describePercentile(percentile)})
-          </span>
-        </p>
-      )}
     </section>
   );
 }

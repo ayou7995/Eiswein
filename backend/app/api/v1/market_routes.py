@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 from typing import Literal, cast
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 
 from app.api.dependencies import (
@@ -65,7 +65,25 @@ from app.signals.types import MarketPosture, ProsConsItem
 _SPX_SYMBOL = "SPY"
 _SPX_MA_MIN_BARS = 200
 _AD_DAY_MIN_BARS = SERIES_DAYS + 1
-_SPY_LOOKBACK_DAYS = 400
+# Lookback wide enough to cover a 2-year (~504 trading-day) display window
+# plus 200 bars of MA200 warm-up. Repository returns whatever's actually
+# in the DB so this is just an upper bound on the SQL range query.
+_SPY_LOOKBACK_DAYS = 1100
+
+# Display-window options exposed via ``?days=N``. Each indicator falls
+# back to its own default when the caller omits the param. Validation
+# clamps to [_DAYS_MIN, _DAYS_MAX] so callers can't ask for absurd
+# windows.
+_DAYS_MIN = 21
+_DAYS_MAX = 1260
+_DEFAULT_DAYS: dict[str, int] = {
+    "spx_ma": SERIES_DAYS,
+    "vix": SERIES_DAYS,
+    "ad_day": SERIES_DAYS,
+    "yield_spread": 252,
+    "dxy": SERIES_DAYS,
+    "fed_rate": 365,
+}
 
 router = APIRouter(tags=["market"])
 logger = structlog.get_logger("eiswein.api.market")
@@ -423,10 +441,21 @@ def _insufficient(name: str) -> NotFoundError:
 @router.get(
     "/market/indicator/{name}/series",
     response_model=MarketIndicatorSeriesResponse,
-    summary="60-day rolling series + zh-TW summary for a single market indicator",
+    summary="Rolling series + zh-TW summary for a single market indicator",
 )
 def get_market_indicator_series(
     name: str,
+    days: int | None = Query(
+        default=None,
+        ge=_DAYS_MIN,
+        le=_DAYS_MAX,
+        description=(
+            "Trailing-window length. For most indicators this counts trading"
+            " days; for fed_rate it counts calendar days (FRED forward-fills"
+            " weekends into the output). Falls back to a per-indicator default"
+            " when omitted (yield_spread=252, fed_rate=365, others=60)."
+        ),
+    ),
     _user_id: int = Depends(current_user_id),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
     macro: MacroRepository = Depends(get_macro_repository),
@@ -436,6 +465,8 @@ def get_market_indicator_series(
             details={"reason": "unknown_indicator", "name": name},
         )
 
+    window = days if days is not None else _DEFAULT_DAYS[name]
+
     if name == "spx_ma":
         end = date.today()
         start = end - timedelta(days=_SPY_LOOKBACK_DAYS)
@@ -443,7 +474,7 @@ def get_market_indicator_series(
         frame = build_spy_frame(rows)
         if frame.empty or len(frame) < _SPX_MA_MIN_BARS:
             raise _insufficient(name)
-        return SpxMaSeriesResponse.model_validate(build_spx_ma_payload(frame))
+        return SpxMaSeriesResponse.model_validate(build_spx_ma_payload(frame, window))
 
     if name == "ad_day":
         end = date.today()
@@ -452,13 +483,13 @@ def get_market_indicator_series(
         frame = build_spy_frame(rows)
         if frame.empty or len(frame) < _AD_DAY_MIN_BARS:
             raise _insufficient(name)
-        return AdDaySeriesResponse.model_validate(build_ad_day_payload(frame))
+        return AdDaySeriesResponse.model_validate(build_ad_day_payload(frame, window))
 
     if name == "vix":
         vix_series = build_macro_value_series(macro.get_all_for_series("VIXCLS"))
         if vix_series.empty or len(vix_series.dropna()) < SERIES_DAYS:
             raise _insufficient(name)
-        return VixSeriesResponse.model_validate(build_vix_payload(vix_series))
+        return VixSeriesResponse.model_validate(build_vix_payload(vix_series, window))
 
     if name == "yield_spread":
         ten_series = build_macro_value_series(macro.get_all_for_series("DGS10"))
@@ -471,20 +502,17 @@ def get_market_indicator_series(
         ):
             raise _insufficient(name)
         return YieldSpreadSeriesResponse.model_validate(
-            build_yield_spread_payload(ten_series, two_series)
+            build_yield_spread_payload(ten_series, two_series, window)
         )
 
     if name == "dxy":
         dxy_series = build_macro_value_series(macro.get_all_for_series(DXY_MACRO_SERIES))
         if dxy_series.empty or len(dxy_series.dropna()) < DXY_MIN_BARS:
             raise _insufficient(name)
-        return DxySeriesResponse.model_validate(build_dxy_payload(dxy_series))
+        return DxySeriesResponse.model_validate(build_dxy_payload(dxy_series, window))
 
     # fed_rate: SUPPORTED_MARKET_INDICATORS already gates this branch.
     fed_series = build_macro_value_series(macro.get_all_for_series(FED_FUNDS_MACRO_SERIES))
-    # FEDFUNDS is monthly; the builder forward-fills onto a 365-calendar-day
-    # output. A single posted rate is enough to render a step chart, but
-    # an empty series has nothing to anchor against.
     if fed_series.empty or len(fed_series.dropna()) < 1:
         raise _insufficient(name)
-    return FedRateSeriesResponse.model_validate(build_fed_rate_payload(fed_series))
+    return FedRateSeriesResponse.model_validate(build_fed_rate_payload(fed_series, window))

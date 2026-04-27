@@ -13,7 +13,9 @@ import {
 
 export interface MultiLineSeriesRow {
   readonly date: string;
-  readonly [key: string]: number | string;
+  // Null entries are tolerated for fields that may be undefined during
+  // MA warm-up windows (the chart renders a gap at those points).
+  readonly [key: string]: number | string | null;
 }
 
 export interface MultiLineDefinition {
@@ -63,6 +65,8 @@ function toUtcTimestamp(dateString: string): UTCTimestamp {
 
 function readNumber(row: MultiLineSeriesRow, key: string): number | null {
   const raw = row[key];
+  // Null is a valid value during MA warm-up — skipping the point is the
+  // right rendering (lightweight-charts gracefully draws a gap).
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
 }
 
