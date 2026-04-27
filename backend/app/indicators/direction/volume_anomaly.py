@@ -3,7 +3,7 @@
 Today's volume is compared against the 20-day SMA of **prior** 20
 days (excluding today). A spike is ``today > 2 * avg``.
 
-Signal table:
+Signal table (today only):
 * spike AND close > prior_close → GREEN  (放量上漲)
 * spike AND close < prior_close → RED    (放量下跌)
 * spike AND flat close          → YELLOW (放量但方向不明)
@@ -55,6 +55,7 @@ def compute_volume_anomaly(frame: pd.DataFrame, context: IndicatorContext) -> In
     today_close = float(close.iloc[-1])
     prior_close = float(close.iloc[-2])
     close_direction = today_close - prior_close
+    price_change_pct = ((today_close / prior_close) - 1.0) * 100.0 if prior_close else 0.0
 
     signal, short_label = _classify(spike=spike, ratio=ratio, direction=close_direction)
 
@@ -69,7 +70,7 @@ def compute_volume_anomaly(frame: pd.DataFrame, context: IndicatorContext) -> In
             "avg_volume_20d": avg_volume,
             "ratio": ratio,
             "spike": spike,
-            "price_change": close_direction,
+            "price_change_pct": price_change_pct,
         },
         computed_at=datetime.now(UTC),
     )

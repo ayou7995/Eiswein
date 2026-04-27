@@ -26,6 +26,14 @@ import {
   RsiEnhancedDetail,
   RsiHeadlineExplainable,
 } from '../components/RsiEnhancedDetail';
+import {
+  VolumeAnomalyEnhancedDetail,
+  VolumeAnomalyHeadlineExplainable,
+} from '../components/VolumeAnomalyEnhancedDetail';
+import {
+  RelativeStrengthEnhancedDetail,
+  RelativeStrengthHeadlineExplainable,
+} from '../components/RelativeStrengthEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
@@ -174,7 +182,34 @@ export function TickerDetailPage(): JSX.Element {
         indicators={indicatorsQuery.data?.indicators ?? null}
         isLoading={indicatorsQuery.isLoading}
       />
+
+      <RoadmapNote />
     </div>
+  );
+}
+
+// v2 backlog surfaced inline so the user (and reviewers) can see what
+// was deliberately deferred. Keep terse — this isn't a release-notes
+// dump, just a forward-looking marker.
+function RoadmapNote(): JSX.Element {
+  return (
+    <section
+      aria-labelledby="ticker-roadmap-heading"
+      className="flex flex-col gap-1 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-4 text-xs text-slate-400"
+    >
+      <h2 id="ticker-roadmap-heading" className="text-sm font-semibold text-slate-300">
+        TODO（v2 規劃）
+      </h2>
+      <ul className="ml-4 list-disc space-y-1">
+        <li>
+          <span className="text-slate-300">資金流向（OBV / VPT）</span>
+          ：目前「成交量異常」只看今日 spike，無法捕捉日常微小資金流。等
+          v2 forward-test 累積 6 個月資料後，評估是否加入 OBV（On-Balance
+          Volume）作為趨勢補充——每日累計、可看與股價的背離，比稀疏的
+          spike 計數更穩。
+        </li>
+      </ul>
+    </section>
   );
 }
 
@@ -294,6 +329,18 @@ const RSI_HEADLINE_LABELS = {
     '⚠️ 鈍化現象：強勢趨勢中 RSI 可能連續數週停在 >70 或 <30，「碰到 70 就賣 / 碰到 30 就買」會錯過大行情或接刀。必須配合週線確認 + 價格動作判讀真正反轉。RSI 屬個股方向 4 項中的「動能」項，是 contrarian indicator — 超買偏空、超賣偏多。',
 };
 
+const VOLUME_ANOMALY_HEADLINE_LABELS = {
+  ruleTitle: '成交量異常紅黃綠燈規則',
+  ruleNote:
+    '此燈號是個股方向 4 項中的「資金動能」項。同 O\'Neil A/D Day 邏輯 — 機構動倉一定要量。spike 閾值 2× 是經驗值，可視個股流動性微調。',
+};
+
+const RELATIVE_STRENGTH_HEADLINE_LABELS = {
+  ruleTitle: '相對強度紅黃綠燈規則',
+  ruleNote:
+    '此燈號是個股方向 4 項中的「對比大盤」項。20 日是 O\'Neil 系統的標準窗口（≈1 個交易月）。連續多週「強於大盤」常見於領漲類股，是中期持有的好訊號；連續「弱於大盤」是換股的警訊。',
+};
+
 function IndicatorRow({
   symbol,
   indicatorKey,
@@ -307,6 +354,8 @@ function IndicatorRow({
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
   const isPriceVsMa = indicatorKey === 'price_vs_ma';
   const isRsi = indicatorKey === 'rsi';
+  const isVolumeAnomaly = indicatorKey === 'volume_anomaly';
+  const isRelativeStrength = indicatorKey === 'relative_strength';
 
   // Non-expandable rows (insufficient data, no chart, no detail) keep
   // the simple flat row — no <details> needed.
@@ -354,6 +403,18 @@ function IndicatorRow({
                 detail={result.detail}
                 labels={RSI_HEADLINE_LABELS}
               />
+            ) : isVolumeAnomaly ? (
+              <VolumeAnomalyHeadlineExplainable
+                shortLabel={result.short_label}
+                detail={result.detail}
+                labels={VOLUME_ANOMALY_HEADLINE_LABELS}
+              />
+            ) : isRelativeStrength ? (
+              <RelativeStrengthHeadlineExplainable
+                shortLabel={result.short_label}
+                detail={result.detail}
+                labels={RELATIVE_STRENGTH_HEADLINE_LABELS}
+              />
             ) : (
               result.short_label
             )}
@@ -375,6 +436,10 @@ function IndicatorRow({
             <MaPositionEnhancedDetail detail={result.detail} />
           ) : isRsi ? (
             <RsiEnhancedDetail detail={result.detail} />
+          ) : isVolumeAnomaly ? (
+            <VolumeAnomalyEnhancedDetail detail={result.detail} />
+          ) : isRelativeStrength ? (
+            <RelativeStrengthEnhancedDetail detail={result.detail} />
           ) : (
             hasDetail && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">

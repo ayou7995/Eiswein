@@ -13,8 +13,9 @@ import {
 export interface VolumeBarsRow {
   readonly date: string;
   readonly volume: number;
-  readonly price_change_pct: number;
-  readonly avg_volume_20d: number;
+  // Nullable on the warmup bars (see schema in tickerIndicatorSeries.ts).
+  readonly price_change_pct: number | null;
+  readonly avg_volume_20d: number | null;
 }
 
 export interface IndicatorVolumeBarsProps {
@@ -39,11 +40,12 @@ function toUtcTimestamp(dateString: string): UTCTimestamp {
 }
 
 function colorFor(
-  changePct: number,
+  changePct: number | null,
   upColor: string,
   downColor: string,
   flatColor: string,
 ): string {
+  if (changePct === null) return flatColor;
   if (changePct > 0) return upColor;
   if (changePct < 0) return downColor;
   return flatColor;
@@ -145,7 +147,7 @@ export function IndicatorVolumeBars({
         value: row.volume,
         color: colorFor(row.price_change_pct, upColor, downColor, flatColor),
       });
-      if (Number.isFinite(row.avg_volume_20d)) {
+      if (row.avg_volume_20d !== null && Number.isFinite(row.avg_volume_20d)) {
         lineData.push({ time, value: row.avg_volume_20d });
       }
     }

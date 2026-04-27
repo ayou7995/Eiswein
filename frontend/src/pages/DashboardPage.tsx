@@ -10,6 +10,7 @@ import {
   type ChartNameResolver,
 } from '../components/MarketRegimeIndicatorList';
 import { DataStatusBadge } from '../components/DataStatusBadge';
+import { IndicatorDriftBanner } from '../components/IndicatorDriftBanner';
 import { useMarketPosture } from '../hooks/useMarketPosture';
 import { marketIndicatorSeriesNameSchema } from '../api/marketIndicatorSeries';
 import {
@@ -54,6 +55,7 @@ function formatRefresh(refresh: Date | null): string {
 export function DashboardPage(): JSX.Element {
   return (
     <div className="flex flex-col gap-6">
+      <IndicatorDriftBanner />
       <section aria-labelledby="dashboard-heading" className="flex flex-col gap-1">
         <h1 id="dashboard-heading" className="text-2xl font-semibold">
           儀表板

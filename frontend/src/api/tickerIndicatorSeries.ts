@@ -105,8 +105,14 @@ const volumeAnomalyResponseSchema = z.object({
     z.object({
       date: z.string(),
       volume: z.number(),
-      price_change_pct: z.number(),
-      avg_volume_20d: z.number(),
+      // Both fields can be null on the leading bars when the requested
+      // window starts before the 20-day rolling average warms up
+      // (e.g. 2Y view triggers a tail of 504 trading days against
+      // ~785 bars of available history — the first ~20 bars carry
+      // null avg_volume_20d, and the very first bar of any series
+      // has null price_change_pct because pct_change has no prior).
+      price_change_pct: z.number().nullable(),
+      avg_volume_20d: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),

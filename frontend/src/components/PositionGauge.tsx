@@ -43,21 +43,29 @@ export function PositionGauge({
   ariaLabel,
   highlightCurrentZone = false,
 }: PositionGaugeProps): JSX.Element {
-  const range = Math.max(max - min, 1);
+  // Guard against degenerate `max === min` only — never clamp to a
+  // minimum (the previous `Math.max(max - min, 1)` silently broke any
+  // gauge whose span was < 1, e.g. the relative-strength ±10 % range
+  // where 0.2 was forced up to 1, compressing the red/amber zones to
+  // 1/5 of their intended width).
+  const range = max === min ? 1 : max - min;
   const clampedValue = Math.max(min, Math.min(max, value));
   const markerLeftPct = ((clampedValue - min) / range) * 100;
 
-  // Build segment widths from cumulative thresholds. The final segment
-  // takes whatever fraction is left over to reach 100%.
+  // Build segment offsets + widths from cumulative thresholds. The final
+  // segment is pinned to 100% (right edge) regardless of floating-point
+  // accumulation so the bar always reaches the rightmost pixel.
   let cursor = min;
   const segments = zones.map((zone, idx) => {
-    const upper = idx === zones.length - 1 ? max : zone.upTo;
-    const width = ((upper - cursor) / range) * 100;
+    const isLast = idx === zones.length - 1;
+    const upper = isLast ? max : zone.upTo;
+    const leftPct = ((cursor - min) / range) * 100;
+    const rightPct = isLast ? 100 : ((upper - min) / range) * 100;
+    const width = rightPct - leftPct;
     const isCurrent =
-      value >= cursor &&
-      (idx === zones.length - 1 ? value <= upper : value < upper);
+      value >= cursor && (isLast ? value <= upper : value < upper);
     cursor = upper;
-    return { ...zone, width, isCurrent };
+    return { ...zone, leftPct, width, isCurrent };
   });
 
   return (
@@ -67,29 +75,28 @@ export function PositionGauge({
         aria-label={ariaLabel}
         className="relative h-3 w-full overflow-hidden rounded-md border border-slate-700/60"
       >
-        <div className="flex h-full w-full">
-          {segments.map((seg, idx) => (
-            <div
-              key={`${seg.label}-${idx}`}
-              style={{ width: `${seg.width}%` }}
-              className={seg.bg}
-            />
-          ))}
-        </div>
+        {segments.map((seg, idx) => (
+          <div
+            key={`${seg.label}-${idx}`}
+            style={{ left: `${seg.leftPct}%`, width: `${seg.width}%` }}
+            className={`absolute top-0 h-full ${seg.bg}`}
+          />
+        ))}
         <div
           aria-hidden="true"
           style={{ left: `${markerLeftPct}%` }}
           className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-slate-100 shadow-[0_0_0_1px_rgba(15,23,42,0.6)]"
         />
       </div>
-      {/* Zone labels share the bar's width so each one sits below its
-          segment. Proportional-width divs avoid manual percentage math. */}
-      <div aria-hidden="true" className="flex w-full text-[11px]">
+      {/* Labels mirror the bar's segment offsets so each sits centered
+          beneath its zone. Absolute positioning matches the bar so any
+          rounding stays consistent across the two layers. */}
+      <div aria-hidden="true" className="relative h-4 w-full text-[11px]">
         {segments.map((seg, idx) => (
           <div
             key={`label-${seg.label}-${idx}`}
-            style={{ width: `${seg.width}%` }}
-            className={`px-0.5 text-center ${
+            style={{ left: `${seg.leftPct}%`, width: `${seg.width}%` }}
+            className={`absolute top-0 px-0.5 text-center ${
               highlightCurrentZone && seg.isCurrent
                 ? `font-semibold ${seg.text}`
                 : seg.text
