@@ -22,6 +22,11 @@ import type { ProsConsItem } from '../api/prosCons';
 import { EisweinApiError } from '../api/errors';
 import { ROUTES } from '../lib/constants';
 
+// Display order for the 4 regime indicators inside MarketPostureCard.
+// Backend dict ordering isn't guaranteed across the load path, so sort
+// here so the dashboard always reads SPX → VIX → A/D Day → 10Y-2Y.
+const REGIME_ORDER: ReadonlyArray<string> = ['spx_ma', 'vix', 'ad_day', 'yield_spread'];
+
 // DXY + Fed Rate are the two "macro backdrop" indicators that DON'T
 // feed into Market Posture (which shows SPX MA, A/D Day, VIX, Yield
 // Spread). They're computed per-ticker but identical across tickers on
@@ -59,10 +64,10 @@ export function DashboardPage(): JSX.Element {
       </section>
 
       <MarketPostureCard />
+      <MacroBackdropCard />
       <AttentionAlertsCard />
       <WatchlistOverviewCard />
       <PositionsSummaryCard />
-      <MacroBackdropCard />
     </div>
   );
 }
@@ -101,9 +106,15 @@ function MarketPostureCard(): JSX.Element {
       );
     }
 
-    const regimeItems = data.pros_cons.filter(
-      (item) => marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
-    );
+    const regimeItems = data.pros_cons
+      .filter((item) =>
+        marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
+      )
+      .slice()
+      .sort(
+        (a, b) =>
+          REGIME_ORDER.indexOf(a.indicator_name) - REGIME_ORDER.indexOf(b.indicator_name),
+      );
     const nonRegimeItems = data.pros_cons.filter(
       (item) => !marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
     );

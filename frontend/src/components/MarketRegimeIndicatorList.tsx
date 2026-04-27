@@ -31,6 +31,14 @@ import {
   YieldSpreadEnhancedDetail,
   YieldSpreadHeadlineExplainable,
 } from './YieldSpreadEnhancedDetail';
+import {
+  DxyEnhancedDetail,
+  DxyHeadlineExplainable,
+} from './DxyEnhancedDetail';
+import {
+  FedRateEnhancedDetail,
+  FedRateHeadlineExplainable,
+} from './FedRateEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
@@ -54,6 +62,18 @@ const YIELD_SPREAD_HEADLINE_LABELS = {
   ruleTitle: '10Y-2Y 利差紅黃綠燈規則',
   ruleNote:
     '此燈號是市場態勢 4 票之 1。倒掛 (spread<0) 是衰退領先指標，過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
+};
+
+const DXY_HEADLINE_LABELS = {
+  ruleTitle: 'DXY 紅黃綠燈規則',
+  ruleNote:
+    'DXY 是美元指數。「總經背景」之一，不投市場態勢票。與科技股呈反向關係 — 美元走強時資金流出科技股、走弱時相反。',
+};
+
+const FED_RATE_HEADLINE_LABELS = {
+  ruleTitle: 'Fed 利率紅黃綠燈規則',
+  ruleNote:
+    'Fed Funds Rate 是聯邦基金利率。「總經背景」之一，不投市場態勢票。降息提升風險資產估值（對股市友善），升息相反。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -169,6 +189,18 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
                 detail={item.detail}
                 labels={YIELD_SPREAD_HEADLINE_LABELS}
               />
+            ) : item.indicator_name === 'dxy' ? (
+              <DxyHeadlineExplainable
+                shortLabel={item.short_label}
+                detail={item.detail}
+                labels={DXY_HEADLINE_LABELS}
+              />
+            ) : item.indicator_name === 'fed_rate' ? (
+              <FedRateHeadlineExplainable
+                shortLabel={item.short_label}
+                detail={item.detail}
+                labels={FED_RATE_HEADLINE_LABELS}
+              />
             ) : (
               item.short_label
             )}
@@ -189,6 +221,10 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
             <AdDayEnhancedDetail detail={item.detail} />
           ) : item.indicator_name === 'yield_spread' ? (
             <YieldSpreadEnhancedDetail detail={item.detail} />
+          ) : item.indicator_name === 'dxy' ? (
+            <DxyEnhancedDetail detail={item.detail} />
+          ) : item.indicator_name === 'fed_rate' ? (
+            <FedRateEnhancedDetail detail={item.detail} />
           ) : (
             detailEntries.length > 0 && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
