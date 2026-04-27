@@ -124,12 +124,42 @@ function MarketPostureCard(): JSX.Element {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span
-            data-testid="market-posture-label"
-            className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-lg font-semibold text-sky-300"
+          <Explainable
+            title="市場態勢判定規則"
+            marker="none"
+            explanation={
+              <RuleTable
+                preface="由 4 個市場態勢指標（SPX 多頭排列、A/D Day、VIX、10Y-2Y 利差）的紅綠燈計票決定。資料不足的指標不算票；4 個全部不足 → 預設為「正常」。態勢只是 context badge，不會直接調整個股 action。"
+                rows={[
+                  {
+                    condition: '綠燈 ≥ 3',
+                    result: '✨ 進攻（多數指標看多，可考慮加碼）',
+                    current: data.regime_green_count >= 3,
+                  },
+                  {
+                    condition: '紅燈 ≥ 2',
+                    result: '🛡 防守（多數指標看空，謹慎為上）',
+                    current: data.regime_red_count >= 2,
+                  },
+                  {
+                    condition: '其他',
+                    result: '⚖ 正常（無明顯偏向，照常操作）',
+                    current:
+                      data.regime_green_count < 3 && data.regime_red_count < 2,
+                  },
+                ]}
+                currentValueText={`你目前: 綠 ${data.regime_green_count} · 黃 ${data.regime_yellow_count} · 紅 ${data.regime_red_count} → 市場態勢：${data.posture_label}`}
+                note="DXY 與 Fed 利率屬「總經背景」，不投票進市場態勢；下方獨立區塊顯示。"
+              />
+            }
           >
-            市場態勢：{data.posture_label}
-          </span>
+            <span
+              data-testid="market-posture-label"
+              className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-lg font-semibold text-sky-300"
+            >
+              市場態勢：{data.posture_label}
+            </span>
+          </Explainable>
           {data.streak_badge && (
             <span className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs text-slate-200">
               {data.streak_badge}
