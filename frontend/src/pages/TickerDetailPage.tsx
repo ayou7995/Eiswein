@@ -34,6 +34,14 @@ import {
   RelativeStrengthEnhancedDetail,
   RelativeStrengthHeadlineExplainable,
 } from '../components/RelativeStrengthEnhancedDetail';
+import {
+  MacdEnhancedDetail,
+  MacdHeadlineExplainable,
+} from '../components/MacdEnhancedDetail';
+import {
+  BollingerEnhancedDetail,
+  BollingerHeadlineExplainable,
+} from '../components/BollingerEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
@@ -341,6 +349,18 @@ const RELATIVE_STRENGTH_HEADLINE_LABELS = {
     '此燈號是個股方向 4 項中的「對比大盤」項。20 日是 O\'Neil 系統的標準窗口（≈1 個交易月）。連續多週「強於大盤」常見於領漲類股，是中期持有的好訊號；連續「弱於大盤」是換股的警訊。',
 };
 
+const MACD_HEADLINE_LABELS = {
+  ruleTitle: 'MACD 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是時機指標 2 項中的「動能交叉」項。MACD 屬「事後型」指標 — 交叉發生後才確認，不能預測。但對「現在該停利還是再加碼」這類問題很實用。配合下方走勢圖看 histogram 是否擴張/收縮，比單看當下的數字更可靠。',
+};
+
+const BOLLINGER_HEADLINE_LABELS = {
+  ruleTitle: '布林通道紅黃綠燈規則',
+  ruleNote:
+    '此燈號是時機指標 2 項中的「波動位置」項。通道是 mean-reversion 工具：價格突破 ±2σ 統計上會回歸，但**強趨勢可以沿著上/下軌走多日**（"riding the band"）。所以單獨看會誤判，要配合 RSI 和成交量一起判讀。',
+};
+
 function IndicatorRow({
   symbol,
   indicatorKey,
@@ -356,6 +376,8 @@ function IndicatorRow({
   const isRsi = indicatorKey === 'rsi';
   const isVolumeAnomaly = indicatorKey === 'volume_anomaly';
   const isRelativeStrength = indicatorKey === 'relative_strength';
+  const isMacd = indicatorKey === 'macd';
+  const isBollinger = indicatorKey === 'bollinger';
 
   // Non-expandable rows (insufficient data, no chart, no detail) keep
   // the simple flat row — no <details> needed.
@@ -415,6 +437,18 @@ function IndicatorRow({
                 detail={result.detail}
                 labels={RELATIVE_STRENGTH_HEADLINE_LABELS}
               />
+            ) : isMacd ? (
+              <MacdHeadlineExplainable
+                shortLabel={result.short_label}
+                detail={result.detail}
+                labels={MACD_HEADLINE_LABELS}
+              />
+            ) : isBollinger ? (
+              <BollingerHeadlineExplainable
+                shortLabel={result.short_label}
+                detail={result.detail}
+                labels={BOLLINGER_HEADLINE_LABELS}
+              />
             ) : (
               result.short_label
             )}
@@ -440,6 +474,10 @@ function IndicatorRow({
             <VolumeAnomalyEnhancedDetail detail={result.detail} />
           ) : isRelativeStrength ? (
             <RelativeStrengthEnhancedDetail detail={result.detail} />
+          ) : isMacd ? (
+            <MacdEnhancedDetail detail={result.detail} />
+          ) : isBollinger ? (
+            <BollingerEnhancedDetail detail={result.detail} />
           ) : (
             hasDetail && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">

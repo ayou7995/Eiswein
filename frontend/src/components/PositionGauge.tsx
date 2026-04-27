@@ -51,6 +51,12 @@ export function PositionGauge({
   const range = max === min ? 1 : max - min;
   const clampedValue = Math.max(min, Math.min(max, value));
   const markerLeftPct = ((clampedValue - min) / range) * 100;
+  // Track when the actual value blew past the gauge bounds so the
+  // marker doesn't silently disappear at the edge under overflow-hidden.
+  // The chevron + tinted edge band gives the user an unambiguous "out of
+  // gauge" cue while the precise number still lives in the section header.
+  const overflowAbove = value > max;
+  const overflowBelow = value < min;
 
   // Build segment offsets + widths from cumulative thresholds. The final
   // segment is pinned to 100% (right edge) regardless of floating-point
@@ -73,7 +79,11 @@ export function PositionGauge({
       <div
         role="img"
         aria-label={ariaLabel}
-        className="relative h-3 w-full overflow-hidden rounded-md border border-slate-700/60"
+        className={`relative h-3 w-full overflow-hidden rounded-md border ${
+          overflowAbove || overflowBelow
+            ? 'border-amber-400/80 ring-1 ring-amber-400/30'
+            : 'border-slate-700/60'
+        }`}
       >
         {segments.map((seg, idx) => (
           <div
@@ -82,11 +92,30 @@ export function PositionGauge({
             className={`absolute top-0 h-full ${seg.bg}`}
           />
         ))}
-        <div
-          aria-hidden="true"
-          style={{ left: `${markerLeftPct}%` }}
-          className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-slate-100 shadow-[0_0_0_1px_rgba(15,23,42,0.6)]"
-        />
+        {overflowAbove ? (
+          // Marker swaps from a thin tick to an edge-pinned chevron so
+          // the user sees a discrete "blew past the scale" symbol rather
+          // than a near-invisible 1px line clipped by overflow-hidden.
+          <div
+            aria-hidden="true"
+            className="absolute right-0 top-0 flex h-3 items-center pr-0.5 text-[11px] font-bold leading-none text-amber-300 drop-shadow-[0_0_2px_rgba(0,0,0,0.6)]"
+          >
+            ▶
+          </div>
+        ) : overflowBelow ? (
+          <div
+            aria-hidden="true"
+            className="absolute left-0 top-0 flex h-3 items-center pl-0.5 text-[11px] font-bold leading-none text-amber-300 drop-shadow-[0_0_2px_rgba(0,0,0,0.6)]"
+          >
+            ◀
+          </div>
+        ) : (
+          <div
+            aria-hidden="true"
+            style={{ left: `${markerLeftPct}%` }}
+            className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-slate-100 shadow-[0_0_0_1px_rgba(15,23,42,0.6)]"
+          />
+        )}
       </div>
       {/* Labels mirror the bar's segment offsets so each sits centered
           beneath its zone. Absolute positioning matches the bar so any
