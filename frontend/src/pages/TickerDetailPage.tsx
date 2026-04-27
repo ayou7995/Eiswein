@@ -248,7 +248,14 @@ function TickerHeader({
           </h1>
           {signalLoading && <LoadingSpinner label="讀取訊號…" />}
           {signal && (
-            <ActionBadge action={signal.action} timingBadge={signal.timing_badge} />
+            <ActionBadge
+              action={signal.action}
+              timingBadge={signal.timing_badge}
+              explainContext={{
+                directionGreenCount: signal.direction_green_count,
+                directionRedCount: signal.direction_red_count,
+              }}
+            />
           )}
           {pendingSignal && (
             <span className="text-xs text-slate-400">分析運算中</span>

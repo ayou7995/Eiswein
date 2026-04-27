@@ -11,6 +11,7 @@ import {
 } from '../components/MarketRegimeIndicatorList';
 import { DataStatusBadge } from '../components/DataStatusBadge';
 import { IndicatorDriftBanner } from '../components/IndicatorDriftBanner';
+import { Explainable, RuleTable } from '../components/Explainable';
 import { useMarketPosture } from '../hooks/useMarketPosture';
 import { marketIndicatorSeriesNameSchema } from '../api/marketIndicatorSeries';
 import {
@@ -197,7 +198,31 @@ function AttentionAlertsCard(): JSX.Element {
     >
       <header>
         <h2 id="attention-heading" className="text-lg font-semibold">
-          需要留意
+          <Explainable
+            title="「需要留意」篩選規則"
+            explanation={
+              <RuleTable
+                preface="觀察清單中當日 action 屬下列三類的標的會跳到這裡，是「需要當下做決定」的高警示訊號。中間 3 種（買入 / 持有 / 觀望）不跳——日常已知狀態，不需特別 alert。"
+                rows={[
+                  {
+                    condition: '🟢🟢 強力買入',
+                    result: '4 個方向指標全綠，買進機會浮現',
+                  },
+                  {
+                    condition: '⚠️ 減倉',
+                    result: '紅燈 2-3 個，趨勢轉弱，考慮部分出場',
+                  },
+                  {
+                    condition: '🔴🔴 出場',
+                    result: '4 個方向指標全紅，趕快出',
+                  },
+                ]}
+                note="篩選清單為空 → 沒有需要立即關注的訊號。"
+              />
+            }
+          >
+            需要留意
+          </Explainable>
         </h2>
       </header>
       {watchlistLoading && (
@@ -223,7 +248,14 @@ function AttentionAlertsCard(): JSX.Element {
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:border-sky-500/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                 >
                   <span className="font-mono font-semibold text-slate-100">{row.item.symbol}</span>
-                  <ActionBadge action={signal.action} timingBadge={signal.timing_badge} />
+                  <ActionBadge
+                    action={signal.action}
+                    timingBadge={signal.timing_badge}
+                    explainContext={{
+                      directionGreenCount: signal.direction_green_count,
+                      directionRedCount: signal.direction_red_count,
+                    }}
+                  />
                   <span className="text-xs text-slate-400">
                     綠燈 {signal.direction_green_count} · 紅燈 {signal.direction_red_count}
                   </span>
@@ -355,7 +387,14 @@ function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
       </th>
       <td className="px-3 py-2">
         {row.status === 'ready' && signal ? (
-          <ActionBadge action={signal.action} timingBadge={signal.timing_badge} />
+          <ActionBadge
+            action={signal.action}
+            timingBadge={signal.timing_badge}
+            explainContext={{
+              directionGreenCount: signal.direction_green_count,
+              directionRedCount: signal.direction_red_count,
+            }}
+          />
         ) : row.status === 'pending_signal' ? (
           <span className="text-xs text-slate-400">分析運算中</span>
         ) : row.status === 'loading' ? (
