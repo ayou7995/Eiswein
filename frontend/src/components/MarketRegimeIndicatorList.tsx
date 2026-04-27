@@ -9,7 +9,7 @@ import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
 import { LoadingSpinner } from './LoadingSpinner';
 import { IndicatorMultiLine } from './charts/IndicatorMultiLine';
 import { IndicatorBoundedLine } from './charts/IndicatorBoundedLine';
-import { IndicatorCategoricalBars } from './charts/IndicatorCategoricalBars';
+import { AdDayCandleClassificationChart } from './charts/AdDayCandleClassificationChart';
 import {
   MaPositionEnhancedDetail,
   MaPositionHeadlineExplainable,
@@ -18,6 +18,10 @@ import {
   VixEnhancedDetail,
   VixHeadlineExplainable,
 } from './VixEnhancedDetail';
+import {
+  AdDayEnhancedDetail,
+  AdDayHeadlineExplainable,
+} from './AdDayEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
@@ -29,6 +33,12 @@ const VIX_HEADLINE_LABELS = {
   ruleTitle: 'VIX 紅黃綠燈規則',
   ruleNote:
     '此燈號是市場態勢 4 票之 1。VIX 過低 (<12) 是反向訊號：市場過於自滿時反轉風險升高。',
+};
+
+const AD_DAY_HEADLINE_LABELS = {
+  ruleTitle: 'A/D Day 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是市場態勢 4 票之 1。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -132,6 +142,12 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
                 detail={item.detail}
                 labels={VIX_HEADLINE_LABELS}
               />
+            ) : item.indicator_name === 'ad_day' ? (
+              <AdDayHeadlineExplainable
+                shortLabel={item.short_label}
+                detail={item.detail}
+                labels={AD_DAY_HEADLINE_LABELS}
+              />
             ) : (
               item.short_label
             )}
@@ -148,6 +164,8 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
             <MaPositionEnhancedDetail detail={item.detail} />
           ) : item.indicator_name === 'vix' ? (
             <VixEnhancedDetail detail={item.detail} />
+          ) : item.indicator_name === 'ad_day' ? (
+            <AdDayEnhancedDetail detail={item.detail} />
           ) : (
             detailEntries.length > 0 && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
@@ -213,7 +231,7 @@ interface IndicatorChartProps {
   response: MarketIndicatorSeriesResponse;
 }
 
-function IndicatorChart({ response }: IndicatorChartProps): JSX.Element {
+function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
   if (response.indicator === 'spx_ma') {
     return (
       <IndicatorMultiLine
@@ -297,20 +315,9 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element {
       />
     );
   }
-  return (
-    <IndicatorCategoricalBars
-      series={response.series}
-      colors={{
-        accum: '#22c55e',
-        distrib: '#ef4444',
-        neutral: '#475569',
-      }}
-      legendLabels={{
-        accum: '進貨日',
-        distrib: '出貨日',
-        neutral: '中性',
-      }}
-      ariaLabel="A/D Day 25 日分類"
-    />
-  );
+  if (response.indicator === 'ad_day') {
+    return <AdDayCandleClassificationChart response={response} />;
+  }
+  // Discriminated-union exhaustiveness — should be unreachable.
+  return null;
 }

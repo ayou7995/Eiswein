@@ -443,6 +443,8 @@ def build_ad_day_payload(frame: pd.DataFrame) -> dict[str, object]:
         return _ad_day_insufficient()
 
     open_ = frame["open"].astype("float64")
+    high = frame["high"].astype("float64")
+    low = frame["low"].astype("float64")
     close = frame["close"].astype("float64")
     volume = frame["volume"].astype("float64")
     prev_volume = volume.shift(1)
@@ -469,6 +471,11 @@ def build_ad_day_payload(frame: pd.DataFrame) -> dict[str, object]:
     tail_class = classifications[-SERIES_DAYS:]
     tail_change = spx_change_pct.iloc[-SERIES_DAYS:]
     tail_vol_ratio = volume_ratio.iloc[-SERIES_DAYS:]
+    tail_open = open_.iloc[-SERIES_DAYS:]
+    tail_high = high.iloc[-SERIES_DAYS:]
+    tail_low = low.iloc[-SERIES_DAYS:]
+    tail_close = close.iloc[-SERIES_DAYS:]
+    tail_volume = volume.iloc[-SERIES_DAYS:]
 
     series = [
         {
@@ -476,8 +483,24 @@ def build_ad_day_payload(frame: pd.DataFrame) -> dict[str, object]:
             "classification": cls,
             "spx_change": _round_or_none(chg, ndigits=2),
             "volume_ratio": _round_or_none(vr, ndigits=4),
+            "open": _round_or_none(o, ndigits=2),
+            "high": _round_or_none(h, ndigits=2),
+            "low": _round_or_none(low_v, ndigits=2),
+            "close": _round_or_none(c, ndigits=2),
+            "volume": int(v),
         }
-        for idx, cls, chg, vr in zip(tail_idx, tail_class, tail_change, tail_vol_ratio, strict=True)
+        for idx, cls, chg, vr, o, h, low_v, c, v in zip(
+            tail_idx,
+            tail_class,
+            tail_change,
+            tail_vol_ratio,
+            tail_open,
+            tail_high,
+            tail_low,
+            tail_close,
+            tail_volume,
+            strict=True,
+        )
     ]
 
     accum_25 = sum(1 for c in classifications[-_AD_25D_WINDOW:] if c == "accum")

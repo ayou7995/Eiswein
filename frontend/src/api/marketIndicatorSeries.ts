@@ -84,6 +84,14 @@ const adDayResponseSchema = z.object({
       classification: adDayClassificationSchema,
       spx_change: z.number(),
       volume_ratio: z.number(),
+      // OHLCV per day — accepted as nullable+optional so a NaN-tripping
+      // bar (encoded as null by the backend's _round_or_none helper)
+      // doesn't fail the whole response. Chart filters them out.
+      open: z.number().nullable().optional(),
+      high: z.number().nullable().optional(),
+      low: z.number().nullable().optional(),
+      close: z.number().nullable().optional(),
+      volume: z.number().nullable().optional(),
     }),
   ),
   summary_zh: z.string(),

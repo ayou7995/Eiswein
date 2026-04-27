@@ -359,7 +359,13 @@
       "Bash(node_modules/.bin/prettier --check src/components/MarketRegimeIndicatorList.tsx src/components/charts/IndicatorCategoricalBars.tsx src/components/charts/IndicatorCategoricalBars.test.tsx src/api/marketIndicatorSeries.ts src/hooks/useMarketIndicatorSeries.ts src/pages/DashboardPage.tsx)",
       "Bash(node_modules/.bin/prettier --write src/components/MarketRegimeIndicatorList.tsx src/components/charts/IndicatorCategoricalBars.tsx src/components/charts/IndicatorCategoricalBars.test.tsx src/api/marketIndicatorSeries.ts src/hooks/useMarketIndicatorSeries.ts src/pages/DashboardPage.tsx)",
       "Bash(git -C /Users/cheyulin/Eiswein/.claude/worktrees/agent-a38762b5 log --oneline -2)",
-      "Bash(awk '{print $2}')"
+      "Bash(awk '{print $2}')",
+      "Bash(ps *)",
+      "Bash(kill 29790)",
+      "Bash(.venv/bin/python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --env-file .env --ssl-keyfile local-key.pem --ssl-certfile local-cert.pem --reload)",
+      "Bash(echo \"started pid=$!\")",
+      "Bash(kill 35140)",
+      "Bash(/opt/homebrew/bin/npm run *)"
     ]
   }
 }

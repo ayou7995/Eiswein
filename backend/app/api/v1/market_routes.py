@@ -320,6 +320,13 @@ class AdDayPoint(BaseModel):
     classification: Literal["accum", "distrib", "neutral"]
     spx_change: float | None
     volume_ratio: float | None
+    # OHLCV per day — drives the candle-classification chart. Optional so
+    # pre-feature snapshots without these fields don't break the route.
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    volume: int | None = None
 
 
 class AdDayCurrent(BaseModel):
