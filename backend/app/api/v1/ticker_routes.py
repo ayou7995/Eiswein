@@ -417,11 +417,16 @@ def get_ticker_prices(
 
 # --- Per-indicator 60-day series endpoint ---------------------------------
 
-# 200 trading days needed for MA200 + 60 trading days of output. We
-# read by calendar-day window with generous slack (weekends, holidays)
-# rather than counting trading days directly — the result is sliced to
-# the trailing 60 rows so any extra padding is harmless.
-_SERIES_LOOKBACK_DAYS = 400
+# 200 trading days needed for MA200 + up to 504 (2Y) trading days of
+# output. Read by calendar-day window with generous slack so 2Y views
+# get full warm-up; result is sliced to the requested ``days`` so any
+# extra padding is harmless.
+_SERIES_LOOKBACK_DAYS = 1100
+
+# Per-ticker indicator series accepts the same range bounds as market
+# regime ones: 21 (1M) to 1260 (5Y).
+_DAYS_MIN = 21
+_DAYS_MAX = 1260
 
 # SPY is the canonical SPX proxy used across the regime indicators;
 # the relative_strength branch reads its OHLCV from daily_price (always
@@ -624,11 +629,20 @@ IndicatorSeriesResponse = (
 @router.get(
     "/ticker/{symbol}/indicator/{name}/series",
     response_model=IndicatorSeriesResponse,
-    summary="60-day rolling series + zh-TW summary for a single ticker indicator",
+    summary="Rolling series + zh-TW summary for a single ticker indicator",
 )
 def get_ticker_indicator_series(
     symbol: str,
     name: str,
+    days: int | None = Query(
+        default=None,
+        ge=_DAYS_MIN,
+        le=_DAYS_MAX,
+        description=(
+            "Trailing-window length in trading days. Falls back to the legacy"
+            " 60-day default when omitted."
+        ),
+    ),
     user_id: int = Depends(current_user_id),
     watchlist: WatchlistRepository = Depends(get_watchlist_repository),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
@@ -642,12 +656,16 @@ def get_ticker_indicator_series(
             details={"symbol": validated, "indicator": name, "reason": "unknown_indicator"},
         )
 
+    window = days if days is not None else SERIES_DAYS
+
     end = date.today()
     start = end - timedelta(days=_SERIES_LOOKBACK_DAYS)
     rows = prices.get_range(validated, start=start, end=end)
     frame = build_close_frame(rows)
 
-    if frame.empty or len(frame) < SERIES_DAYS:
+    # Pre-flight: insufficient history if the DB doesn't have at least
+    # the smaller of (requested window, legacy 60-day floor) bars.
+    if frame.empty or len(frame) < min(window, SERIES_DAYS):
         # Distinct from "ticker not on watchlist" — the chart UI uses
         # this 404 to render "資料處理中" rather than a hard error.
         raise NotFoundError(
@@ -659,19 +677,23 @@ def get_ticker_indicator_series(
         )
 
     if name == "price_vs_ma":
-        return PriceVsMaSeriesResponse.model_validate(build_price_vs_ma_payload(validated, frame))
+        return PriceVsMaSeriesResponse.model_validate(
+            build_price_vs_ma_payload(validated, frame, window)
+        )
     if name == "rsi":
-        return RsiSeriesResponse.model_validate(build_rsi_payload(validated, frame))
+        return RsiSeriesResponse.model_validate(build_rsi_payload(validated, frame, window))
     if name == "macd":
-        return MacdSeriesResponse.model_validate(build_macd_payload(validated, frame))
+        return MacdSeriesResponse.model_validate(build_macd_payload(validated, frame, window))
     if name == "bollinger":
-        return BollingerSeriesResponse.model_validate(build_bollinger_payload(validated, frame))
+        return BollingerSeriesResponse.model_validate(
+            build_bollinger_payload(validated, frame, window)
+        )
     if name == "volume_anomaly":
-        # Needs the prior-20-day rolling baseline + the 60-day output
-        # window — total 80 bars. Distinct from the global 60-bar
-        # pre-flight so the route can return a precise 404 when the
-        # warm-up isn't satisfied.
-        if len(frame) < VOLUME_ANOMALY_MIN_BARS:
+        # Needs prior 20-day rolling baseline + the chosen output window.
+        # ``VOLUME_ANOMALY_MIN_BARS = SERIES_DAYS + 20``; for arbitrary
+        # windows the floor scales with the request.
+        volume_min = window + (VOLUME_ANOMALY_MIN_BARS - SERIES_DAYS)
+        if len(frame) < volume_min:
             raise NotFoundError(
                 details={
                     "symbol": validated,
@@ -680,15 +702,15 @@ def get_ticker_indicator_series(
                 },
             )
         return VolumeAnomalySeriesResponse.model_validate(
-            build_volume_anomaly_payload(validated, frame)
+            build_volume_anomaly_payload(validated, frame, window)
         )
     # relative_strength: SUPPORTED_INDICATORS already gates this branch.
     # Loads SPY independently — SPY does not need to be on the user's
-    # watchlist, only present in daily_price (the daily_update job
-    # always carries SPY for the regime indicators).
+    # watchlist, only present in daily_price.
     spy_rows = prices.get_range(_SPX_PROXY_SYMBOL, start=start, end=end)
     spy_frame = build_close_frame(spy_rows)
-    if len(frame) < RELATIVE_STRENGTH_MIN_BARS or len(spy_frame) < RELATIVE_STRENGTH_MIN_BARS:
+    rs_min = min(window + 1, RELATIVE_STRENGTH_MIN_BARS)
+    if len(frame) < rs_min or len(spy_frame) < rs_min:
         raise NotFoundError(
             details={
                 "symbol": validated,
@@ -697,5 +719,5 @@ def get_ticker_indicator_series(
             },
         )
     return RelativeStrengthSeriesResponse.model_validate(
-        build_relative_strength_payload(validated, frame, spy_frame)
+        build_relative_strength_payload(validated, frame, spy_frame, window)
     )

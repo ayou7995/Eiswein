@@ -102,15 +102,15 @@ def build_close_frame(rows: Sequence[DailyPrice]) -> pd.DataFrame:
 # --- Price vs MA ----------------------------------------------------------
 
 
-def build_price_vs_ma_payload(symbol: str, frame: pd.DataFrame) -> dict[str, object]:
+def build_price_vs_ma_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     """Construct the ``price_vs_ma`` series + summary payload."""
     close = frame["close"].astype("float64")
     ma50_full = sma(close, _MA50)
     ma200_full = sma(close, _MA200)
 
-    tail_close = close.iloc[-SERIES_DAYS:]
-    tail_ma50 = ma50_full.iloc[-SERIES_DAYS:]
-    tail_ma200 = ma200_full.iloc[-SERIES_DAYS:]
+    tail_close = close.iloc[-days:]
+    tail_ma50 = ma50_full.iloc[-days:]
+    tail_ma200 = ma200_full.iloc[-days:]
 
     series = [
         {
@@ -212,13 +212,13 @@ def _price_vs_ma_summary(
 # --- RSI ------------------------------------------------------------------
 
 
-def build_rsi_payload(symbol: str, frame: pd.DataFrame) -> dict[str, object]:
+def build_rsi_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     close = frame["close"].astype("float64")
     daily_full = wilder_rsi(close, _RSI_LENGTH)
 
     weekly_full = _weekly_rsi_carry_forward(close)
 
-    tail_daily = daily_full.iloc[-SERIES_DAYS:]
+    tail_daily = daily_full.iloc[-days:]
     tail_weekly = weekly_full.reindex(tail_daily.index, method="ffill")
 
     series = [
@@ -311,16 +311,16 @@ def _rsi_summary(*, zone: _RSIZone, delta_phrase: str) -> str:
 # --- MACD -----------------------------------------------------------------
 
 
-def build_macd_payload(symbol: str, frame: pd.DataFrame) -> dict[str, object]:
+def build_macd_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     close = frame["close"].astype("float64")
     macd_result = macd(close)
     macd_line = macd_result.macd_line
     signal_line = macd_result.signal_line
     histogram = macd_result.histogram
 
-    tail_macd = macd_line.iloc[-SERIES_DAYS:]
-    tail_signal = signal_line.iloc[-SERIES_DAYS:]
-    tail_hist = histogram.iloc[-SERIES_DAYS:]
+    tail_macd = macd_line.iloc[-days:]
+    tail_signal = signal_line.iloc[-days:]
+    tail_hist = histogram.iloc[-days:]
 
     series = [
         {
@@ -444,14 +444,14 @@ def _macd_summary(
 # --- Bollinger Bands ------------------------------------------------------
 
 
-def build_bollinger_payload(symbol: str, frame: pd.DataFrame) -> dict[str, object]:
+def build_bollinger_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     close = frame["close"].astype("float64")
     bands = bollinger_bands(close, length=_BB_LENGTH)
 
-    tail_close = close.iloc[-SERIES_DAYS:]
-    tail_upper = bands.upper.iloc[-SERIES_DAYS:]
-    tail_middle = bands.middle.iloc[-SERIES_DAYS:]
-    tail_lower = bands.lower.iloc[-SERIES_DAYS:]
+    tail_close = close.iloc[-days:]
+    tail_upper = bands.upper.iloc[-days:]
+    tail_middle = bands.middle.iloc[-days:]
+    tail_lower = bands.lower.iloc[-days:]
 
     series = [
         {
@@ -562,7 +562,7 @@ _VOLUME_TREND_LOW: Final[float] = 0.85
 _VOLUME_TREND_HIGH: Final[float] = 1.15
 
 
-def build_volume_anomaly_payload(symbol: str, frame: pd.DataFrame) -> dict[str, object]:
+def build_volume_anomaly_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     """Construct the ``volume_anomaly`` series + summary payload.
 
     Each row in the 60-day series carries the day's volume, the day's
@@ -582,9 +582,9 @@ def build_volume_anomaly_payload(symbol: str, frame: pd.DataFrame) -> dict[str, 
     ratio = volume / avg_20
     price_change_pct = close.pct_change() * 100.0
 
-    tail_vol = volume.iloc[-SERIES_DAYS:]
-    tail_avg = avg_20.iloc[-SERIES_DAYS:]
-    tail_change = price_change_pct.iloc[-SERIES_DAYS:]
+    tail_vol = volume.iloc[-days:]
+    tail_avg = avg_20.iloc[-days:]
+    tail_change = price_change_pct.iloc[-days:]
 
     series = [
         {
@@ -666,7 +666,10 @@ _RS_LEAD_THRESHOLD: Final[float] = 0.005
 
 
 def build_relative_strength_payload(
-    symbol: str, ticker_frame: pd.DataFrame, spx_frame: pd.DataFrame
+    symbol: str,
+    ticker_frame: pd.DataFrame,
+    spx_frame: pd.DataFrame,
+    days: int = SERIES_DAYS,
 ) -> dict[str, object]:
     """Construct the ``relative_strength`` series + summary payload.
 
@@ -685,13 +688,13 @@ def build_relative_strength_payload(
     spx_close = spx_frame["close"].astype("float64")
 
     joined = pd.concat([ticker_close.rename("ticker"), spx_close.rename("spx")], axis=1).dropna()
-    if len(joined) < SERIES_DAYS:
+    if len(joined) < min(days, SERIES_DAYS):
         return _relative_strength_insufficient(symbol)
 
     # The trailing 60 paired rows are the wire slice. Row 0 anchors at
     # 0.0 (cumulative return relative to itself); row 59 carries the
     # full-window return.
-    tail = joined.iloc[-SERIES_DAYS:]
+    tail = joined.iloc[-days:]
     base_ticker = float(tail["ticker"].iloc[0])
     base_spx = float(tail["spx"].iloc[0])
 

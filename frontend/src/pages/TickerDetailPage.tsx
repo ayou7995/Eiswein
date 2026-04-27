@@ -22,10 +22,19 @@ import {
   MaPositionEnhancedDetail,
   MaPositionHeadlineExplainable,
 } from '../components/MaPositionEnhancedDetail';
+import {
+  RsiEnhancedDetail,
+  RsiHeadlineExplainable,
+} from '../components/RsiEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useIndicatorSeries } from '../hooks/useIndicatorSeries';
+import { IndicatorRangeSelector } from '../components/IndicatorRangeSelector';
+import {
+  MARKET_INDICATOR_RANGES,
+  type MarketIndicatorRangeKey,
+} from '../api/marketIndicatorSeries';
 import type { TickerSignalResponse } from '../api/tickerSignal';
 import type { IndicatorResult } from '../api/tickerIndicators';
 import type { PriceRange } from '../api/tickerPrices';
@@ -279,6 +288,12 @@ const PRICE_VS_MA_HEADLINE_LABELS = {
     '此燈號是個股方向 4 項中的「位階」項；展開列可看距離尺標、近期黃金/死亡交叉、與看點。',
 };
 
+const RSI_HEADLINE_LABELS = {
+  ruleTitle: 'RSI 紅黃綠燈規則',
+  ruleNote:
+    '⚠️ 鈍化現象：強勢趨勢中 RSI 可能連續數週停在 >70 或 <30，「碰到 70 就賣 / 碰到 30 就買」會錯過大行情或接刀。必須配合週線確認 + 價格動作判讀真正反轉。RSI 屬個股方向 4 項中的「動能」項，是 contrarian indicator — 超買偏空、超賣偏多。',
+};
+
 function IndicatorRow({
   symbol,
   indicatorKey,
@@ -291,6 +306,7 @@ function IndicatorRow({
   const expandable = hasDetail || hasChart;
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
   const isPriceVsMa = indicatorKey === 'price_vs_ma';
+  const isRsi = indicatorKey === 'rsi';
 
   // Non-expandable rows (insufficient data, no chart, no detail) keep
   // the simple flat row — no <details> needed.
@@ -332,6 +348,12 @@ function IndicatorRow({
                 detail={result.detail}
                 labels={PRICE_VS_MA_HEADLINE_LABELS}
               />
+            ) : isRsi ? (
+              <RsiHeadlineExplainable
+                shortLabel={result.short_label}
+                detail={result.detail}
+                labels={RSI_HEADLINE_LABELS}
+              />
             ) : (
               result.short_label
             )}
@@ -351,6 +373,8 @@ function IndicatorRow({
           )}
           {isPriceVsMa ? (
             <MaPositionEnhancedDetail detail={result.detail} />
+          ) : isRsi ? (
+            <RsiEnhancedDetail detail={result.detail} />
           ) : (
             hasDetail && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
@@ -386,11 +410,26 @@ function IndicatorChartSection({
   seriesName,
   enabled,
 }: IndicatorChartSectionProps): JSX.Element {
-  const query = useIndicatorSeries(symbol, seriesName, { enabled });
+  // Per-chart range state — same UX as the market regime cards. Default
+  // to 3M (60 trading days) which matches every per-ticker indicator's
+  // legacy window.
+  const [range, setRange] = useState<MarketIndicatorRangeKey>('3M');
+  const query = useIndicatorSeries(symbol, seriesName, {
+    enabled,
+    days: rangeToDays(range),
+  });
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
 
   return (
     <div className="flex flex-col gap-2 px-3 py-3">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-200">{query.data?.summary_zh ?? ''}</p>
+        <IndicatorRangeSelector
+          value={range}
+          onChange={setRange}
+          indicatorLabel={`${title} 區間`}
+        />
+      </header>
       {query.isLoading && (
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <LoadingSpinner label="載入中…" />
@@ -402,16 +441,14 @@ function IndicatorChartSection({
         </p>
       )}
       {query.data && (
-        <>
-          <p className="text-sm text-slate-200">{query.data.summary_zh}</p>
-          <IndicatorChart
-            data={query.data}
-            ariaLabel={`${title} 60 日走勢圖`}
-          />
-        </>
+        <IndicatorChart data={query.data} ariaLabel={`${title} 走勢圖`} />
       )}
     </div>
   );
+}
+
+function rangeToDays(range: MarketIndicatorRangeKey): number {
+  return MARKET_INDICATOR_RANGES.find((r) => r.key === range)?.days ?? 60;
 }
 
 interface IndicatorChartProps {
