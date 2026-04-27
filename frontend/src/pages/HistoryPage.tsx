@@ -4,6 +4,7 @@ import { PostureTimelineChart } from '../components/charts/PostureTimelineChart'
 import { TickerSignalTimelineChart } from '../components/charts/TickerSignalTimelineChart';
 import {
   useMarketPostureHistory,
+  usePostureAccuracy,
   useSignalAccuracy,
   useTickerSignals,
 } from '../hooks/useHistory';
@@ -214,6 +215,7 @@ interface AccuracyHeadlineProps {
   horizon: number;
   baselinePct: number;
   baselineTotal: number;
+  testId?: string;
 }
 
 function AccuracyHeadline({
@@ -223,6 +225,7 @@ function AccuracyHeadline({
   horizon,
   baselinePct,
   baselineTotal,
+  testId = 'accuracy-headline',
 }: AccuracyHeadlineProps): JSX.Element {
   const margin = confidenceMargin(correct, total);
   // Tone reflects directional confidence vs SPY baseline only when the
@@ -234,7 +237,7 @@ function AccuracyHeadline({
       ? 'text-signal-green'
       : 'text-slate-100';
   return (
-    <div className="flex flex-col gap-2" data-testid="accuracy-headline">
+    <div className="flex flex-col gap-2" data-testid={testId}>
       <div className="flex flex-wrap items-baseline gap-3">
         <span className={`text-3xl font-semibold ${headlineTone}`}>
           {accuracyPct.toFixed(1)}%
@@ -277,22 +280,45 @@ export function HistoryPage(): JSX.Element {
   );
 }
 
+const POSTURE_LABEL_ZH: Record<string, string> = {
+  offensive: '進攻',
+  defensive: '防守',
+};
+
+// Combined timeline + forward-test accuracy. One window selector
+// drives both: the chart shows posture/SPY for the chosen range, the
+// accuracy block scores those same days against N-day-later SPY
+// direction. Earlier the two had separate range pickers, which let
+// the user read the chart over 90D and the accuracy over "全部" —
+// confusing because the two visualisations were describing different
+// time slices. Same lift-state-up pattern as SignalAccuracySection.
 function MarketPostureSection(): JSX.Element {
   const [days, setDays] = useState<number>(90);
-  const { data, isLoading, isError, refetch } = useMarketPostureHistory(days);
+  const [horizon, setHorizon] = useState<SignalAccuracyHorizon>(20);
+  const historyQuery = useMarketPostureHistory(days);
+  const accuracyQuery = usePostureAccuracy(horizon, days);
+  // Local consts give TS a stable narrowing handle inside nested map
+  // closures — `accuracyQuery.data` would re-widen otherwise.
+  const accuracyData = accuracyQuery.data;
+  const historyData = historyQuery.data;
 
   return (
     <section
       aria-labelledby="history-posture-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
+      className="flex flex-col gap-4 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="history-posture-heading" className="text-lg font-semibold">
-          市場態勢時間軸
-        </h2>
+        <div>
+          <h2 id="history-posture-heading" className="text-lg font-semibold">
+            市場態勢時間軸
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            時間軸與下方準確率共享同一段樣本範圍。
+          </p>
+        </div>
         <div
           role="radiogroup"
-          aria-label="區間"
+          aria-label="樣本範圍"
           className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
         >
           {DAYS_OPTIONS.map((d) => {
@@ -315,25 +341,198 @@ function MarketPostureSection(): JSX.Element {
         </div>
       </header>
 
-      {isLoading && (
+      {historyQuery.isLoading && (
         <div className="flex items-center gap-2 text-slate-400">
           <LoadingSpinner label="載入市場態勢歷史…" />
           <span className="text-sm">載入中…</span>
         </div>
       )}
-      {isError && (
+      {historyQuery.isError && (
         <div className="flex items-center justify-between rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-sm text-signal-red">
           <span>載入市場態勢歷史失敗。</span>
           <button
             type="button"
-            onClick={() => void refetch()}
+            onClick={() => void historyQuery.refetch()}
             className="underline hover:text-signal-red"
           >
             重試
           </button>
         </div>
       )}
-      {!isLoading && !isError && data && <PostureTimelineChart data={data.data} />}
+      {!historyQuery.isLoading && !historyQuery.isError && historyData && (
+        <PostureTimelineChart data={historyData.data} />
+      )}
+
+      <div className="flex flex-col gap-3 border-t border-slate-800 pt-4">
+        <header>
+          <h3 className="text-base font-semibold">
+            <Explainable
+              title="市場態勢準確率"
+              explanation={
+                <RuleTable
+                  preface="把上方的「市場態勢」當成方向訊號回測：進攻日期望 SPX 上漲、防守日期望 SPX 下跌、正常日無方向觀點不計入。命中規則跟個股訊號準確率對稱。"
+                  rows={[
+                    { condition: '✨ 進攻', result: 'N 日後 SPX 收盤 > 當日 → 算命中' },
+                    { condition: '🛡 防守', result: 'N 日後 SPX 收盤 < 當日 → 算命中' },
+                    { condition: '⚖ 正常', result: '不計入（沒方向觀點）' },
+                  ]}
+                  note="跟訊號準確率一樣是樣本內 backtest，看 vs SPY baseline + 95% CI 才能判斷有沒有真的預測力。"
+                />
+              }
+            >
+              市場態勢準確率
+            </Explainable>
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            以上方所選範圍內的市場態勢與 N 日後 SPY 方向比對。
+          </p>
+        </header>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-slate-400">命中 horizon</span>
+          <div
+            role="radiogroup"
+            aria-label="態勢準確率時間範圍"
+            className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
+          >
+            {SIGNAL_ACCURACY_HORIZONS.map((h) => {
+              const active = h === horizon;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setHorizon(h)}
+                  className={`rounded px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+                    active
+                      ? 'bg-sky-600 text-white'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  {h} 日
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-xs text-slate-500">
+            訊號發出後 N 個交易日比對 SPY 方向
+          </span>
+        </div>
+
+        {accuracyQuery.isLoading && (
+          <div className="flex items-center gap-2 text-slate-400">
+            <LoadingSpinner label="載入態勢準確率…" />
+            <span className="text-sm">載入中…</span>
+          </div>
+        )}
+        {accuracyQuery.isError && (
+          <div className="flex items-center justify-between rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-sm text-signal-red">
+            <span>載入態勢準確率失敗。</span>
+            <button
+              type="button"
+              onClick={() => void accuracyQuery.refetch()}
+              className="underline hover:text-signal-red"
+            >
+              重試
+            </button>
+          </div>
+        )}
+
+        {accuracyData && (
+          <div className="flex flex-col gap-3">
+            <AccuracyHeadline
+              accuracyPct={accuracyData.accuracy_pct}
+              correct={accuracyData.correct}
+              total={accuracyData.total_signals}
+              horizon={horizon}
+              baselinePct={accuracyData.baseline.spy_up_pct}
+              baselineTotal={accuracyData.baseline.total}
+              testId="posture-accuracy-headline"
+            />
+            {accuracyData.total_signals === 0 ? (
+              <p role="status" className="text-sm text-slate-400">
+                所選範圍內沒有方向性態勢訊號（全為「正常」），無法評估。
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-md border border-slate-800">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-900/80 text-xs uppercase text-slate-400">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 text-left">
+                        態勢
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-right">
+                        天數
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-right">
+                        命中
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-right">
+                        準確率 ±95% CI
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-right">
+                        vs SPY baseline
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {Object.entries(accuracyData.by_posture).map(([posture, bucket]) => {
+                      const isDefensive = posture === 'defensive';
+                      const baselinePct = isDefensive
+                        ? 100 - accuracyData.baseline.spy_up_pct
+                        : accuracyData.baseline.spy_up_pct;
+                      const delta = bucket.accuracy_pct - baselinePct;
+                      const margin = confidenceMargin(
+                        bucket.correct,
+                        bucket.total,
+                      );
+                      const ciClears =
+                        margin !== null && Math.abs(delta) > margin;
+                      return (
+                        <tr key={posture} className="bg-slate-950/40">
+                          <th
+                            scope="row"
+                            className="px-3 py-2 text-left font-medium text-slate-200"
+                          >
+                            {POSTURE_LABEL_ZH[posture] ?? posture}
+                          </th>
+                          <td className="px-3 py-2 text-right font-mono text-slate-300">
+                            {bucket.total}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-300">
+                            {bucket.correct}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-200">
+                            {bucket.accuracy_pct.toFixed(1)}%
+                            {margin !== null && (
+                              <span className="ml-1 text-[10px] text-slate-500">
+                                ±{margin.toFixed(1)}%
+                              </span>
+                            )}
+                          </td>
+                          <td
+                            className={`px-3 py-2 text-right font-mono ${
+                              ciClears && delta > 0
+                                ? 'text-signal-green'
+                                : ciClears && delta < 0
+                                  ? 'text-signal-red'
+                                  : 'text-slate-400'
+                            }`}
+                          >
+                            {delta >= 0 ? '+' : ''}
+                            {delta.toFixed(1)}%
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

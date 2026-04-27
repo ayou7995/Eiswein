@@ -37,6 +37,7 @@ from app.api.dependencies import (
 from app.api.v1.watchlist_routes import validate_symbol_or_raise
 from app.db.models import (
     DailyPrice,
+    DailySignal,
     MarketSnapshot,
     TickerSnapshot,
 )
@@ -69,6 +70,18 @@ _SELL_ACTIONS: frozenset[ActionCategory] = frozenset({ActionCategory.REDUCE, Act
 
 # --- /history/market-posture ---------------------------------------------
 
+# Regime indicator names voted into the posture. Mirror of
+# `app/signals/market_posture.REGIME_INDICATOR_NAMES`. Kept local
+# (not imported) so this read endpoint doesn't depend on the signal
+# composition layer at module import time.
+_REGIME_INDICATOR_NAMES: tuple[str, ...] = (
+    "spx_ma",
+    "ad_day",
+    "vix",
+    "yield_spread",
+)
+_SPX_PROXY_SYMBOL = "SPY"
+
 
 class PostureHistoryItem(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -78,6 +91,20 @@ class PostureHistoryItem(BaseModel):
     regime_green_count: int
     regime_red_count: int
     regime_yellow_count: int
+    # New: SPY close + per-indicator vote so the frontend can paint the
+    # price line + posture-tinted background and surface a 4-indicator
+    # breakdown on hover. Both are optional — older snapshots predating
+    # the indicator backfill may have neither.
+    spy_close: float | None = None
+    # SPX 50/200-day SMA values (proxied via SPY closes), echoed per day
+    # so the chart can overlay them as auxiliary trend reference lines.
+    # Two of the four regime indicators (SPX 多頭) come from these MAs,
+    # so plotting them turns the abstract "spx_ma=red" tag into a
+    # visible cross. Null when the trailing window doesn't have enough
+    # data (typically the leftmost ~200 days of available SPY history).
+    spy_ma50: float | None = None
+    spy_ma200: float | None = None
+    regime_signals: dict[str, str] = {}
 
 
 class PostureHistoryResponse(BaseModel):
@@ -111,6 +138,35 @@ def market_posture_history(
         .order_by(MarketSnapshot.date.asc())
     )
     rows = session.execute(stmt).scalars().all()
+
+    # Pull SPY closes + the 4 regime indicator votes in one shot each so
+    # we can attach them per-day without N+1 queries. The regime
+    # indicators are persisted as DailySignal rows with symbol='SPY'
+    # (see ingestion/indicators._SPX_SYMBOL).
+    #
+    # We deliberately don't filter SPY by `date >= cutoff` here: the
+    # MA50 / MA200 overlay needs ~200 prior calendar days of context to
+    # warm up the rolling window, otherwise MA200 would be null for the
+    # entire visible range whenever the user picks ≤ 200D. Pulling the
+    # full SPY series is one extra query of a few KB; cheap.
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _SPX_PROXY_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_close_by_date: dict[date, float] = {r.date: float(r.close) for r in spy_rows}
+    spy_ma50_by_date, spy_ma200_by_date = _spy_moving_averages(spy_rows)
+
+    regime_rows = session.execute(
+        select(DailySignal.date, DailySignal.indicator_name, DailySignal.signal)
+        .where(DailySignal.symbol == _SPX_PROXY_SYMBOL)
+        .where(DailySignal.indicator_name.in_(_REGIME_INDICATOR_NAMES))
+        .where(DailySignal.date >= cutoff)
+    ).all()
+    regime_by_date: dict[date, dict[str, str]] = {}
+    for r in regime_rows:
+        regime_by_date.setdefault(r.date, {})[r.indicator_name] = r.signal
+
     data = [
         PostureHistoryItem(
             date=row.date,
@@ -118,10 +174,47 @@ def market_posture_history(
             regime_green_count=row.regime_green_count,
             regime_red_count=row.regime_red_count,
             regime_yellow_count=row.regime_yellow_count,
+            spy_close=spy_close_by_date.get(row.date),
+            spy_ma50=spy_ma50_by_date.get(row.date),
+            spy_ma200=spy_ma200_by_date.get(row.date),
+            regime_signals=regime_by_date.get(row.date, {}),
         )
         for row in rows
     ]
     return PostureHistoryResponse(data=data, total=len(data), has_more=False)
+
+
+def _spy_moving_averages(
+    spy_rows: list,  # list of Row(date, close), date-ascending
+) -> tuple[dict[date, float], dict[date, float]]:
+    """Compute SMA50 and SMA200 per date from a date-ascending close list.
+
+    Hand-rolled deque-style rolling sum so we don't have to pull pandas
+    in to a read endpoint that otherwise stays in plain SQL/dict land.
+    Days where the window isn't yet full are simply absent from the
+    output dict — callers use ``.get()`` to default to ``None``.
+    """
+    ma50: dict[date, float] = {}
+    ma200: dict[date, float] = {}
+    if not spy_rows:
+        return ma50, ma200
+    closes: list[float] = []
+    sum50 = 0.0
+    sum200 = 0.0
+    for r in spy_rows:
+        c = float(r.close)
+        closes.append(c)
+        sum50 += c
+        sum200 += c
+        if len(closes) > 50:
+            sum50 -= closes[-51]
+        if len(closes) > 200:
+            sum200 -= closes[-201]
+        if len(closes) >= 50:
+            ma50[r.date] = sum50 / 50.0
+        if len(closes) >= 200:
+            ma200[r.date] = sum200 / 200.0
+    return ma50, ma200
 
 
 # --- /history/signal-accuracy --------------------------------------------
@@ -377,6 +470,145 @@ def signal_accuracy(
         by_action={
             k: AccuracyBucket(total=v.total, correct=v.correct, accuracy_pct=v.pct)
             for k, v in buckets.items()
+        },
+        baseline=SignalAccuracyBaseline(
+            total=baseline_total,
+            spy_up_count=baseline_up,
+            spy_up_pct=baseline_pct,
+        ),
+    )
+
+
+# --- /history/posture-accuracy -------------------------------------------
+
+# Posture → directional expectation. Symmetric to the per-ticker
+# accuracy logic: 進攻 expects SPX up, 防守 expects down, 正常 has no
+# directional view (excluded from the score).
+_POSTURE_BUY: frozenset[str] = frozenset({"offensive"})
+_POSTURE_SELL: frozenset[str] = frozenset({"defensive"})
+
+
+class PostureAccuracyBucket(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    total: int
+    correct: int
+    accuracy_pct: float
+
+
+class PostureAccuracyResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    horizon: HorizonLiteral
+    days: int | None
+    total_signals: int
+    correct: int
+    accuracy_pct: float
+    by_posture: dict[str, PostureAccuracyBucket]
+    # Same SPY-drift baseline used by /signal-accuracy. Lets the
+    # frontend reuse the same "system beats baseline" tinting logic.
+    baseline: SignalAccuracyBaseline
+
+
+@router.get(
+    "/history/posture-accuracy",
+    response_model=PostureAccuracyResponse,
+    summary="Forward-test market posture against SPY drift",
+)
+def posture_accuracy(
+    horizon: int = Query(default=20, ge=1, le=120),
+    days: int | None = Query(default=None, ge=30, le=730),
+    _user_id: int = Depends(current_user_id),
+    session: Session = Depends(get_db_session),
+) -> PostureAccuracyResponse:
+    if horizon not in _VALID_HORIZONS:
+        from app.security.exceptions import ValidationError as EisweinValidationError
+
+        raise EisweinValidationError(
+            details={"reason": "invalid_horizon", "allowed": sorted(_VALID_HORIZONS)}
+        )
+    horizon_literal = cast(HorizonLiteral, horizon)
+
+    snap_rows = session.execute(
+        select(MarketSnapshot.date, MarketSnapshot.posture).order_by(MarketSnapshot.date.asc())
+    ).all()
+    if not snap_rows:
+        empty_baseline = SignalAccuracyBaseline(total=0, spy_up_count=0, spy_up_pct=0.0)
+        return PostureAccuracyResponse(
+            horizon=horizon_literal,
+            days=days,
+            total_signals=0,
+            correct=0,
+            accuracy_pct=0.0,
+            by_posture={},
+            baseline=empty_baseline,
+        )
+
+    if days is not None:
+        latest = snap_rows[-1].date
+        cutoff = latest - timedelta(days=days)
+        snap_rows = [r for r in snap_rows if r.date >= cutoff]
+
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _SPX_PROXY_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_price_by_date: dict[date, Decimal] = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    sorted_spy_dates = sorted(spy_price_by_date.keys())
+    total = 0
+    correct = 0
+    per_posture: dict[str, tuple[int, int]] = {}
+
+    for snap in snap_rows:
+        posture = snap.posture
+        # Symmetric to ActionCategory: only directional postures count.
+        if posture not in _POSTURE_BUY and posture not in _POSTURE_SELL:
+            continue
+        start_price = spy_price_by_date.get(snap.date)
+        if start_price is None:
+            continue
+        target_date = snap.date + timedelta(days=horizon)
+        forward_date = _first_on_or_after(sorted_spy_dates, target_date)
+        if forward_date is None:
+            continue
+        forward_price = spy_price_by_date[forward_date]
+
+        went_up = forward_price > start_price
+        call_was_up = posture in _POSTURE_BUY
+        is_correct = went_up == call_was_up
+
+        total += 1
+        if is_correct:
+            correct += 1
+        t_count, c_count = per_posture.get(posture, (0, 0))
+        per_posture[posture] = (t_count + 1, c_count + (1 if is_correct else 0))
+
+    # Same-period SPY drift baseline — uses the same date list as the
+    # accuracy itself so the comparison is window-aligned.
+    baseline_dates = [r.date for r in snap_rows]
+    baseline_total, baseline_up = _eval_baseline(
+        signal_dates=baseline_dates,
+        spy_price_by_date=spy_price_by_date,
+        horizon_days=int(horizon),
+    )
+    baseline_pct = round(100.0 * baseline_up / baseline_total, 2) if baseline_total else 0.0
+
+    overall_pct = round(100.0 * correct / total, 2) if total else 0.0
+    return PostureAccuracyResponse(
+        horizon=horizon_literal,
+        days=days,
+        total_signals=total,
+        correct=correct,
+        accuracy_pct=overall_pct,
+        by_posture={
+            k: PostureAccuracyBucket(
+                total=t,
+                correct=c,
+                accuracy_pct=round(100.0 * c / t, 2) if t else 0.0,
+            )
+            for k, (t, c) in per_posture.items()
         },
         baseline=SignalAccuracyBaseline(
             total=baseline_total,

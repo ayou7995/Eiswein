@@ -52,7 +52,7 @@ describe('HistoryPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders each of the three sections independently with happy-path data', async () => {
+  it('renders the merged posture section and signal section with happy-path data', async () => {
     const restore = installFetch((url) => {
       if (url.includes('/history/market-posture')) {
         return {
@@ -76,6 +76,27 @@ describe('HistoryPage', () => {
             ],
             total: 2,
             has_more: false,
+          },
+        };
+      }
+      if (url.includes('/history/posture-accuracy')) {
+        return {
+          status: 200,
+          body: {
+            horizon: 20,
+            days: 90,
+            total_signals: 4,
+            correct: 3,
+            accuracy_pct: 75.0,
+            by_posture: {
+              offensive: { total: 3, correct: 2, accuracy_pct: 66.7 },
+              defensive: { total: 1, correct: 1, accuracy_pct: 100.0 },
+            },
+            baseline: {
+              total: 4,
+              spy_up_count: 2,
+              spy_up_pct: 50.0,
+            },
           },
         };
       }
@@ -142,8 +163,13 @@ describe('HistoryPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('accuracy-headline')).toHaveTextContent('70.0%');
       });
-      // Baseline pulls in the SPY drift comparison.
-      expect(screen.getByText('同期 SPY 上漲 baseline')).toBeInTheDocument();
+      // Both posture-accuracy and signal-accuracy headlines surface a
+      // "同期 SPY 上漲 baseline" label — the merged section means the
+      // string now appears twice on the page.
+      expect(screen.getAllByText('同期 SPY 上漲 baseline').length).toBeGreaterThanOrEqual(2);
+      // Posture-accuracy headline shows its own % derived from the
+      // mocked posture-accuracy response.
+      expect(screen.getByTestId('posture-accuracy-headline')).toHaveTextContent('75.0%');
       expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0);
     } finally {
       restore();
@@ -157,6 +183,20 @@ describe('HistoryPage', () => {
           status: 500,
           body: {
             error: { code: 'server_error', message: 'oops' },
+          },
+        };
+      }
+      if (url.includes('/history/posture-accuracy')) {
+        return {
+          status: 200,
+          body: {
+            horizon: 20,
+            days: 90,
+            total_signals: 0,
+            correct: 0,
+            accuracy_pct: 0,
+            by_posture: {},
+            baseline: { total: 0, spy_up_count: 0, spy_up_pct: 0 },
           },
         };
       }

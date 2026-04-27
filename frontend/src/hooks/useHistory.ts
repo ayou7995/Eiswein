@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import {
   decisions,
   marketPostureHistory,
+  postureAccuracy,
   signalAccuracy,
   tickerSignalsHistory,
   type DecisionHistoryResponse,
+  type PostureAccuracyResponse,
   type PostureHistoryResponse,
   type SignalAccuracyHorizon,
   type SignalAccuracyResponse,
@@ -40,6 +42,19 @@ export function useSignalAccuracy(
     // refetching. Without this the conditional render block unmounts on
     // every selector click, the page collapses, and the user scrolls
     // back to the top — a UX bug the user explicitly flagged.
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function usePostureAccuracy(
+  horizon: SignalAccuracyHorizon,
+  days?: number,
+): ReturnType<typeof useQuery<PostureAccuracyResponse>> {
+  return useQuery({
+    queryKey: ['history', 'posture-accuracy', horizon, days ?? 'all'] as const,
+    queryFn: () => postureAccuracy(horizon, days),
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
 }

@@ -7,9 +7,9 @@ describe('PostureTimelineChart', () => {
     render(
       <PostureTimelineChart
         data={[
-          { date: '2026-04-15', posture: 'offensive', regime_green_count: 3, regime_red_count: 1, regime_yellow_count: 0, indicator_version: 'v1' },
-          { date: '2026-04-16', posture: 'normal', regime_green_count: 2, regime_red_count: 1, regime_yellow_count: 1, indicator_version: 'v1' },
-          { date: '2026-04-17', posture: 'defensive', regime_green_count: 1, regime_red_count: 3, regime_yellow_count: 0, indicator_version: 'v1' },
+          { date: '2026-04-15', posture: 'offensive', regime_green_count: 3, regime_red_count: 1, regime_yellow_count: 0, indicator_version: 'v1', spy_close: 540, spy_ma50: 530, spy_ma200: 510, regime_signals: { spx_ma: 'green', ad_day: 'green', vix: 'yellow', yield_spread: 'green' } },
+          { date: '2026-04-16', posture: 'normal', regime_green_count: 2, regime_red_count: 1, regime_yellow_count: 1, indicator_version: 'v1', spy_close: 542, spy_ma50: 531, spy_ma200: 511, regime_signals: { spx_ma: 'green', ad_day: 'yellow', vix: 'yellow', yield_spread: 'red' } },
+          { date: '2026-04-17', posture: 'defensive', regime_green_count: 1, regime_red_count: 3, regime_yellow_count: 0, indicator_version: 'v1', spy_close: 535, spy_ma50: 532, spy_ma200: 512, regime_signals: { spx_ma: 'red', ad_day: 'red', vix: 'red', yield_spread: 'green' } },
         ]}
       />,
     );

@@ -13,6 +13,14 @@ export const postureHistoryItemSchema = z.object({
   // Optional + default: older snapshots predate this column. Keeps
   // backward compat without raising a SchemaValidationError on legacy data.
   indicator_version: z.string().optional().default(''),
+  // SPY close + per-indicator vote map for the price-overlay chart and
+  // hover breakdown. Both optional so legacy responses still validate.
+  spy_close: z.number().nullable().optional().default(null),
+  // SPX 50/200-day SMAs (proxied via SPY) for the auxiliary trend
+  // overlay. Null on early dates where the rolling window isn't full.
+  spy_ma50: z.number().nullable().optional().default(null),
+  spy_ma200: z.number().nullable().optional().default(null),
+  regime_signals: z.record(z.string()).optional().default({}),
 });
 export type PostureHistoryItem = z.infer<typeof postureHistoryItemSchema>;
 
@@ -59,6 +67,36 @@ export const signalAccuracyResponseSchema = z.object({
   baseline: signalAccuracyBaselineSchema,
 });
 export type SignalAccuracyResponse = z.infer<typeof signalAccuracyResponseSchema>;
+
+export const postureAccuracyBucketSchema = z.object({
+  total: z.number().int().nonnegative(),
+  correct: z.number().int().nonnegative(),
+  accuracy_pct: z.number(),
+});
+export type PostureAccuracyBucket = z.infer<typeof postureAccuracyBucketSchema>;
+
+export const postureAccuracyResponseSchema = z.object({
+  horizon: z.number().int(),
+  days: z.number().int().nullable(),
+  total_signals: z.number().int().nonnegative(),
+  correct: z.number().int().nonnegative(),
+  accuracy_pct: z.number(),
+  by_posture: z.record(postureAccuracyBucketSchema),
+  baseline: signalAccuracyBaselineSchema,
+});
+export type PostureAccuracyResponse = z.infer<typeof postureAccuracyResponseSchema>;
+
+export function postureAccuracy(
+  horizon: SignalAccuracyHorizon,
+  days?: number,
+): Promise<PostureAccuracyResponse> {
+  const search = new URLSearchParams({ horizon: String(horizon) });
+  if (days !== undefined) search.set('days', String(days));
+  return apiRequest(`/api/v1/history/posture-accuracy?${search.toString()}`, {
+    method: 'GET',
+    schema: postureAccuracyResponseSchema,
+  });
+}
 
 export const tickerSignalPointSchema = z.object({
   date: z.string(),
