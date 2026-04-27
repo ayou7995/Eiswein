@@ -365,7 +365,8 @@
       "Bash(.venv/bin/python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --env-file .env --ssl-keyfile local-key.pem --ssl-certfile local-cert.pem --reload)",
       "Bash(echo \"started pid=$!\")",
       "Bash(kill 35140)",
-      "Bash(/opt/homebrew/bin/npm run *)"
+      "Bash(/opt/homebrew/bin/npm run *)",
+      "Bash(command -v fnm)"
     ]
   }
 }
