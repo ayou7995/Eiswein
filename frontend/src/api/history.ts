@@ -32,12 +32,22 @@ export type AccuracyBucket = z.infer<typeof accuracyBucketSchema>;
 
 export const signalAccuracyHorizonSchema = z.union([
   z.literal(5),
-  z.literal(10),
   z.literal(20),
+  z.literal(60),
+  z.literal(120),
 ]);
 export type SignalAccuracyHorizon = z.infer<typeof signalAccuracyHorizonSchema>;
 
-export const SIGNAL_ACCURACY_HORIZONS: readonly SignalAccuracyHorizon[] = [5, 10, 20];
+export const SIGNAL_ACCURACY_HORIZONS: readonly SignalAccuracyHorizon[] = [
+  5, 20, 60, 120,
+];
+
+export const signalAccuracyBaselineSchema = z.object({
+  total: z.number().int().nonnegative(),
+  spy_up_count: z.number().int().nonnegative(),
+  spy_up_pct: z.number(),
+});
+export type SignalAccuracyBaseline = z.infer<typeof signalAccuracyBaselineSchema>;
 
 export const signalAccuracyResponseSchema = z.object({
   symbol: z.string(),
@@ -46,6 +56,7 @@ export const signalAccuracyResponseSchema = z.object({
   correct: z.number().int().nonnegative(),
   accuracy_pct: z.number(),
   by_action: z.record(accuracyBucketSchema),
+  baseline: signalAccuracyBaselineSchema,
 });
 export type SignalAccuracyResponse = z.infer<typeof signalAccuracyResponseSchema>;
 

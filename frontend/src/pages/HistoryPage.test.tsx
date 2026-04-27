@@ -103,7 +103,7 @@ describe('HistoryPage', () => {
           status: 200,
           body: {
             symbol: 'AAPL',
-            horizon: 5,
+            horizon: 20,
             total_signals: 10,
             correct: 7,
             accuracy_pct: 70.0,
@@ -111,27 +111,11 @@ describe('HistoryPage', () => {
               buy: { total: 6, correct: 5, accuracy_pct: 83.3 },
               reduce: { total: 4, correct: 2, accuracy_pct: 50.0 },
             },
-          },
-        };
-      }
-      if (url.includes('/history/decisions')) {
-        return {
-          status: 200,
-          body: {
-            data: [
-              {
-                trade_id: 1,
-                trade_date: '2026-04-15T15:30:00Z',
-                symbol: 'AAPL',
-                side: 'buy',
-                shares: '10.000000',
-                price: '180.000000',
-                eiswein_action: 'buy',
-                matched_recommendation: true,
-              },
-            ],
-            total: 1,
-            has_more: false,
+            baseline: {
+              total: 10,
+              spy_up_count: 6,
+              spy_up_pct: 60.0,
+            },
           },
         };
       }
@@ -145,9 +129,8 @@ describe('HistoryPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('accuracy-headline')).toHaveTextContent('70.0%');
       });
-      await waitFor(() => {
-        expect(screen.getByText('我的決策 vs Eiswein')).toBeInTheDocument();
-      });
+      // Baseline pulls in the SPY drift comparison.
+      expect(screen.getByText('同期 SPY 上漲 baseline')).toBeInTheDocument();
       expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0);
     } finally {
       restore();
@@ -170,12 +153,6 @@ describe('HistoryPage', () => {
           body: { data: [], total: 0, has_more: false },
         };
       }
-      if (url.includes('/history/decisions')) {
-        return {
-          status: 200,
-          body: { data: [], total: 0, has_more: false },
-        };
-      }
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
@@ -186,8 +163,6 @@ describe('HistoryPage', () => {
       });
       // Accuracy section still rendered (but empty watchlist message).
       expect(screen.getByText('請先於「設定」加入觀察清單。')).toBeInTheDocument();
-      // Decisions empty state still rendered.
-      expect(screen.getByText('尚無交易紀錄可對照。')).toBeInTheDocument();
     } finally {
       restore();
     }

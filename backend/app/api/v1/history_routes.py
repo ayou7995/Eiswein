@@ -51,8 +51,14 @@ from app.signals.types import ActionCategory
 router = APIRouter(tags=["history"])
 logger = structlog.get_logger("eiswein.api.history")
 
-HorizonLiteral = Literal[5, 10, 20]
-_VALID_HORIZONS: frozenset[int] = frozenset({5, 10, 20})
+HorizonLiteral = Literal[5, 20, 60, 120]
+_VALID_HORIZONS: frozenset[int] = frozenset({5, 20, 60, 120})
+
+# SPY is the canonical "buy-and-hold" baseline — same proxy used elsewhere
+# (relative-strength, regime indicators). The accuracy endpoint compares
+# the user's signal hit rate against the same-period SPY drift so a
+# bull-market tailwind doesn't masquerade as system skill.
+_BASELINE_SYMBOL = "SPY"
 
 # Actions that express a directional view the accuracy score can test.
 # HOLD/WATCH are explicitly excluded — they're "no call" outcomes that
@@ -129,6 +135,23 @@ class AccuracyBucket(BaseModel):
     accuracy_pct: float
 
 
+class SignalAccuracyBaseline(BaseModel):
+    """Same-period SPY drift baseline.
+
+    For each date in the user's signal sample we ask "did SPY itself rise
+    over the same horizon?". The resulting "always-buy" accuracy gives
+    the user a market-tailwind benchmark — a system that beats SPY drift
+    is genuinely directional; one that trails it is just noise around
+    market beta.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    total: int
+    spy_up_count: int
+    spy_up_pct: float
+
+
 class SignalAccuracyResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -138,6 +161,7 @@ class SignalAccuracyResponse(BaseModel):
     correct: int
     accuracy_pct: float
     by_action: dict[str, AccuracyBucket]
+    baseline: SignalAccuracyBaseline
 
 
 @dataclass(frozen=True)
@@ -216,6 +240,36 @@ def _first_on_or_after(sorted_dates: list[date], target: date) -> date | None:
     return None
 
 
+def _eval_baseline(
+    *,
+    signal_dates: list[date],
+    spy_price_by_date: dict[date, Decimal],
+    horizon_days: int,
+) -> tuple[int, int]:
+    """SPY drift baseline over the same dates the user's signals fired.
+
+    Returns ``(total, up_count)`` where ``total`` is the number of dates
+    we could resolve a forward price for, and ``up_count`` is how many
+    of those saw SPY rise. Same skip rule as :func:`_eval_accuracy` —
+    dates without enough forward data are dropped, not penalised.
+    """
+    sorted_spy_dates = sorted(spy_price_by_date.keys())
+    total = 0
+    up = 0
+    for d in signal_dates:
+        start_price = spy_price_by_date.get(d)
+        if start_price is None:
+            continue
+        target_date = d + timedelta(days=horizon_days)
+        forward_date = _first_on_or_after(sorted_spy_dates, target_date)
+        if forward_date is None:
+            continue
+        if spy_price_by_date[forward_date] > start_price:
+            up += 1
+        total += 1
+    return total, up
+
+
 @router.get(
     "/history/signal-accuracy",
     response_model=SignalAccuracyResponse,
@@ -223,7 +277,12 @@ def _first_on_or_after(sorted_dates: list[date], target: date) -> date | None:
 )
 def signal_accuracy(
     symbol: str = Query(..., min_length=1, max_length=10),
-    horizon: int = Query(default=5, ge=1, le=60),
+    # Upper bound matches the longest entry in `_VALID_HORIZONS` (120).
+    # The whitelist below still enforces the discrete set, but Query
+    # bounds run first — leaving `le=60` here would 422-out the 120
+    # selection before our enum check could reply with the friendlier
+    # "invalid_horizon" body.
+    horizon: int = Query(default=20, ge=1, le=120),
     user_id: int = Depends(current_user_id),
     watchlist: WatchlistRepository = Depends(get_watchlist_repository),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
@@ -253,6 +312,7 @@ def signal_accuracy(
             correct=0,
             accuracy_pct=0.0,
             by_action={},
+            baseline=SignalAccuracyBaseline(total=0, spy_up_count=0, spy_up_pct=0.0),
         )
 
     # Load all DailyPrice rows for the symbol in one shot so lookups
@@ -271,6 +331,25 @@ def signal_accuracy(
         horizon_days=int(horizon),
     )
 
+    # Same-period SPY drift baseline. We pull SPY closes once and reuse
+    # the same forward-date lookup the accuracy eval uses, so the
+    # baseline draws from the exact same date set the system was
+    # judged on (avoids "system tested on 2024 but baseline on 2026"
+    # apples-to-oranges comparisons).
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _BASELINE_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+    signal_dates = [s.date for s in all_snapshots]
+    baseline_total, baseline_up = _eval_baseline(
+        signal_dates=signal_dates,
+        spy_price_by_date=spy_price_by_date,
+        horizon_days=int(horizon),
+    )
+    baseline_pct = round(100.0 * baseline_up / baseline_total, 2) if baseline_total else 0.0
+
     return SignalAccuracyResponse(
         symbol=validated,
         horizon=horizon_literal,
@@ -281,6 +360,11 @@ def signal_accuracy(
             k: AccuracyBucket(total=v.total, correct=v.correct, accuracy_pct=v.pct)
             for k, v in buckets.items()
         },
+        baseline=SignalAccuracyBaseline(
+            total=baseline_total,
+            spy_up_count=baseline_up,
+            spy_up_pct=baseline_pct,
+        ),
     )
 
 

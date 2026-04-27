@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { PostureTimelineChart } from '../components/charts/PostureTimelineChart';
-import { useDecisions, useMarketPostureHistory, useSignalAccuracy } from '../hooks/useHistory';
+import { useMarketPostureHistory, useSignalAccuracy } from '../hooks/useHistory';
 import { useWatchlist } from '../hooks/useWatchlist';
+import { Explainable, RuleTable } from '../components/Explainable';
 import {
   SIGNAL_ACCURACY_HORIZONS,
   type SignalAccuracyHorizon,
-  type DecisionItem,
 } from '../api/history';
 
 const DAYS_OPTIONS: readonly number[] = [30, 90, 180, 365];
@@ -20,16 +20,73 @@ const ACTION_LABEL: Record<string, string> = {
   exit: '出場',
 };
 
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('zh-TW', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+// Sample-size thresholds for the per-action and overall accuracy displays.
+// Below SAMPLE_LOW (~30) the binomial confidence interval is too wide to
+// trust the point estimate at all; SAMPLE_MID (~100) approaches "good
+// enough for relative comparison". These match common rule-of-thumb in
+// statistics and the staff-review guidance.
+const SAMPLE_LOW = 30;
+const SAMPLE_MID = 100;
+
+function sampleSizeLabel(n: number): { label: string; tone: string } | null {
+  if (n === 0) return null;
+  if (n < SAMPLE_LOW)
+    return { label: `樣本不足（${n} < ${SAMPLE_LOW}）`, tone: 'text-slate-500' };
+  if (n < SAMPLE_MID)
+    return { label: `樣本偏少（${n} < ${SAMPLE_MID}）`, tone: 'text-amber-400' };
+  return null;
+}
+
+interface AccuracyHeadlineProps {
+  accuracyPct: number;
+  correct: number;
+  total: number;
+  horizon: number;
+  baselinePct: number;
+  baselineTotal: number;
+}
+
+function AccuracyHeadline({
+  accuracyPct,
+  correct,
+  total,
+  horizon,
+  baselinePct,
+  baselineTotal,
+}: AccuracyHeadlineProps): JSX.Element {
+  const sample = sampleSizeLabel(total);
+  // Headline number gets tinted by sample-size confidence, not by
+  // whether the user is "winning" — a 90 % accuracy on 4 trades is
+  // still noise, not skill.
+  const headlineTone = sample
+    ? sample.tone
+    : accuracyPct >= baselinePct
+      ? 'text-signal-green'
+      : 'text-slate-100';
+  return (
+    <div className="flex flex-col gap-2" data-testid="accuracy-headline">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <span className={`text-3xl font-semibold ${headlineTone}`}>
+          {accuracyPct.toFixed(1)}%
+        </span>
+        <span className="text-xs text-slate-400">
+          {correct} / {total} 次命中（{horizon} 日）
+        </span>
+        {sample && <span className={`text-xs ${sample.tone}`}>{sample.label}</span>}
+      </div>
+      {baselineTotal > 0 && (
+        <div className="flex flex-wrap items-baseline gap-2 text-xs text-slate-400">
+          <span>同期 SPY 上漲 baseline</span>
+          <span className="font-mono tabular-nums text-slate-200">
+            {baselinePct.toFixed(1)}%
+          </span>
+          <span className="text-slate-500">
+            （{baselineTotal} 個樣本日 — 「always-buy SPY」會對的比例）
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function HistoryPage(): JSX.Element {
@@ -38,13 +95,12 @@ export function HistoryPage(): JSX.Element {
       <header>
         <h1 className="text-2xl font-semibold">歷史紀錄</h1>
         <p className="text-xs text-slate-500">
-          市場態勢時間軸、訊號準確率與我的決策 vs Eiswein 建議對照。
+          市場態勢時間軸與訊號準確率。
         </p>
       </header>
 
       <MarketPostureSection />
       <SignalAccuracySection />
-      <DecisionsSection />
     </div>
   );
 }
@@ -126,7 +182,10 @@ function SignalAccuracySection(): JSX.Element {
     [watchlist.data],
   );
   const [symbol, setSymbol] = useState<string>('');
-  const [horizon, setHorizon] = useState<SignalAccuracyHorizon>(5);
+  // 20 trading days ≈ 1 month, the O'Neil/Sherry-style core window the
+  // 12 indicators are tuned for. 5 is kept for short-term curiosity but
+  // visually de-emphasised in the disclaimer popover.
+  const [horizon, setHorizon] = useState<SignalAccuracyHorizon>(20);
 
   const effectiveSymbol = symbol || symbols[0] || '';
   const { data, isLoading, isError, refetch } = useSignalAccuracy(
@@ -141,7 +200,36 @@ function SignalAccuracySection(): JSX.Element {
     >
       <header>
         <h2 id="history-accuracy-heading" className="text-lg font-semibold">
-          訊號準確率
+          <Explainable
+            title="訊號準確率的限制"
+            explanation={
+              <RuleTable
+                preface="這個數字告訴你「過去運算的建議動作 → N 日後收盤方向」的命中率。看起來簡單，但有幾個方法論限制必須先理解："
+                rows={[
+                  {
+                    condition: '樣本內 backtest',
+                    result:
+                      '過去訊號是用「今天的公式」回算，每次 INDICATOR_VERSION bump 都重算過。look-ahead bias 存在。',
+                  },
+                  {
+                    condition: '無因果，只比方向',
+                    result: '「持有 + 漲」算對，但「持有」其實沒有 directional 觀點 — 故 by_action 才是核心。',
+                  },
+                  {
+                    condition: '需要 baseline',
+                    result: '同期 SPY 漲跌比例就是「always-buy」baseline。系統命中率沒贏 baseline = 跟隨市場 beta 而非真有預測力。',
+                  },
+                  {
+                    condition: '樣本要夠大',
+                    result: 'N < 30 信賴區間太寬，數字不可信；N ≥ 100 才適合相對比較。',
+                  },
+                ]}
+                note="真正的 forward-test 要從「鎖死 INDICATOR_VERSION」開始累積，至少 6 個月後再評估。"
+              />
+            }
+          >
+            訊號準確率
+          </Explainable>
         </h2>
         <p className="text-xs text-slate-400 mt-1" data-testid="accuracy-disclaimer">
           此統計基於歷史計算，僅供參考。
@@ -221,14 +309,14 @@ function SignalAccuracySection(): JSX.Element {
 
       {effectiveSymbol && data && (
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline gap-3" data-testid="accuracy-headline">
-            <span className="text-3xl font-semibold text-slate-100">
-              {data.accuracy_pct.toFixed(1)}%
-            </span>
-            <span className="text-xs text-slate-400">
-              {data.correct} / {data.total_signals} 次命中（{horizon} 日）
-            </span>
-          </div>
+          <AccuracyHeadline
+            accuracyPct={data.accuracy_pct}
+            correct={data.correct}
+            total={data.total_signals}
+            horizon={horizon}
+            baselinePct={data.baseline.spy_up_pct}
+            baselineTotal={data.baseline.total}
+          />
           {data.total_signals === 0 ? (
             <p role="status" className="text-sm text-slate-400">
               尚無足夠訊號可評估。
@@ -250,25 +338,56 @@ function SignalAccuracySection(): JSX.Element {
                     <th scope="col" className="px-3 py-2 text-right">
                       準確率
                     </th>
+                    <th scope="col" className="px-3 py-2 text-right">
+                      vs SPY baseline
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {Object.entries(data.by_action).map(([action, bucket]) => (
-                    <tr key={action} className="bg-slate-950/40">
-                      <th scope="row" className="px-3 py-2 text-left font-medium text-slate-200">
-                        {ACTION_LABEL[action] ?? action}
-                      </th>
-                      <td className="px-3 py-2 text-right font-mono text-slate-300">
-                        {bucket.total}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-300">
-                        {bucket.correct}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-200">
-                        {bucket.accuracy_pct.toFixed(1)}%
-                      </td>
-                    </tr>
-                  ))}
+                  {Object.entries(data.by_action).map(([action, bucket]) => {
+                    // For sell-side actions the baseline flips: a sell call
+                    // is "right" when SPY went DOWN, so the bar to clear is
+                    // (100 − spy_up_pct) rather than spy_up_pct itself.
+                    const isSellSide = action === 'reduce' || action === 'exit';
+                    const baselinePct = isSellSide
+                      ? 100 - data.baseline.spy_up_pct
+                      : data.baseline.spy_up_pct;
+                    const delta = bucket.accuracy_pct - baselinePct;
+                    const sample = sampleSizeLabel(bucket.total);
+                    return (
+                      <tr key={action} className="bg-slate-950/40">
+                        <th scope="row" className="px-3 py-2 text-left font-medium text-slate-200">
+                          {ACTION_LABEL[action] ?? action}
+                        </th>
+                        <td className="px-3 py-2 text-right font-mono text-slate-300">
+                          {bucket.total}
+                          {sample && (
+                            <span className={`ml-1 text-[10px] ${sample.tone}`}>
+                              {sample.label}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-300">
+                          {bucket.correct}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-200">
+                          {bucket.accuracy_pct.toFixed(1)}%
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-mono ${
+                            delta > 5
+                              ? 'text-signal-green'
+                              : delta < -5
+                                ? 'text-signal-red'
+                                : 'text-slate-400'
+                          }`}
+                        >
+                          {delta >= 0 ? '+' : ''}
+                          {delta.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -279,131 +398,3 @@ function SignalAccuracySection(): JSX.Element {
   );
 }
 
-function DecisionsSection(): JSX.Element {
-  const [limit, setLimit] = useState<number>(30);
-  const { data, isLoading, isError, refetch } = useDecisions(limit);
-
-  return (
-    <section
-      aria-labelledby="history-decisions-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="history-decisions-heading" className="text-lg font-semibold">
-          我的決策 vs Eiswein
-        </h2>
-        <span className="text-xs text-slate-500">近 {limit} 筆交易</span>
-      </header>
-
-      {isLoading && (
-        <div className="flex items-center gap-2 text-slate-400">
-          <LoadingSpinner label="載入決策紀錄…" />
-          <span className="text-sm">載入中…</span>
-        </div>
-      )}
-      {isError && (
-        <div className="flex items-center justify-between rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-sm text-signal-red">
-          <span>載入決策紀錄失敗。</span>
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            className="underline hover:text-signal-red"
-          >
-            重試
-          </button>
-        </div>
-      )}
-
-      {!isLoading && !isError && data && data.data.length === 0 && (
-        <p role="status" className="text-sm text-slate-400">
-          尚無交易紀錄可對照。
-        </p>
-      )}
-
-      {data && data.data.length > 0 && (
-        <>
-          <div className="overflow-hidden rounded-md border border-slate-800">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-900/80 text-xs uppercase text-slate-400">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-left">
-                    日期
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left">
-                    代碼
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left">
-                    我做的
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left">
-                    Eiswein 建議
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-center">
-                    符合
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {data.data.map((item) => (
-                  <DecisionRow key={item.trade_id} item={item} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {data.data.length >= limit && (
-            <button
-              type="button"
-              onClick={() => setLimit((n) => Math.min(n + 30, 200))}
-              className="self-center rounded-md border border-slate-700 px-4 py-1.5 text-xs text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-            >
-              顯示更多
-            </button>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-function DecisionRow({ item }: { item: DecisionItem }): JSX.Element {
-  const sideLabel = item.side === 'buy' ? '買' : '賣';
-  const match = item.matched_recommendation;
-  return (
-    <tr className="bg-slate-950/40">
-      <td className="px-3 py-2 text-xs text-slate-400">{formatDateTime(item.trade_date)}</td>
-      <th scope="row" className="px-3 py-2 text-left font-mono font-semibold text-slate-100">
-        {item.symbol}
-      </th>
-      <td className="px-3 py-2 text-slate-200">
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-semibold ${
-            item.side === 'buy'
-              ? 'bg-signal-green/15 text-signal-green'
-              : 'bg-signal-red/15 text-signal-red'
-          }`}
-          aria-label={`${sideLabel}單`}
-        >
-          {sideLabel}
-        </span>
-      </td>
-      <td className="px-3 py-2 text-slate-200">
-        {item.eiswein_action ? ACTION_LABEL[item.eiswein_action] ?? item.eiswein_action : '—'}
-      </td>
-      <td className="px-3 py-2 text-center">
-        {match == null ? (
-          <span className="text-slate-500" aria-label="無法比對">
-            —
-          </span>
-        ) : match ? (
-          <span className="text-signal-green" aria-label="符合建議">
-            ✓
-          </span>
-        ) : (
-          <span className="text-signal-red" aria-label="不符建議">
-            ✗
-          </span>
-        )}
-      </td>
-    </tr>
-  );
-}
