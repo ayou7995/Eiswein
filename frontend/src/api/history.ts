@@ -60,6 +60,33 @@ export const signalAccuracyResponseSchema = z.object({
 });
 export type SignalAccuracyResponse = z.infer<typeof signalAccuracyResponseSchema>;
 
+export const tickerSignalPointSchema = z.object({
+  date: z.string(),
+  action: z.string(),
+  close: z.number(),
+});
+export type TickerSignalPoint = z.infer<typeof tickerSignalPointSchema>;
+
+export const tickerSignalsResponseSchema = z.object({
+  symbol: z.string(),
+  data: z.array(tickerSignalPointSchema),
+});
+export type TickerSignalsResponse = z.infer<typeof tickerSignalsResponseSchema>;
+
+export function tickerSignalsHistory(
+  symbol: string,
+  days: number,
+): Promise<TickerSignalsResponse> {
+  const search = new URLSearchParams({
+    symbol,
+    days: String(days),
+  });
+  return apiRequest(`/api/v1/history/ticker-signals?${search.toString()}`, {
+    method: 'GET',
+    schema: tickerSignalsResponseSchema,
+  });
+}
+
 export const decisionItemSchema = z.object({
   trade_id: z.number().int().nonnegative(),
   trade_date: z.string(),
@@ -90,11 +117,13 @@ export function marketPostureHistory(days: number): Promise<PostureHistoryRespon
 export function signalAccuracy(
   symbol: string,
   horizon: SignalAccuracyHorizon,
+  days?: number,
 ): Promise<SignalAccuracyResponse> {
   const search = new URLSearchParams({
     symbol,
     horizon: String(horizon),
   });
+  if (days !== undefined) search.set('days', String(days));
   return apiRequest(`/api/v1/history/signal-accuracy?${search.toString()}`, {
     method: 'GET',
     schema: signalAccuracyResponseSchema,

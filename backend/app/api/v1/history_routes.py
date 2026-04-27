@@ -162,6 +162,9 @@ class SignalAccuracyResponse(BaseModel):
     accuracy_pct: float
     by_action: dict[str, AccuracyBucket]
     baseline: SignalAccuracyBaseline
+    # NOTE: full-spectrum action distribution lives client-side now, derived
+    # from the same /ticker-signals data the chart consumes — that way the
+    # numbers always match the timeline window the user is looking at.
 
 
 @dataclass(frozen=True)
@@ -283,6 +286,14 @@ def signal_accuracy(
     # selection before our enum check could reply with the friendlier
     # "invalid_horizon" body.
     horizon: int = Query(default=20, ge=1, le=120),
+    # Window length in calendar days. The accuracy is computed only
+    # over snapshots within `(today - days, today]` so the chart, the
+    # distribution and the accuracy table all describe the same
+    # period — a window-of-365D + horizon-of-120D combo will naturally
+    # leave only ~245 gradeable days, surfaced via the existing
+    # sample-size warning. ``None`` falls back to whole-history
+    # behaviour for legacy callers.
+    days: int | None = Query(default=None, ge=30, le=730),
     user_id: int = Depends(current_user_id),
     watchlist: WatchlistRepository = Depends(get_watchlist_repository),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
@@ -304,6 +315,13 @@ def signal_accuracy(
     horizon_literal = cast(HorizonLiteral, horizon)
 
     all_snapshots = list(snapshots.list_for_symbol(validated))
+    # Apply the optional window. The newest snapshot date defines the
+    # cutoff so the window slides with the data, not with the request
+    # clock — matches what /ticker-signals does for the chart.
+    if days is not None and all_snapshots:
+        latest = max(s.date for s in all_snapshots)
+        cutoff = latest - timedelta(days=days)
+        all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
     if not all_snapshots:
         return SignalAccuracyResponse(
             symbol=validated,
@@ -366,6 +384,94 @@ def signal_accuracy(
             spy_up_pct=baseline_pct,
         ),
     )
+
+
+# --- /history/ticker-signals ---------------------------------------------
+
+
+class TickerSignalPoint(BaseModel):
+    """One day in the per-stock signal-vs-price overlay.
+
+    Carries the close (for the price line) plus the stored action (for
+    a marker in the chart). Forward-evaluation horizons are computed
+    client-side from the same row sequence — keeping the wire payload
+    minimal and the math reproducible alongside the existing
+    /signal-accuracy endpoint.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    action: str
+    close: float
+
+
+class TickerSignalsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    data: list[TickerSignalPoint]
+
+
+@router.get(
+    "/history/ticker-signals",
+    response_model=TickerSignalsResponse,
+    summary="Per-day action + close for the signal-overlay chart",
+)
+def ticker_signals_history(
+    symbol: str = Query(..., min_length=1, max_length=10),
+    days: int = Query(default=180, ge=30, le=730),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
+    session: Session = Depends(get_db_session),
+) -> TickerSignalsResponse:
+    """Return per-day {date, action, close} for the chosen symbol.
+
+    Joined in Python rather than a SQL JOIN so we don't have to pull
+    `daily_price` into the snapshot repository — both tables already
+    expose efficient single-table accessors. The trailing window is
+    bounded by the latest snapshot date so the chart aligns with the
+    market calendar (no empty rightmost days).
+    """
+    validated = validate_symbol_or_raise(symbol)
+    if watchlist.get(user_id=user_id, symbol=validated) is None:
+        raise NotFoundError(details={"symbol": validated})
+
+    all_snapshots = list(snapshots.list_for_symbol(validated))
+    if not all_snapshots:
+        return TickerSignalsResponse(symbol=validated, data=[])
+
+    latest = max(s.date for s in all_snapshots)
+    cutoff = latest - timedelta(days=days)
+    snapshots_in_window = [s for s in all_snapshots if s.date >= cutoff]
+    if not snapshots_in_window:
+        return TickerSignalsResponse(symbol=validated, data=[])
+
+    # Pull close prices for the window in one shot. The SPY accuracy
+    # endpoint reads the same way; if this turns into a hot path we can
+    # promote the helper to the repository.
+    rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == validated)
+        .where(DailyPrice.date >= cutoff)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    close_by_date = {r.date: float(r.close) for r in rows}
+
+    points: list[TickerSignalPoint] = []
+    for snap in sorted(snapshots_in_window, key=lambda s: s.date):
+        close = close_by_date.get(snap.date)
+        if close is None:
+            # Skip days where we don't have a stored price (e.g. a
+            # holiday that produced a snapshot via fallback). Better to
+            # drop the point than to plot a misaligned price.
+            continue
+        points.append(
+            TickerSignalPoint(date=snap.date, action=snap.action, close=close)
+        )
+
+    return TickerSignalsResponse(symbol=validated, data=points)
 
 
 # --- /history/decisions --------------------------------------------------

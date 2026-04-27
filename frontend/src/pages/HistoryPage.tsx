@@ -1,13 +1,20 @@
 import { useMemo, useState } from 'react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { PostureTimelineChart } from '../components/charts/PostureTimelineChart';
-import { useMarketPostureHistory, useSignalAccuracy } from '../hooks/useHistory';
+import { TickerSignalTimelineChart } from '../components/charts/TickerSignalTimelineChart';
+import {
+  useMarketPostureHistory,
+  useSignalAccuracy,
+  useTickerSignals,
+} from '../hooks/useHistory';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { Explainable, RuleTable } from '../components/Explainable';
 import {
   SIGNAL_ACCURACY_HORIZONS,
   type SignalAccuracyHorizon,
 } from '../api/history';
+
+const TIMELINE_DAYS_OPTIONS: readonly number[] = [90, 180, 365];
 
 const DAYS_OPTIONS: readonly number[] = [30, 90, 180, 365];
 
@@ -20,21 +27,184 @@ const ACTION_LABEL: Record<string, string> = {
   exit: '出場',
 };
 
-// Sample-size thresholds for the per-action and overall accuracy displays.
-// Below SAMPLE_LOW (~30) the binomial confidence interval is too wide to
-// trust the point estimate at all; SAMPLE_MID (~100) approaches "good
-// enough for relative comparison". These match common rule-of-thumb in
-// statistics and the staff-review guidance.
-const SAMPLE_LOW = 30;
-const SAMPLE_MID = 100;
+// Display order for the signal distribution row: highest-conviction
+// buy on the left, downgrading rightward to highest-conviction sell.
+// Using a fixed ordering rather than a sort by count keeps the visual
+// stable across symbols / horizons.
+const ACTION_ORDER: ReadonlyArray<string> = [
+  'strong_buy',
+  'buy',
+  'hold',
+  'watch',
+  'reduce',
+  'exit',
+];
 
-function sampleSizeLabel(n: number): { label: string; tone: string } | null {
-  if (n === 0) return null;
-  if (n < SAMPLE_LOW)
-    return { label: `樣本不足（${n} < ${SAMPLE_LOW}）`, tone: 'text-slate-500' };
-  if (n < SAMPLE_MID)
-    return { label: `樣本偏少（${n} < ${SAMPLE_MID}）`, tone: 'text-amber-400' };
-  return null;
+const ACTION_TONE: Record<string, string> = {
+  strong_buy: 'text-signal-green font-bold',
+  buy: 'text-signal-green',
+  hold: 'text-slate-300',
+  watch: 'text-slate-400',
+  reduce: 'text-signal-yellow',
+  exit: 'text-signal-red font-bold',
+};
+
+// Replaces the old sampleSizeLabel amber/gray warnings. With the
+// window-aware accuracy filter most per-action buckets land below 30
+// samples, so a constant "樣本不足" tag fires alarm fatigue. A binomial
+// 95 % confidence interval gives the user the same information
+// quantitatively — N=44 hits 17 reads "38.6 % ±14.4 %", N=3 hits 1
+// reads "33.3 % ±53.3 %" — letting them weigh certainty themselves.
+const Z_95 = 1.96;
+
+function confidenceMargin(correct: number, total: number): number | null {
+  // Standard 95 % normal-approx interval on a binomial proportion.
+  // Returns the half-width as a percentage (0-100). Wilson-score is
+  // more accurate at the extremes but harder to read at a glance, and
+  // the user's mental model here is the symmetric ± around the mean.
+  if (total === 0) return null;
+  const p = correct / total;
+  const margin = Z_95 * Math.sqrt((p * (1 - p)) / total);
+  return Math.min(100, margin * 100);
+}
+
+interface SignalTimelineSectionProps {
+  symbol: string;
+  timelineDays: number;
+  onTimelineDaysChange: (days: number) => void;
+  data: ReadonlyArray<import('../api/history').TickerSignalPoint> | null;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}
+
+// Visual sanity-check: did the price actually do what the action
+// implied? A 減倉 marker right before a price climb is a miss; a
+// 強買 marker right before a rally validates the system. Far more
+// informative than a single hit-rate percentage.
+function SignalTimelineSection({
+  symbol,
+  timelineDays,
+  onTimelineDaysChange,
+  data,
+  isLoading,
+  isError,
+  onRetry,
+}: SignalTimelineSectionProps): JSX.Element {
+  return (
+    <section
+      aria-label={`${symbol} 訊號 vs 股價時間軸`}
+      className="flex flex-col gap-2 rounded-md border border-slate-800 bg-slate-950/40 p-3"
+    >
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium text-slate-200">訊號 vs 股價時間軸</h3>
+        <div
+          role="radiogroup"
+          aria-label="時間軸區間"
+          className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
+        >
+          {TIMELINE_DAYS_OPTIONS.map((d) => {
+            const active = d === timelineDays;
+            return (
+              <button
+                key={d}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => onTimelineDaysChange(d)}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+                  active
+                    ? 'bg-sky-600 text-white'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                {d}D
+              </button>
+            );
+          })}
+        </div>
+      </header>
+      {isLoading && (
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <LoadingSpinner label="載入時間軸…" />
+        </div>
+      )}
+      {isError && (
+        <div className="flex items-center justify-between rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">
+          <span>載入時間軸失敗。</span>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="underline hover:text-signal-red"
+          >
+            重試
+          </button>
+        </div>
+      )}
+      {!isLoading && !isError && data && data.length === 0 && (
+        <p role="status" className="text-xs text-slate-400">
+          所選區間沒有訊號資料。
+        </p>
+      )}
+      {!isLoading && !isError && data && data.length > 0 && (
+        <TickerSignalTimelineChart
+          data={data}
+          ariaLabel={`${symbol} 訊號 vs 股價時間軸`}
+        />
+      )}
+    </section>
+  );
+}
+
+interface SignalDistributionProps {
+  // Derived from the same TickerSignalPoint[] the chart consumes so the
+  // counts always match the timeline window the user is looking at —
+  // 90D / 180D / 365D toggles flip both views in sync. Earlier we read
+  // a backend `signal_distribution` field that always counted ALL
+  // history; switching windows surfaced a confusing split (e.g. "圖
+  // 只有 2 個買，但分布說有 3 個" because the third was outside the
+  // window).
+  data: ReadonlyArray<import('../api/history').TickerSignalPoint>;
+  windowDays: number;
+}
+
+function SignalDistribution({ data, windowDays }: SignalDistributionProps): JSX.Element | null {
+  const distribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const point of data) {
+      counts[point.action] = (counts[point.action] ?? 0) + 1;
+    }
+    return counts;
+  }, [data]);
+  const total = data.length;
+  if (total === 0) return null;
+  return (
+    <section
+      aria-label="訊號分布"
+      className="flex flex-col gap-2 rounded-md border border-slate-800 bg-slate-950/40 p-3"
+    >
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-slate-400">
+          過去 {windowDays} 天（{total} 個交易日）的訊號分布
+        </span>
+        <span className="text-slate-500">總計 {total}</span>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        {ACTION_ORDER.map((action) => {
+          const count = distribution[action] ?? 0;
+          const pct = total === 0 ? 0 : (count * 100) / total;
+          const tone = ACTION_TONE[action] ?? 'text-slate-300';
+          return (
+            <div key={action} className="flex items-baseline gap-1.5">
+              <span className={`font-medium ${tone}`}>{ACTION_LABEL[action] ?? action}</span>
+              <span className="font-mono tabular-nums text-slate-200">{count}</span>
+              <span className="text-slate-500">({pct.toFixed(0)}%)</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 interface AccuracyHeadlineProps {
@@ -54,13 +224,13 @@ function AccuracyHeadline({
   baselinePct,
   baselineTotal,
 }: AccuracyHeadlineProps): JSX.Element {
-  const sample = sampleSizeLabel(total);
-  // Headline number gets tinted by sample-size confidence, not by
-  // whether the user is "winning" — a 90 % accuracy on 4 trades is
-  // still noise, not skill.
-  const headlineTone = sample
-    ? sample.tone
-    : accuracyPct >= baselinePct
+  const margin = confidenceMargin(correct, total);
+  // Tone reflects directional confidence vs SPY baseline only when the
+  // CI actually clears the baseline gap — a "winning" 38 % over 5 trades
+  // with ±43 % CI is statistically a coin flip and shouldn't be tinted
+  // green.
+  const headlineTone =
+    margin !== null && accuracyPct - margin >= baselinePct
       ? 'text-signal-green'
       : 'text-slate-100';
   return (
@@ -69,10 +239,12 @@ function AccuracyHeadline({
         <span className={`text-3xl font-semibold ${headlineTone}`}>
           {accuracyPct.toFixed(1)}%
         </span>
+        {margin !== null && (
+          <span className="text-sm text-slate-400">±{margin.toFixed(1)}%</span>
+        )}
         <span className="text-xs text-slate-400">
           {correct} / {total} 次命中（{horizon} 日）
         </span>
-        {sample && <span className={`text-xs ${sample.tone}`}>{sample.label}</span>}
       </div>
       {baselineTotal > 0 && (
         <div className="flex flex-wrap items-baseline gap-2 text-xs text-slate-400">
@@ -188,10 +360,19 @@ function SignalAccuracySection(): JSX.Element {
   const [horizon, setHorizon] = useState<SignalAccuracyHorizon>(20);
 
   const effectiveSymbol = symbol || symbols[0] || '';
+  // The chart-range selector (90 / 180 / 365D) is the single source of
+  // truth for "what window am I looking at?" — it drives BOTH the
+  // signal-vs-price chart and the accuracy / distribution stats below.
+  // Earlier the chart range only filtered the chart while accuracy ran
+  // over the full snapshot history, which made distribution and command
+  // table describe different windows ("圖只有 2 個買，但分布說有 3 個").
+  const [timelineDays, setTimelineDays] = useState<number>(180);
   const { data, isLoading, isError, refetch } = useSignalAccuracy(
     effectiveSymbol || null,
     horizon,
+    timelineDays,
   );
+  const timelineQuery = useTickerSignals(effectiveSymbol || null, timelineDays);
 
   return (
     <section
@@ -254,32 +435,6 @@ function SignalAccuracySection(): JSX.Element {
             ))}
           </select>
         </label>
-        <fieldset className="flex flex-col gap-1 text-xs text-slate-400">
-          <legend>時間範圍</legend>
-          <div
-            role="radiogroup"
-            aria-label="準確率時間範圍"
-            className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
-          >
-            {SIGNAL_ACCURACY_HORIZONS.map((h) => {
-              const active = h === horizon;
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setHorizon(h)}
-                  className={`rounded px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-                    active ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                  }`}
-                >
-                  {h} 日
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
       </div>
 
       {!effectiveSymbol && (
@@ -309,6 +464,55 @@ function SignalAccuracySection(): JSX.Element {
 
       {effectiveSymbol && data && (
         <div className="flex flex-col gap-3">
+          <SignalTimelineSection
+            symbol={effectiveSymbol}
+            timelineDays={timelineDays}
+            onTimelineDaysChange={setTimelineDays}
+            data={timelineQuery.data?.data ?? null}
+            isLoading={timelineQuery.isLoading}
+            isError={timelineQuery.isError}
+            onRetry={() => void timelineQuery.refetch()}
+          />
+          <SignalDistribution
+            data={timelineQuery.data?.data ?? []}
+            windowDays={timelineDays}
+          />
+          {/* Horizon selector now sits adjacent to the accuracy table
+              it controls — the chart-window selector lives above the
+              chart, the horizon selector lives above the by-action
+              table. Two selectors, two domains, each next to its own
+              consequence. */}
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3">
+            <span className="text-xs text-slate-400">命中 horizon</span>
+            <div
+              role="radiogroup"
+              aria-label="準確率時間範圍"
+              className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
+            >
+              {SIGNAL_ACCURACY_HORIZONS.map((h) => {
+                const active = h === horizon;
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setHorizon(h)}
+                    className={`rounded px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+                      active
+                        ? 'bg-sky-600 text-white'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {h} 日
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-xs text-slate-500">
+              訊號發出後 N 個交易日比對股價方向
+            </span>
+          </div>
           <AccuracyHeadline
             accuracyPct={data.accuracy_pct}
             correct={data.correct}
@@ -336,7 +540,7 @@ function SignalAccuracySection(): JSX.Element {
                       命中
                     </th>
                     <th scope="col" className="px-3 py-2 text-right">
-                      準確率
+                      準確率 ±95% CI
                     </th>
                     <th scope="col" className="px-3 py-2 text-right">
                       vs SPY baseline
@@ -353,7 +557,11 @@ function SignalAccuracySection(): JSX.Element {
                       ? 100 - data.baseline.spy_up_pct
                       : data.baseline.spy_up_pct;
                     const delta = bucket.accuracy_pct - baselinePct;
-                    const sample = sampleSizeLabel(bucket.total);
+                    const margin = confidenceMargin(bucket.correct, bucket.total);
+                    // Only call the delta meaningful when the CI clears
+                    // the gap — a +5 % delta with ±25 % CI is noise, not
+                    // a real win.
+                    const ciClears = margin !== null && Math.abs(delta) > margin;
                     return (
                       <tr key={action} className="bg-slate-950/40">
                         <th scope="row" className="px-3 py-2 text-left font-medium text-slate-200">
@@ -361,23 +569,23 @@ function SignalAccuracySection(): JSX.Element {
                         </th>
                         <td className="px-3 py-2 text-right font-mono text-slate-300">
                           {bucket.total}
-                          {sample && (
-                            <span className={`ml-1 text-[10px] ${sample.tone}`}>
-                              {sample.label}
-                            </span>
-                          )}
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-slate-300">
                           {bucket.correct}
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-slate-200">
                           {bucket.accuracy_pct.toFixed(1)}%
+                          {margin !== null && (
+                            <span className="ml-1 text-[10px] text-slate-500">
+                              ±{margin.toFixed(1)}%
+                            </span>
+                          )}
                         </td>
                         <td
                           className={`px-3 py-2 text-right font-mono ${
-                            delta > 5
+                            ciClears && delta > 0
                               ? 'text-signal-green'
-                              : delta < -5
+                              : ciClears && delta < 0
                                 ? 'text-signal-red'
                                 : 'text-slate-400'
                           }`}

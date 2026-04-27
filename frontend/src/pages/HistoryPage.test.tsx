@@ -98,6 +98,19 @@ describe('HistoryPage', () => {
           },
         };
       }
+      if (url.includes('/history/ticker-signals')) {
+        return {
+          status: 200,
+          body: {
+            symbol: 'AAPL',
+            data: [
+              { date: '2026-04-01', action: 'hold', close: 175 },
+              { date: '2026-04-02', action: 'buy', close: 178 },
+              { date: '2026-04-03', action: 'reduce', close: 172 },
+            ],
+          },
+        };
+      }
       if (url.includes('/history/signal-accuracy')) {
         return {
           status: 200,

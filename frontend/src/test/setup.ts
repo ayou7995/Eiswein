@@ -17,6 +17,25 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   });
 }
 
+// jsdom 25 also lacks `matchMedia`, which lightweight-charts probes via
+// fancy-canvas to track device-pixel-ratio changes. A no-op stub is
+// enough for tests that only mount-and-render the chart.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  Object.defineProperty(window, 'matchMedia', {
+    value: (query: string): MediaQueryList => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+    configurable: true,
+  });
+}
+
 afterEach(() => {
   cleanup();
 });
