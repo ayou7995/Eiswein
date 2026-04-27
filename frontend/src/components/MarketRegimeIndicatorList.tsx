@@ -14,11 +14,21 @@ import {
   MaPositionEnhancedDetail,
   MaPositionHeadlineExplainable,
 } from './MaPositionEnhancedDetail';
+import {
+  VixEnhancedDetail,
+  VixHeadlineExplainable,
+} from './VixEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
   ruleNote:
     '此燈號是市場態勢 4 票之 1（綠/紅/黃 → 進攻/防守/正常）；展開列可看距離尺標與看點。',
+};
+
+const VIX_HEADLINE_LABELS = {
+  ruleTitle: 'VIX 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是市場態勢 4 票之 1。VIX 過低 (<12) 是反向訊號：市場過於自滿時反轉風險升高。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -116,6 +126,12 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
                 detail={item.detail}
                 labels={SPX_MA_HEADLINE_LABELS}
               />
+            ) : item.indicator_name === 'vix' ? (
+              <VixHeadlineExplainable
+                shortLabel={item.short_label}
+                detail={item.detail}
+                labels={VIX_HEADLINE_LABELS}
+              />
             ) : (
               item.short_label
             )}
@@ -130,6 +146,8 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           {chartName !== null && hasOpened && <RegimeChartSection name={chartName} />}
           {item.indicator_name === 'spx_ma' ? (
             <MaPositionEnhancedDetail detail={item.detail} />
+          ) : item.indicator_name === 'vix' ? (
+            <VixEnhancedDetail detail={item.detail} />
           ) : (
             detailEntries.length > 0 && (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">

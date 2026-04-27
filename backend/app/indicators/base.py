@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
     from app.indicators.context import IndicatorContext
 
-INDICATOR_VERSION: Final[str] = "1.1.0"
+INDICATOR_VERSION: Final[str] = "1.2.0"
 
 
 SignalToneLiteral = Literal["green", "yellow", "red", "neutral"]

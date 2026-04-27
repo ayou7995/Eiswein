@@ -120,6 +120,24 @@ def last_two_floats(series: pd.Series) -> tuple[float, float] | None:
     return (float(cleaned.iloc[-2]), float(cleaned.iloc[-1]))
 
 
+def percentile_in_window(series: pd.Series, window: int) -> float | None:
+    """Where the latest value ranks among the trailing ``window`` observations.
+
+    Inclusive: ranks ``<=`` latest, so the most-recent point counts itself
+    and a fresh all-time-high yields 1.0 (matches user intuition that "the
+    highest in the year" is the 100th percentile).
+    """
+    cleaned = series.dropna()
+    if cleaned.empty:
+        return None
+    tail = cleaned.iloc[-window:]
+    if tail.empty:
+        return None
+    latest = float(tail.iloc[-1])
+    rank = float((tail <= latest).sum())
+    return rank / float(len(tail))
+
+
 def detect_ma_crosses(
     short_ma: pd.Series,
     long_ma: pd.Series,

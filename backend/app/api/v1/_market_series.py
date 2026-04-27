@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Final, Literal
 
 import pandas as pd
 
-from app.indicators._helpers import sma
+from app.indicators._helpers import percentile_in_window, sma
 
 if TYPE_CHECKING:
     from app.db.models import DailyPrice, MacroIndicator
@@ -241,7 +241,7 @@ def build_vix_payload(value_series: pd.Series) -> dict[str, object]:
 
     trend = _vix_trend(ten_day_change)
     zone = _vix_zone(current_level)
-    percentile = _percentile_in_window(cleaned, _VIX_PERCENTILE_WINDOW)
+    percentile = percentile_in_window(cleaned, _VIX_PERCENTILE_WINDOW)
     summary = _vix_summary(
         level=current_level,
         zone=zone,
@@ -318,22 +318,6 @@ def _vix_summary(
         # Negative sign already implied by "下降"; show absolute magnitude.
         return f"{head}，10 日下降 {abs(ten_day_change):.1f}"
     return head
-
-
-def _percentile_in_window(series: pd.Series, window: int) -> float | None:
-    cleaned = series.dropna()
-    if cleaned.empty:
-        return None
-    tail = cleaned.iloc[-window:]
-    if tail.empty:
-        return None
-    latest = float(tail.iloc[-1])
-    # Inclusive ranking: where today sits among the last `window`
-    # observations (latest counts itself, so the worst case for the
-    # newest day is 1/N rather than 0/N — matches user intuition that
-    # "the highest in the year" yields 1.0).
-    rank = float((tail <= latest).sum())
-    return rank / float(len(tail))
 
 
 # --- yield_spread ---------------------------------------------------------

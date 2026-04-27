@@ -25,7 +25,8 @@ def test_vix_normal_level_is_green(
 def test_vix_panic_level_is_red(
     indicator_context_factory: Callable[..., IndicatorContext],
 ) -> None:
-    macro = {"VIXCLS": make_macro_frame([15.0] * 10 + [20.0, 25.0, 28.0] + [30.0] * 8)}
+    # Latest > 30 trips the panic threshold (industry convention).
+    macro = {"VIXCLS": make_macro_frame([15.0] * 10 + [20.0, 25.0, 28.0] + [32.0] * 8)}
     ctx = indicator_context_factory(macro_frames=macro)
     result = compute_vix(pd.DataFrame(), ctx)
     assert result.signal == "red"
@@ -34,10 +35,23 @@ def test_vix_panic_level_is_red(
 def test_vix_complacency_is_yellow(
     indicator_context_factory: Callable[..., IndicatorContext],
 ) -> None:
-    macro = {"VIXCLS": make_macro_frame([12.0] * 21)}
+    # Below the 12 threshold = "low" (自滿) zone — yellow.
+    macro = {"VIXCLS": make_macro_frame([10.0] * 21)}
     ctx = indicator_context_factory(macro_frames=macro)
     result = compute_vix(pd.DataFrame(), ctx)
     assert result.signal == "yellow"
+
+
+def test_vix_includes_percentile_in_detail(
+    indicator_context_factory: Callable[..., IndicatorContext],
+) -> None:
+    # 21 obs of 18 → most-recent 18 ranks at 100% inclusive.
+    macro = {"VIXCLS": make_macro_frame([18.0] * 21)}
+    ctx = indicator_context_factory(macro_frames=macro)
+    result = compute_vix(pd.DataFrame(), ctx)
+    assert result.data_sufficient is True
+    assert "percentile_1y" in result.detail
+    assert result.detail["percentile_1y"] == 1.0
 
 
 def test_vix_missing_series_returns_insufficient(
