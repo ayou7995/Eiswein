@@ -108,9 +108,9 @@ async def get_data_status(
     "/data/refresh",
     response_model=RefreshResponse,
     status_code=status.HTTP_200_OK,
-    summary="Manually trigger daily ingestion (rate-limited 1/hour)",
+    summary="Manually trigger daily ingestion (rate-limited 5/hour)",
 )
-@limiter.limit("1/hour")
+@limiter.limit("5/hour")
 async def refresh_data(
     request: Request,
     response: Response,

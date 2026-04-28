@@ -364,14 +364,16 @@ def test_data_refresh_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_data_refresh_rate_limited_second_call(
+def test_data_refresh_rate_limited_after_5_calls(
     client: TestClient,
     test_password: str,
 ) -> None:
-    """Second call within the hour must be rejected with 429."""
+    """Limit is 5/hour — 6th call within the hour must be 429."""
     _login(client, test_password)
-    first = client.post("/api/v1/settings/data-refresh")
-    assert first.status_code == 202
+    for i in range(5):
+        resp = client.post("/api/v1/settings/data-refresh")
+        assert resp.status_code == 202, f"call #{i + 1} unexpectedly rejected"
 
-    second = client.post("/api/v1/settings/data-refresh")
-    assert second.status_code == 429
+    sixth = client.post("/api/v1/settings/data-refresh")
+    assert sixth.status_code == 429
+    assert sixth.json()["error"]["code"] == "rate_limited"

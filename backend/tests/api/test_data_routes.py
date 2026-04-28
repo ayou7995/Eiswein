@@ -55,11 +55,12 @@ def test_data_refresh_rate_limit(client: TestClient, test_password: str, monkeyp
 
     monkeypatch.setattr(daily_ingestion, "is_trading_day_et", lambda: True)
     _login(client, test_password)
-    first = client.post("/api/v1/data/refresh")
-    assert first.status_code == 200
-    second = client.post("/api/v1/data/refresh")
-    assert second.status_code == 429
-    assert second.json()["error"]["code"] == "rate_limited"
+    for i in range(5):
+        resp = client.post("/api/v1/data/refresh")
+        assert resp.status_code == 200, f"call #{i + 1} unexpectedly rejected"
+    sixth = client.post("/api/v1/data/refresh")
+    assert sixth.status_code == 429
+    assert sixth.json()["error"]["code"] == "rate_limited"
 
 
 def test_ticker_only_status_returns_light_payload(client: TestClient, test_password: str) -> None:

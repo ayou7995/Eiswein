@@ -7,8 +7,9 @@
 * GET    /settings/system-info   — db size + counts + last-refresh
   timestamps for the diagnostics page.
 * POST   /settings/data-refresh  — synchronous manual ``daily_update``.
-  Rate-limited (1/hour/ip) so a click-happy user can't kick off 100
-  yfinance bulk downloads.
+  Rate-limited (5/hour/ip) so a click-happy user can spot-check several
+  times throughout the day (e.g. mid-session and again post-close)
+  without enabling abuse.
 """
 
 import time
@@ -380,9 +381,9 @@ class DataRefreshResponse(BaseModel):
     "/settings/data-refresh",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=DataRefreshResponse,
-    summary="Manually trigger the daily_update job (rate-limited)",
+    summary="Manually trigger the daily_update job (rate-limited 5/hour)",
 )
-@limiter.limit("1/hour")
+@limiter.limit("5/hour")
 async def data_refresh(
     request: Request,
     response: Response,

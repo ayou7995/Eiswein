@@ -139,7 +139,7 @@ function DataRefreshCard(): JSX.Element {
     } catch (err) {
       if (err instanceof EisweinApiError) {
         if (err.code === 'rate_limited') {
-          setErrorMessage('已達到更新頻率上限，請稍後再試（每小時 1 次）。');
+          setErrorMessage('已達到更新頻率上限，請稍後再試（每小時 5 次）。');
           return;
         }
         setErrorMessage(err.message);
@@ -164,7 +164,7 @@ function DataRefreshCard(): JSX.Element {
           )}
         </div>
         <p className="text-xs text-slate-500">
-          觸發 daily_update 工作。每小時最多一次，同步可能耗時 10 秒以上。
+          觸發 daily_update 工作。每小時最多 5 次，同步可能耗時 10 秒以上。
         </p>
       </header>
 
