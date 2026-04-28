@@ -76,6 +76,7 @@ describe('DashboardPage', () => {
                 short_label: 'SPX 50/200 多頭排列',
                 detail: { ma50: 5000, ma200: 4800 },
                 indicator_name: 'spx_ma',
+                timeframe: 'mid',
               },
             ],
             indicator_version: '1.0.0',

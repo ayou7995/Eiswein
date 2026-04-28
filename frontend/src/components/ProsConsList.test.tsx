@@ -11,6 +11,7 @@ const sampleItems: readonly ProsConsItem[] = [
     short_label: 'RSI 66，動能偏強',
     detail: { rsi: 66.2, threshold: 70 },
     indicator_name: 'rsi',
+    timeframe: 'short',
   },
   {
     category: 'direction',
@@ -18,6 +19,7 @@ const sampleItems: readonly ProsConsItem[] = [
     short_label: 'Volume 異常',
     detail: { volume_ratio: 2.4 },
     indicator_name: 'volume_anomaly',
+    timeframe: 'short',
   },
   {
     category: 'timing',
@@ -25,6 +27,7 @@ const sampleItems: readonly ProsConsItem[] = [
     short_label: '資料不足以判斷 MACD',
     detail: {},
     indicator_name: 'macd',
+    timeframe: 'short',
   },
 ];
 
@@ -63,5 +66,41 @@ describe('ProsConsList', () => {
     render(<ProsConsList items={sampleItems} collapseNeutrals={false} />);
     expect(screen.queryByTestId('neutral-summary')).toBeNull();
     expect(screen.getByText(/資料不足以判斷 MACD/)).toBeInTheDocument();
+  });
+
+  it('renders a timeframe chip on each non-neutral row', () => {
+    const items: readonly ProsConsItem[] = [
+      {
+        category: 'direction',
+        tone: 'pro',
+        short_label: 'RSI 短期訊號',
+        detail: {},
+        indicator_name: 'rsi',
+        timeframe: 'short',
+      },
+      {
+        category: 'macro',
+        tone: 'con',
+        short_label: '長期 USD 強勢',
+        detail: {},
+        indicator_name: 'dxy',
+        timeframe: 'long',
+      },
+      {
+        category: 'macro',
+        tone: 'pro',
+        short_label: 'SPX 中期多頭排列',
+        detail: {},
+        indicator_name: 'spx_ma',
+        timeframe: 'mid',
+      },
+    ];
+    render(<ProsConsList items={items} />);
+    const chips = screen.getAllByTestId('timeframe-chip');
+    expect(chips).toHaveLength(3);
+    const labels = chips.map((c) => c.textContent);
+    expect(labels).toContain('短期');
+    expect(labels).toContain('中期');
+    expect(labels).toContain('長期');
   });
 });

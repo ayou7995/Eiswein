@@ -105,6 +105,7 @@ describe('TickerDetailPage', () => {
                 short_label: '站上 50/200 MA',
                 detail: { ma50: 170.2, ma200: 160.5 },
                 indicator_name: 'price_vs_ma',
+                timeframe: 'mid',
               },
             ],
             indicator_version: '1.0.0',

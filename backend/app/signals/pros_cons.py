@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from typing import Final
 
 from app.indicators.base import IndicatorResult, SignalTone
+from app.indicators.timeframes import INDICATOR_TIMEFRAMES
 from app.signals.types import (
     ProsConsCategoryLiteral,
     ProsConsItem,
@@ -59,6 +60,10 @@ def build_pros_cons_items(
             # added before its category mapping is updated.
             continue
         tone = _tone_for(result)
+        # Skip indicators not in the timeframe map for the same reason
+        # we skip unknown categories — better to drop than mis-classify.
+        if name not in INDICATOR_TIMEFRAMES:
+            continue
         items.append(
             ProsConsItem(
                 category=category,
@@ -66,6 +71,7 @@ def build_pros_cons_items(
                 short_label=result.short_label,
                 detail=dict(result.detail),
                 indicator_name=result.name,
+                timeframe=INDICATOR_TIMEFRAMES[name],
             )
         )
     return items

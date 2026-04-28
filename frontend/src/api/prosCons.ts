@@ -13,6 +13,7 @@ export const prosConsItemSchema = z.object({
   short_label: z.string(),
   detail: z.record(z.unknown()),
   indicator_name: z.string(),
+  timeframe: z.enum(['short', 'mid', 'long']),
 });
 
 export type ProsConsItem = z.infer<typeof prosConsItemSchema>;

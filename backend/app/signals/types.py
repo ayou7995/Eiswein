@@ -61,6 +61,7 @@ class MarketPosture(str, Enum):
 
 ProsConsToneLiteral = Literal["pro", "con", "neutral"]
 ProsConsCategoryLiteral = Literal["direction", "timing", "macro", "risk"]
+TimeframeLiteral = Literal["short", "mid", "long"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,10 @@ class ProsConsItem:
     short_label: str
     detail: dict[str, Any]
     indicator_name: str
+    # short / mid / long horizon, looked up from INDICATOR_TIMEFRAMES.
+    # Lets the UI render a chip telling the user which horizon this
+    # signal is talking about (e.g. "短期" for RSI, "長期" for DXY).
+    timeframe: TimeframeLiteral
 
 
 # ---- Entry tiers / Composed signal ---------------------------------------

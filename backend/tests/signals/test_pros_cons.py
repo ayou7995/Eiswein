@@ -93,3 +93,28 @@ def test_pros_cons_items_are_frozen_dataclass() -> None:
     items = build_pros_cons_items(results)
     with pytest.raises(dataclasses.FrozenInstanceError):
         items[0].tone = "con"  # type: ignore[misc]
+
+
+def test_pros_cons_emits_timeframe_for_every_known_indicator() -> None:
+    """Every indicator in INDICATOR_TIMEFRAMES must produce a valid
+    short / mid / long timeframe on its emitted item.
+    """
+    from app.indicators.timeframes import INDICATOR_TIMEFRAMES
+
+    results = {
+        name: _make_result(name, SignalTone.GREEN)
+        for name in INDICATOR_TIMEFRAMES
+    }
+    items = build_pros_cons_items(results)
+
+    by_name = {item.indicator_name: item for item in items}
+    # Every mapped indicator surfaces an item.
+    assert set(by_name.keys()) == set(INDICATOR_TIMEFRAMES.keys())
+    # Each item carries the expected timeframe value.
+    for name, expected_tf in INDICATOR_TIMEFRAMES.items():
+        assert by_name[name].timeframe == expected_tf, (
+            f"{name} timeframe drift: expected {expected_tf}, "
+            f"got {by_name[name].timeframe}"
+        )
+    # Sanity: only the three allowed values appear.
+    assert {item.timeframe for item in items} <= {"short", "mid", "long"}
