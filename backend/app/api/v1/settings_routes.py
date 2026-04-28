@@ -13,7 +13,7 @@
 
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,12 @@ from app.db.repositories.trade_repository import TradeRepository
 from app.db.repositories.user_repository import UserRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.ingestion.daily_ingestion import run_daily_update
+from app.ingestion.market_calendar import (
+    is_trading_day_et,
+    last_trading_day_et,
+    nyse_close_at_et,
+    today_et,
+)
 from app.security.auth import (
     hash_password,
     validate_password_strength,
@@ -198,6 +204,27 @@ def list_audit_log(
 # --- system-info ----------------------------------------------------------
 
 
+class DataFreshness(BaseModel):
+    """Where the latest persisted price bar sits relative to NYSE close.
+
+    Powers the dashboard chip that tells the operator whether today's
+    bar is mid-session (signals will shift after close) or finalized.
+    Computed fresh on each non-cached call — see the cache comment on
+    SystemInfoResponse for the staleness budget.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    session_date: date
+    is_trading_day_today: bool
+    market_close_at: datetime | None
+    # Max DailyPrice.updated_at across all symbols on session_date. None
+    # when nothing has been written yet for that session (e.g. before
+    # the day's first daily_update completes).
+    latest_updated_at: datetime | None
+    is_intraday_partial: bool
+
+
 class SystemInfoResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -208,17 +235,61 @@ class SystemInfoResponse(BaseModel):
     positions_count: int
     trade_count: int
     user_count: int | None
+    data_freshness: DataFreshness
 
 
 # Simple per-process 30s cache. Protected by a small tuple (last_ts,
-# response) — tests reset it via ``_clear_system_info_cache``.
+# response) — tests reset it via ``_clear_system_info_cache``. The
+# data_freshness chip can be at most 30s stale; comfortably inside the
+# 30-min post-close buffer.
 _SYSTEM_INFO_CACHE_TTL_SECONDS = 30.0
 _system_info_cache: tuple[float, SystemInfoResponse] | None = None
+_DATA_FRESHNESS_BUFFER_MINUTES = 30
 
 
 def _clear_system_info_cache() -> None:
     global _system_info_cache
     _system_info_cache = None
+
+
+def _compute_data_freshness(session: Session) -> DataFreshness:
+    """Build the freshness chip payload from current state + clock.
+
+    Pulls ``MAX(updated_at)`` for the session_date in one query rather
+    than scanning DailyPrice symbol-by-symbol — the chip only needs the
+    most-recent stamp to decide intra-day vs settled.
+    """
+    from app.db.models import DailyPrice
+
+    session_day = last_trading_day_et()
+    today = today_et()
+    is_today_trading = is_trading_day_et(today)
+    close_at = nyse_close_at_et(session_day)
+
+    latest_at: datetime | None = session.execute(
+        select(func.max(DailyPrice.updated_at)).where(DailyPrice.date == session_day)
+    ).scalar_one_or_none()
+
+    is_partial = False
+    if (
+        session_day == today
+        and close_at is not None
+        and latest_at is not None
+    ):
+        # Normalize naive timestamps from SQLite as UTC.
+        latest_aware = (
+            latest_at if latest_at.tzinfo is not None else latest_at.replace(tzinfo=UTC)
+        )
+        cutoff = close_at + timedelta(minutes=_DATA_FRESHNESS_BUFFER_MINUTES)
+        is_partial = latest_aware < cutoff
+
+    return DataFreshness(
+        session_date=session_day,
+        is_trading_day_today=is_today_trading,
+        market_close_at=close_at,
+        latest_updated_at=latest_at,
+        is_intraday_partial=is_partial,
+    )
 
 
 def _db_size_bytes(engine_url: str) -> int | None:
@@ -285,6 +356,7 @@ def system_info(
         # Keep non-admin users from seeing aggregate user counts; v1 is
         # single-admin anyway, but the shape should be correct.
         user_count=users.count() if is_admin else None,
+        data_freshness=_compute_data_freshness(session),
     )
     _system_info_cache = (now, response)
     return response

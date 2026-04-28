@@ -53,6 +53,13 @@ const SYSTEM_INFO = {
   positions_count: 2,
   trade_count: 17,
   user_count: 1,
+  data_freshness: {
+    session_date: '2026-04-17',
+    is_trading_day_today: true,
+    market_close_at: '2026-04-17T16:00:00-04:00',
+    latest_updated_at: '2026-04-17T20:00:00+00:00',
+    is_intraday_partial: false,
+  },
 };
 
 describe('SettingsPage', () => {

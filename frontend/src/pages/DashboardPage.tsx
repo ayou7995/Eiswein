@@ -9,10 +9,12 @@ import {
   MarketRegimeIndicatorList,
   type ChartNameResolver,
 } from '../components/MarketRegimeIndicatorList';
+import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
 import { DataStatusBadge } from '../components/DataStatusBadge';
 import { IndicatorDriftBanner } from '../components/IndicatorDriftBanner';
 import { Explainable, RuleTable } from '../components/Explainable';
 import { useMarketPosture } from '../hooks/useMarketPosture';
+import { useSystemInfo } from '../hooks/useSettings';
 import { marketIndicatorSeriesNameSchema } from '../api/marketIndicatorSeries';
 import {
   useDashboardWatchlistSignals,
@@ -76,6 +78,7 @@ export function DashboardPage(): JSX.Element {
 }
 
 function MarketPostureCard(): JSX.Element {
+  const { data: sysInfo } = useSystemInfo();
   const { data, isLoading, isError, error, refetch } = useMarketPosture();
 
   const content = useMemo(() => {
@@ -166,6 +169,9 @@ function MarketPostureCard(): JSX.Element {
             </span>
           )}
           <span className="text-xs text-slate-500">最近交易日：{data.date}</span>
+          {sysInfo?.data_freshness && (
+            <DataFreshnessBadge freshness={sysInfo.data_freshness} />
+          )}
         </div>
         <dl className="flex flex-wrap gap-4 text-sm">
           <RegimeCount tone="green" count={data.regime_green_count} label="進攻訊號" />
@@ -176,7 +182,7 @@ function MarketPostureCard(): JSX.Element {
         {nonRegimeItems.length > 0 && <ProsConsList items={nonRegimeItems} />}
       </div>
     );
-  }, [data, error, isError, isLoading, refetch]);
+  }, [data, error, isError, isLoading, refetch, sysInfo]);
 
   return (
     <section

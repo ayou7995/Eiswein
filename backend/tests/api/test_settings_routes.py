@@ -192,6 +192,95 @@ def test_system_info_counts_match_fixtures(
     assert body["user_count"] == 1
 
 
+def test_system_info_includes_data_freshness_block(
+    client: TestClient,
+    test_password: str,
+) -> None:
+    """The response must carry a data_freshness payload with the
+    five fields the frontend chip consumes. Doesn't pin specific
+    timing values — just shape — because real wall-clock at test
+    time can fall on either side of the buffer.
+    """
+    from app.api.v1.settings_routes import _clear_system_info_cache
+
+    _clear_system_info_cache()
+    _login(client, test_password)
+    body = client.get("/api/v1/settings/system-info").json()
+
+    assert "data_freshness" in body
+    fresh = body["data_freshness"]
+    assert "session_date" in fresh
+    assert "is_trading_day_today" in fresh
+    assert "market_close_at" in fresh
+    assert "latest_updated_at" in fresh
+    assert "is_intraday_partial" in fresh
+    assert isinstance(fresh["is_trading_day_today"], bool)
+    assert isinstance(fresh["is_intraday_partial"], bool)
+
+
+def test_system_info_data_freshness_intraday_when_row_pre_close(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DailyPrice row whose updated_at is before today's close + buffer
+    flips ``is_intraday_partial`` to True. Pin "today" + freeze the clock
+    so the test is deterministic regardless of wall time.
+    """
+    from datetime import date as _date_t
+
+    from freezegun import freeze_time
+
+    from app.api.v1.settings_routes import _clear_system_info_cache
+    from app.db.models import DailyPrice
+
+    _clear_system_info_cache()
+    _login(client, test_password)
+
+    today = _date_t(2026, 4, 14)  # Tuesday session
+    pre_close_utc = datetime(2026, 4, 14, 18, 0, tzinfo=UTC)  # 14:00 ET
+
+    monkeypatch.setattr(
+        "app.api.v1.settings_routes.last_trading_day_et",
+        lambda: today,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.settings_routes.today_et",
+        lambda: today,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.settings_routes.is_trading_day_et",
+        lambda d=None: True,
+    )
+
+    with session_factory() as session:
+        session.add(
+            DailyPrice(
+                symbol="SPY",
+                date=today,
+                open=Decimal("100"),
+                high=Decimal("101"),
+                low=Decimal("99"),
+                close=Decimal("100.5"),
+                volume=1_000_000,
+                updated_at=pre_close_utc,
+            )
+        )
+        session.commit()
+
+    # Now = 15:00 ET on the same day — well before close+buffer = 16:30 ET.
+    # Even at 15:00 the row is pre-close (written at 14:00) → intraday.
+    with freeze_time(datetime(2026, 4, 14, 15, 0, tzinfo=UTC)):
+        _clear_system_info_cache()
+        body = client.get("/api/v1/settings/system-info").json()
+
+    fresh = body["data_freshness"]
+    assert fresh["is_intraday_partial"] is True
+    assert fresh["session_date"] == "2026-04-14"
+    assert fresh["latest_updated_at"] is not None
+
+
 # --- manual data refresh --------------------------------------------------
 
 

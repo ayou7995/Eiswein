@@ -47,6 +47,19 @@ export function listAuditLog(limit: number): Promise<AuditLogResponse> {
   });
 }
 
+export const dataFreshnessSchema = z.object({
+  // ISO YYYY-MM-DD — last NYSE session.
+  session_date: z.string(),
+  is_trading_day_today: z.boolean(),
+  // ET-aware ISO datetime, or null on weekends/holidays.
+  market_close_at: z.string().nullable(),
+  // UTC ISO datetime — most recent DailyPrice.updated_at on session_date,
+  // or null when nothing has been written yet.
+  latest_updated_at: z.string().nullable(),
+  is_intraday_partial: z.boolean(),
+});
+export type DataFreshness = z.infer<typeof dataFreshnessSchema>;
+
 export const systemInfoResponseSchema = z.object({
   db_size_bytes: z.number().int().nonnegative().nullable(),
   last_daily_update_at: z.string().nullable(),
@@ -55,6 +68,7 @@ export const systemInfoResponseSchema = z.object({
   positions_count: z.number().int().nonnegative(),
   trade_count: z.number().int().nonnegative(),
   user_count: z.number().int().nonnegative().nullable(),
+  data_freshness: dataFreshnessSchema,
 });
 export type SystemInfoResponse = z.infer<typeof systemInfoResponseSchema>;
 

@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
 import { SchwabConnectCard } from '../components/SchwabConnectCard';
 import { WatchlistManager } from '../components/WatchlistManager';
 import { useAuditLog, useChangePassword, useDataRefresh, useSystemInfo } from '../hooks/useSettings';
@@ -115,6 +116,7 @@ function InfoStat({ label, value }: InfoStatProps): JSX.Element {
 
 function DataRefreshCard(): JSX.Element {
   const mutation = useDataRefresh();
+  const { data: sysInfo } = useSystemInfo();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -153,9 +155,14 @@ function DataRefreshCard(): JSX.Element {
       className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
     >
       <header>
-        <h2 id="data-refresh-heading" className="text-lg font-semibold">
-          手動更新資料
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 id="data-refresh-heading" className="text-lg font-semibold">
+            手動更新資料
+          </h2>
+          {sysInfo?.data_freshness && (
+            <DataFreshnessBadge freshness={sysInfo.data_freshness} />
+          )}
+        </div>
         <p className="text-xs text-slate-500">
           觸發 daily_update 工作。每小時最多一次，同步可能耗時 10 秒以上。
         </p>
