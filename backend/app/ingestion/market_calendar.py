@@ -11,7 +11,7 @@ mocking ``pandas_market_calendars`` internals.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -19,6 +19,12 @@ import pandas_market_calendars as mcal
 
 _NYSE = mcal.get_calendar("NYSE")
 _MARKET_TZ = ZoneInfo("America/New_York")
+
+# Buffer past NYSE close before we consider a daily bar "settled". Yahoo
+# Finance and other providers can lag a few minutes behind 16:00 ET when
+# splitting/dividend adjustments are processed; the buffer absorbs that
+# without leaving the freshness layer flapping right at the close bell.
+_DEFAULT_POST_CLOSE_BUFFER_MINUTES = 30
 
 
 def now_et() -> datetime:
@@ -54,6 +60,63 @@ def last_trading_day_et(*, reference: date | None = None) -> date:
     if isinstance(last, pd.Timestamp):
         return last.date()
     return ref
+
+
+def nyse_close_at_et(day: date) -> datetime | None:
+    """ET-aware datetime of NYSE's regular-session close on ``day``.
+
+    Returns ``None`` when ``day`` is not a trading session (weekend,
+    holiday). Early-close days (e.g. Black Friday's 13:00 ET close) are
+    honoured — pandas_market_calendars carries the per-day market_close
+    so this helper does not hard-code 16:00 ET.
+    """
+    schedule = _NYSE.schedule(start_date=day, end_date=day)
+    if schedule.empty:
+        return None
+    market_close = schedule["market_close"].iloc[0]
+    if not isinstance(market_close, pd.Timestamp):
+        return None
+    return market_close.tz_convert(_MARKET_TZ).to_pydatetime()
+
+
+def is_post_close_et(*, buffer_minutes: int = _DEFAULT_POST_CLOSE_BUFFER_MINUTES) -> bool:
+    """True iff today is a trading day and we are past close + buffer.
+
+    Used by ``run_daily_update`` to decide whether the latest cached
+    bar should be presumed final. Returns ``False`` on weekends and
+    holidays — there is no close to be past.
+    """
+    close = nyse_close_at_et(today_et())
+    if close is None:
+        return False
+    return now_et() >= close + timedelta(minutes=buffer_minutes)
+
+
+def is_intraday_partial(
+    *,
+    row_date: date,
+    row_updated_at: datetime,
+    buffer_minutes: int = _DEFAULT_POST_CLOSE_BUFFER_MINUTES,
+) -> bool:
+    """Treat ``row`` as a not-yet-finalized intra-day bar.
+
+    True iff ``row_date`` is today's session AND ``row_updated_at`` is
+    strictly before today's close + buffer. Comparing in UTC keeps the
+    callsite free of timezone bookkeeping — both inputs are converted
+    if necessary.
+    """
+    if row_date != today_et():
+        return False
+    close = nyse_close_at_et(row_date)
+    if close is None:
+        return False
+    cutoff = close + timedelta(minutes=buffer_minutes)
+    # Normalize both sides to aware datetimes for the comparison.
+    if row_updated_at.tzinfo is None:
+        row_aware = row_updated_at.replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        row_aware = row_updated_at
+    return row_aware < cutoff
 
 
 def get_trading_days(start: date, end: date) -> list[date]:

@@ -12,7 +12,7 @@ Bulk path batches all rows into a single SQL statement — N individual
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TypedDict
 
@@ -45,11 +45,26 @@ class DailyPriceRepository:
 
         SQLite doesn't report affected rows well through the ORM; we
         return the input size so callers can log throughput.
+
+        ``updated_at`` is set explicitly on both insert (via the row
+        ``values``) and update (via the ``set_`` clause). SQLAlchemy's
+        ``onupdate=`` hook only fires for ORM-mapped UPDATE statements;
+        a raw ``INSERT ... ON CONFLICT DO UPDATE`` bypasses it, so we
+        pin the timestamp ourselves. Without this, the freshness layer
+        couldn't tell a partial intra-day overwrite from the original
+        partial write.
         """
         materialized: list[DailyPriceRow] = list(rows)
         if not materialized:
             return 0
-        stmt = sqlite_insert(DailyPrice).values(materialized)
+        now = datetime.now(UTC)
+        # ``DailyPriceRow`` (the TypedDict caller passes) has no
+        # updated_at field — we inject it here so callers don't need to
+        # think about freshness bookkeeping.
+        values_with_timestamps = [
+            {**row, "updated_at": now} for row in materialized
+        ]
+        stmt = sqlite_insert(DailyPrice).values(values_with_timestamps)
         stmt = stmt.on_conflict_do_update(
             index_elements=["symbol", "date"],
             set_={
@@ -58,6 +73,7 @@ class DailyPriceRepository:
                 "low": stmt.excluded.low,
                 "close": stmt.excluded.close,
                 "volume": stmt.excluded.volume,
+                "updated_at": stmt.excluded.updated_at,
             },
         )
         self._session.execute(stmt)
@@ -168,3 +184,40 @@ class DailyPriceRepository:
             missing = sorted(expected_set - present[sym])
             gaps[sym] = missing
         return gaps
+
+    def list_updated_at_for_symbols(
+        self, symbols: list[str], *, lookback_days: int = 60
+    ) -> list[tuple[str, date, datetime]]:
+        """Return ``(symbol, date, updated_at)`` for every row in the
+        last ``lookback_days`` trading days.
+
+        The ingestion-layer freshness logic uses this to detect rows
+        that were written before their session's close + buffer (i.e.,
+        partial intra-day bars) so they can be force-refetched once the
+        session is fully settled. Single SQL round-trip (rule 10).
+        """
+        if not symbols or lookback_days <= 0:
+            return []
+
+        end_date = last_trading_day_et(reference=today_et())
+        calendar_span = max(lookback_days * 2, lookback_days + 14)
+        start_date = end_date - timedelta(days=calendar_span)
+        expected = get_trading_days(start_date, end_date)
+        if not expected:
+            return []
+        expected = expected[-lookback_days:]
+        window_start = expected[0]
+        window_end = expected[-1]
+
+        uppers = sorted({s.upper() for s in symbols if s.strip()})
+        if not uppers:
+            return []
+
+        stmt = select(
+            DailyPrice.symbol, DailyPrice.date, DailyPrice.updated_at
+        ).where(
+            DailyPrice.symbol.in_(uppers),
+            DailyPrice.date >= window_start,
+            DailyPrice.date <= window_end,
+        )
+        return [(sym, d, ts) for sym, d, ts in self._session.execute(stmt).all()]

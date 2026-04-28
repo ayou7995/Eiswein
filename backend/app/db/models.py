@@ -278,6 +278,14 @@ class DailyPrice(Base):
     low: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     close: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # Bumped on every UPSERT so the freshness layer can tell a partial
+    # intra-day bar (written before market_close + buffer) apart from a
+    # finalized close. The repository sets this explicitly on the ON
+    # CONFLICT DO UPDATE clause — raw INSERTs bypass SQLAlchemy's
+    # ``onupdate`` hook.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
 
 
 class MacroIndicator(Base):

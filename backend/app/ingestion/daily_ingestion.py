@@ -26,9 +26,10 @@ parameters so tests can inject fakes (rule 13: DI).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Literal
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import structlog
@@ -45,7 +46,12 @@ from app.ingestion.indicators import (
     compute_and_persist_market_regime,
 )
 from app.ingestion.locks import get_symbol_lock
-from app.ingestion.market_calendar import is_trading_day_et, last_trading_day_et
+from app.ingestion.market_calendar import (
+    is_trading_day_et,
+    last_trading_day_et,
+    now_et,
+    nyse_close_at_et,
+)
 from app.ingestion.persist import iter_daily_price_rows
 from app.ingestion.signals import (
     compose_and_persist_market,
@@ -67,6 +73,11 @@ TriggerMode = Literal["scheduled", "manual"]
 # sessions — deep enough to catch a week-long VM outage but shallow
 # enough to bound the yfinance fetch window if the DB is corrupted.
 _GAP_LOOKBACK_TRADING_DAYS = 60
+
+# Buffer past NYSE close before a row is considered "settled". Yahoo
+# adjustments can lag a few minutes; the 30-min buffer absorbs that.
+# Mirrors the constant in market_calendar.py.
+_POST_CLOSE_BUFFER_MINUTES = 30
 
 # System symbols fetched on every daily_update regardless of watchlist
 # membership. SPY is the SPX proxy every market-regime + relative-
@@ -160,7 +171,23 @@ async def run_daily_update(
         gaps = prices.find_gaps_for_symbols(symbols, lookback_days=_GAP_LOOKBACK_TRADING_DAYS)
         any_gaps = any(dates for dates in gaps.values())
 
-        if not any_gaps and trigger == "scheduled":
+        # Detect partial intra-day rows whose session has already
+        # settled. These are dates with an existing row (so gap-detection
+        # ignored them) but the row was written before that session's
+        # market_close + buffer. Re-fetching now will overwrite the
+        # partial bar with the finalized close.
+        partials = _find_partial_session_dates(
+            prices=prices,
+            symbols=symbols,
+            lookback_days=_GAP_LOOKBACK_TRADING_DAYS,
+            buffer_minutes=_POST_CLOSE_BUFFER_MINUTES,
+        )
+        any_partials = any(dates for dates in partials.values())
+
+        # Combined "needs work" set: gaps OR partials trigger fetch.
+        any_work_needed = any_gaps or any_partials
+
+        if not any_work_needed and trigger == "scheduled":
             logger.debug(
                 "daily_update_no_gaps_scheduled_skip",
                 date=str(session_day),
@@ -170,11 +197,22 @@ async def run_daily_update(
             # nightly indicator / snapshot refresh even if no price rows
             # need filling (e.g., market closed tomorrow but macro moved).
         else:
-            # Widest window: from the oldest missing date across all
-            # symbols to the last trading day. Manual runs with no gaps
-            # collapse to just the last trading day (end==start).
-            oldest_gap = _oldest_gap(gaps) if any_gaps else session_day
-            start_date = oldest_gap
+            # Widest window: from the oldest gap-or-partial date to the
+            # last trading day. Manual runs with nothing to do collapse
+            # to just session_day.
+            combined_dates: dict[str, set[date]] = {
+                sym.upper(): set(gaps.get(sym.upper(), []))
+                | partials.get(sym.upper(), set())
+                for sym in symbols
+            }
+            if any_work_needed:
+                oldest_combined = min(
+                    (d for s in combined_dates.values() for d in s),
+                    default=session_day,
+                )
+            else:
+                oldest_combined = session_day
+            start_date = oldest_combined
             end_date = session_day
             period = _period_for_window(start_date=start_date, end_date=end_date)
 
@@ -184,11 +222,15 @@ async def run_daily_update(
                 logger.warning("daily_update_bulk_failed", details=exc.details)
                 bulk = {}
 
-            # When no gaps + manual trigger, treat every symbol as
-            # needing just ``session_day`` so we persist the latest
+            # When nothing flagged + manual trigger, treat every symbol
+            # as needing just ``session_day`` so we persist the latest
             # close but stay idempotent on re-click.
             effective_gaps: dict[str, set[date]] = {
-                sym.upper(): (set(gaps.get(sym.upper(), [])) if any_gaps else {session_day})
+                sym.upper(): (
+                    combined_dates[sym.upper()]
+                    if any_work_needed
+                    else {session_day}
+                )
                 for sym in symbols
             }
 
@@ -228,7 +270,7 @@ async def run_daily_update(
                     # a soft failure. The manual-no-gap path also lands
                     # here when yfinance returned no row for session_day
                     # yet (common pre-close) which is benign.
-                    if any_gaps and allowed:
+                    if any_work_needed and allowed:
                         failed += 1
                     continue
                 price_rows_total += upserted
@@ -325,6 +367,50 @@ def _empty_result(session_day: date, *, market_open: bool) -> DailyUpdateResult:
         gaps_filled_rows=0,
         gaps_filled_symbols=0,
     )
+
+
+def _find_partial_session_dates(
+    *,
+    prices: DailyPriceRepository,
+    symbols: list[str],
+    lookback_days: int,
+    buffer_minutes: int,
+) -> dict[str, set[date]]:
+    """Per-symbol set of session dates whose stored row is still partial.
+
+    A row is "partial" when:
+      * the row's session has already settled (now ≥ close + buffer), AND
+      * the row was last written before that session's close + buffer.
+
+    Mid-session rows are excluded — they may legitimately be intra-day
+    snapshots that the operator is consciously refreshing; refetching
+    would just write another partial bar. Only sessions whose final
+    close is now available are flagged for force-refetch.
+    """
+    if not symbols or lookback_days <= 0:
+        return {}
+    rows = prices.list_updated_at_for_symbols(symbols, lookback_days=lookback_days)
+    if not rows:
+        return {}
+    now = now_et()
+    out: dict[str, set[date]] = {}
+    for sym, day, updated_at in rows:
+        close = nyse_close_at_et(day)
+        if close is None:
+            continue  # not a session, can't be partial
+        cutoff = close + timedelta(minutes=buffer_minutes)
+        if now < cutoff:
+            continue  # session not yet settled, refetching wouldn't help
+        # Normalize updated_at — repo stores aware UTC, but defensively
+        # treat naive as UTC so a legacy migration doesn't crash us.
+        row_aware = (
+            updated_at
+            if updated_at.tzinfo is not None
+            else updated_at.replace(tzinfo=ZoneInfo("UTC"))
+        )
+        if row_aware < cutoff:
+            out.setdefault(sym.upper(), set()).add(day)
+    return out
 
 
 def _oldest_gap(gaps: dict[str, list[date]]) -> date:

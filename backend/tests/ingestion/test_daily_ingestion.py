@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
+from freezegun import freeze_time
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
-from app.db.models import User, Watchlist
+from app.db.models import DailyPrice, User, Watchlist
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.ingestion.daily_ingestion import (
     _ComputeOutcome,
+    _find_partial_session_dates,
     _oldest_gap,
     _period_for_window,
     run_daily_update,
 )
+
+_ET = ZoneInfo("America/New_York")
 
 
 def _seed_watchlist(
@@ -447,3 +454,226 @@ def test_period_for_window_multi_day_span() -> None:
     span = (date(2026, 4, 11) - date(2026, 4, 1)).days + 1  # 11
     expected = max(span + 5, 5)
     assert p == f"{expected}d"
+
+
+# ---------------------------------------------------------------------------
+# _find_partial_session_dates — partial intra-day bar detection
+# ---------------------------------------------------------------------------
+
+
+def _stub_prices(rows: list[tuple[str, date, datetime]]) -> object:
+    """Return an object with a ``list_updated_at_for_symbols`` method
+    that yields the supplied rows. Avoids spinning up a full DB session
+    for the pure-logic test.
+    """
+    repo = MagicMock()
+    repo.list_updated_at_for_symbols.return_value = rows
+    return repo
+
+
+def test_find_partial_session_dates_empty_when_no_symbols() -> None:
+    repo = _stub_prices([])
+    out = _find_partial_session_dates(
+        prices=repo, symbols=[], lookback_days=60, buffer_minutes=30
+    )
+    assert out == {}
+
+
+def test_find_partial_session_dates_flags_row_written_pre_close() -> None:
+    # Yesterday at 14:00 ET = 18:00 UTC. Yesterday's session closed at
+    # 16:00 ET = 20:00 UTC. Settlement cutoff = 16:30 ET = 20:30 UTC.
+    yesterday = date(2026, 4, 13)  # Monday
+    today = date(2026, 4, 14)  # Tuesday
+    pre_close_write = datetime(2026, 4, 13, 18, 0, tzinfo=UTC)
+    repo = _stub_prices([("SPY", yesterday, pre_close_write)])
+
+    # Run "now" at 06:30 ET on Tuesday — yesterday's settlement window
+    # is long since past, so SPY's row should be flagged for refresh.
+    with freeze_time(datetime(2026, 4, 14, 6, 30, tzinfo=_ET)):
+        out = _find_partial_session_dates(
+            prices=repo, symbols=["SPY"], lookback_days=60, buffer_minutes=30
+        )
+    assert out == {"SPY": {yesterday}}
+    # touch `today` to satisfy unused-var lint
+    _ = today
+
+
+def test_find_partial_session_dates_skips_settled_row() -> None:
+    yesterday = date(2026, 4, 13)
+    settled_write = datetime(2026, 4, 13, 21, 0, tzinfo=UTC)  # 17:00 ET
+    repo = _stub_prices([("SPY", yesterday, settled_write)])
+
+    with freeze_time(datetime(2026, 4, 14, 6, 30, tzinfo=_ET)):
+        out = _find_partial_session_dates(
+            prices=repo, symbols=["SPY"], lookback_days=60, buffer_minutes=30
+        )
+    assert out == {}
+
+
+def test_find_partial_session_dates_skips_session_not_yet_settled() -> None:
+    """A row written mid-session today should NOT be flagged when we're
+    asking mid-session — refetching now would just write another partial
+    bar. Only sessions whose close+buffer is in the past get flagged.
+    """
+    today = date(2026, 4, 14)
+    mid_session_write = datetime(2026, 4, 14, 18, 0, tzinfo=UTC)  # 14:00 ET
+    repo = _stub_prices([("SPY", today, mid_session_write)])
+
+    with freeze_time(datetime(2026, 4, 14, 14, 30, tzinfo=_ET)):
+        out = _find_partial_session_dates(
+            prices=repo, symbols=["SPY"], lookback_days=60, buffer_minutes=30
+        )
+    assert out == {}
+
+
+def test_find_partial_session_dates_handles_naive_timestamp() -> None:
+    """Defensive: legacy rows could in theory have naive datetimes.
+    Treat them as UTC instead of crashing.
+    """
+    yesterday = date(2026, 4, 13)
+    naive_pre_close_utc = datetime(2026, 4, 13, 18, 0)  # 14:00 ET
+    repo = _stub_prices([("SPY", yesterday, naive_pre_close_utc)])
+
+    with freeze_time(datetime(2026, 4, 14, 6, 30, tzinfo=_ET)):
+        out = _find_partial_session_dates(
+            prices=repo, symbols=["SPY"], lookback_days=60, buffer_minutes=30
+        )
+    assert out == {"SPY": {yesterday}}
+
+
+def test_find_partial_session_dates_skips_non_session_date() -> None:
+    """A row dated to a Saturday (impossible normally — defensive)
+    has no close, so we cannot judge it partial. Skip silently.
+    """
+    saturday = date(2026, 4, 18)
+    write = datetime(2026, 4, 18, 12, 0, tzinfo=UTC)
+    repo = _stub_prices([("SPY", saturday, write)])
+
+    with freeze_time(datetime(2026, 4, 20, 6, 30, tzinfo=_ET)):
+        out = _find_partial_session_dates(
+            prices=repo, symbols=["SPY"], lookback_days=60, buffer_minutes=30
+        )
+    assert out == {}
+
+
+# ---------------------------------------------------------------------------
+# Integration: pre-close partial row triggers refetch on next post-close run
+# ---------------------------------------------------------------------------
+
+
+def _seed_partial_row(
+    session_factory: sessionmaker[Session],
+    *,
+    symbol: str,
+    day: date,
+    written_at: datetime,
+) -> None:
+    """Insert a DailyPrice row directly with a controlled updated_at.
+
+    Used to simulate "user clicked at 14:00 ET on Monday" without
+    actually running the upsert at that wall-clock time.
+    """
+    with session_factory() as session:
+        row = DailyPrice(
+            symbol=symbol.upper(),
+            date=day,
+            open=Decimal("100.00"),
+            high=Decimal("101.00"),
+            low=Decimal("99.00"),
+            close=Decimal("100.50"),  # the "partial" pre-close mark
+            volume=1_000_000,
+            updated_at=written_at,
+        )
+        session.add(row)
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_run_refetches_pre_close_partial_row(
+    session_factory: sessionmaker[Session],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The hidden-hazard case: user clicked at 14:00 Mon (partial bar
+    persisted), forgot to re-click. At 06:30 Tue scheduled run, gap
+    detection sees Mon's row as present so won't refetch by gap path —
+    but the partial-detection path must catch it and force the refetch.
+    """
+    import pandas as pd
+
+    from tests.conftest import FakeDataSource, FakeDataSourceConfig
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    monkeypatch.setattr(
+        "app.ingestion.daily_ingestion._compute_and_compose_for_all",
+        lambda **_kw: _stub_compute_outcome(),
+    )
+    # last_trading_day_et returns Tue when "now" is Tue; pin it.
+    monkeypatch.setattr(
+        "app.ingestion.daily_ingestion.last_trading_day_et",
+        lambda: date(2026, 4, 14),
+    )
+
+    monday = date(2026, 4, 13)
+    tuesday = date(2026, 4, 14)
+    pre_close_write = datetime(2026, 4, 13, 18, 0, tzinfo=UTC)  # 14:00 ET Mon
+
+    _seed_watchlist(session_factory, {"u1": ["SPY"]})
+    _seed_partial_row(
+        session_factory, symbol="SPY", day=monday, written_at=pre_close_write
+    )
+
+    # Hand-build a frame covering Mon + Tue. The persistence layer will
+    # UPSERT both. Mon's stamp must advance because the close moved
+    # 100.50 → 100.80 (the pretend "final" close).
+    frame = pd.DataFrame(
+        {
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.80, 101.50],
+            "volume": [1_000_000, 1_100_000],
+        },
+        index=pd.DatetimeIndex(
+            [pd.Timestamp(monday), pd.Timestamp(tuesday)],
+            tz="America/New_York",
+        ),
+    )
+    ds = FakeDataSource(FakeDataSourceConfig(frames={"SPY": frame}))
+
+    # "Now" = Tuesday 06:30 ET — Mon's session is long settled.
+    with (
+        freeze_time(datetime(2026, 4, 14, 6, 30, tzinfo=_ET)),
+        session_factory() as session,
+    ):
+        await run_daily_update(
+            db=session,
+            data_source=ds,
+            settings=settings,
+            trigger="scheduled",
+        )
+
+    # The bulk fetch must have been invoked (partial detection bypassed
+    # the no-gaps short-circuit).
+    assert any(call[0] == "bulk" for call in ds.calls), (
+        "Scheduled run did not fetch despite a partial Monday row"
+    )
+
+    # Monday's row was overwritten — close advanced from 100.50 to 100.80,
+    # updated_at advanced past Mon's market_close + buffer (16:30 ET =
+    # 20:30 UTC).
+    with session_factory() as session:
+        prices = DailyPriceRepository(session)
+        rows = prices.get_range("SPY", start=monday, end=monday)
+        assert len(rows) == 1
+        mon_row = rows[0]
+        assert mon_row.close == Decimal("100.8000")
+        # 14:00 ET → 18:00 UTC. Post-refetch updated_at must be later.
+        # SQLite via SQLAlchemy can return naive datetimes from
+        # DateTime(timezone=True) columns — normalize before compare.
+        actual = (
+            mon_row.updated_at
+            if mon_row.updated_at.tzinfo is not None
+            else mon_row.updated_at.replace(tzinfo=UTC)
+        )
+        assert actual > pre_close_write
