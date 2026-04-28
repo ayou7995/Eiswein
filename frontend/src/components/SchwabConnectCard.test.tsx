@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SchwabConnectCard } from './SchwabConnectCard';
-import { makeQueryClient, renderWithProviders } from '../test/utils';
+import { renderWithProviders } from '../test/utils';
 import type { SchwabStatus, SchwabTestResult } from '../api/broker';
 
 // ---------------------------------------------------------------------------
@@ -50,7 +50,8 @@ function _makeMutation(overrides: Record<string, unknown> = {}) {
     error: null,
     reset: vi.fn(),
     ...overrides,
-  } as unknown as ReturnType<typeof useSchwabTest>;
+  } as unknown as ReturnType<typeof useSchwabTest> &
+    ReturnType<typeof useSchwabDisconnect>;
 }
 
 function _makeQuery(data: SchwabStatus | undefined, overrides: Record<string, unknown> = {}) {

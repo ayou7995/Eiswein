@@ -102,7 +102,9 @@ def build_close_frame(rows: Sequence[DailyPrice]) -> pd.DataFrame:
 # --- Price vs MA ----------------------------------------------------------
 
 
-def build_price_vs_ma_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+def build_price_vs_ma_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
     """Construct the ``price_vs_ma`` series + summary payload."""
     close = frame["close"].astype("float64")
     ma50_full = sma(close, _MA50)
@@ -212,7 +214,9 @@ def _price_vs_ma_summary(
 # --- RSI ------------------------------------------------------------------
 
 
-def build_rsi_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+def build_rsi_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
     close = frame["close"].astype("float64")
     daily_full = wilder_rsi(close, _RSI_LENGTH)
 
@@ -311,7 +315,9 @@ def _rsi_summary(*, zone: _RSIZone, delta_phrase: str) -> str:
 # --- MACD -----------------------------------------------------------------
 
 
-def build_macd_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+def build_macd_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
     close = frame["close"].astype("float64")
     macd_result = macd(close)
     macd_line = macd_result.macd_line
@@ -444,7 +450,9 @@ def _macd_summary(
 # --- Bollinger Bands ------------------------------------------------------
 
 
-def build_bollinger_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+def build_bollinger_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
     close = frame["close"].astype("float64")
     bands = bollinger_bands(close, length=_BB_LENGTH)
 
@@ -562,7 +570,9 @@ _VOLUME_TREND_LOW: Final[float] = 0.85
 _VOLUME_TREND_HIGH: Final[float] = 1.15
 
 
-def build_volume_anomaly_payload(symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+def build_volume_anomaly_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
     """Construct the ``volume_anomaly`` series + summary payload.
 
     Each row in the 60-day series carries the day's volume, the day's

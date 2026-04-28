@@ -57,9 +57,7 @@ function toTime(dateString: string): Time {
   return dateString as unknown as Time;
 }
 
-interface SeriesItem extends AdDaySeriesResponse {}
-
-function toCandleData(series: SeriesItem['series']): CandlestickData[] {
+function toCandleData(series: AdDaySeriesResponse['series']): CandlestickData[] {
   const candles: CandlestickData[] = [];
   for (const row of series) {
     if (
@@ -85,7 +83,7 @@ function toCandleData(series: SeriesItem['series']): CandlestickData[] {
   return candles;
 }
 
-function toVolumeData(series: SeriesItem['series']): HistogramData[] {
+function toVolumeData(series: AdDaySeriesResponse['series']): HistogramData[] {
   const bars: HistogramData[] = [];
   for (const row of series) {
     if (
@@ -111,7 +109,7 @@ function toVolumeData(series: SeriesItem['series']): HistogramData[] {
   return bars;
 }
 
-function toAdStripData(series: SeriesItem['series']): HistogramData[] {
+function toAdStripData(series: AdDaySeriesResponse['series']): HistogramData[] {
   return series.map((row) => ({
     time: toTime(row.date),
     value: AD_STRIP_VALUE,
