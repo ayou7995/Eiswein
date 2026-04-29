@@ -18,8 +18,12 @@ const priceVsMaResponseSchema = z.object({
     z.object({
       date: z.string(),
       price: z.number(),
-      ma50: z.number(),
-      ma200: z.number(),
+      // Null on the warm-up bars (first ~50 / ~200 of any window that
+      // starts before MA50/MA200 stabilises — e.g. a 2Y request against
+      // ~2Y of available history will null the first ~200 ma200 values).
+      // Chart layer renders nulls as gaps.
+      ma50: z.number().nullable(),
+      ma200: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),
@@ -37,8 +41,10 @@ const rsiResponseSchema = z.object({
   series: z.array(
     z.object({
       date: z.string(),
-      daily: z.number(),
-      weekly: z.number(),
+      // Null on the RSI warm-up bars (length-14 Wilder average needs
+      // 14 priors; weekly RSI needs 14 prior weeks). Chart renders gaps.
+      daily: z.number().nullable(),
+      weekly: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),
@@ -81,9 +87,12 @@ const bollingerBandsResponseSchema = z.object({
     z.object({
       date: z.string(),
       price: z.number(),
-      upper: z.number(),
-      middle: z.number(),
-      lower: z.number(),
+      // Bollinger uses a 20-bar SMA + std-dev; the first 19 bars of any
+      // window that overlaps the warm-up emit null bands. Chart shows
+      // price-only on those bars.
+      upper: z.number().nullable(),
+      middle: z.number().nullable(),
+      lower: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),

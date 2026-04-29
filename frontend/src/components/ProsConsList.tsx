@@ -1,5 +1,5 @@
 import type { ProsConsItem, ProsConsTone } from '../api/prosCons';
-import { TIMEFRAME_STYLE } from '../lib/timeframes';
+import { TimeframeChip } from './TimeframeChip';
 
 // Scannable Pros/Cons UI — NOT a narrator. Each item renders verbatim from
 // the backend (`short_label`) with the raw detail available behind an
@@ -92,7 +92,6 @@ interface ProsConsRowProps {
 
 function ProsConsRow({ item }: ProsConsRowProps): JSX.Element {
   const tone = TONE_DOT[item.tone];
-  const tf = TIMEFRAME_STYLE[item.timeframe];
   const detailEntries = Object.entries(item.detail);
   return (
     <li className="bg-slate-900/40">
@@ -103,13 +102,7 @@ function ProsConsRow({ item }: ProsConsRowProps): JSX.Element {
         >
           <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
           <span className="flex-1">{item.short_label}</span>
-          <span
-            data-testid="timeframe-chip"
-            aria-label={tf.ariaLabel}
-            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${tf.className}`}
-          >
-            {tf.label}
-          </span>
+          <TimeframeChip timeframe={item.timeframe} />
           {detailEntries.length > 0 && (
             <span aria-hidden="true" className="text-xs text-slate-500">
               詳細

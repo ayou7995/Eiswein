@@ -11,7 +11,10 @@ import {
 
 export interface BoundedLineSeriesRow {
   readonly date: string;
-  readonly [key: string]: number | string;
+  // Null entries are tolerated for fields that may be undefined during
+  // warm-up bars (e.g. RSI(14) emits null for the first 13 priors). The
+  // chart renders gaps at those points — see ``readNumber`` below.
+  readonly [key: string]: number | string | null;
 }
 
 export interface BoundedLineDefinition {

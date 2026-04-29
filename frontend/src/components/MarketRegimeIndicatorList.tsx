@@ -11,6 +11,7 @@ import {
 import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
 import { IndicatorRangeSelector } from './IndicatorRangeSelector';
 import { LoadingSpinner } from './LoadingSpinner';
+import { TimeframeChip } from './TimeframeChip';
 import { IndicatorMultiLine } from './charts/IndicatorMultiLine';
 import { IndicatorBoundedLine } from './charts/IndicatorBoundedLine';
 import { AdDayCandleClassificationChart } from './charts/AdDayCandleClassificationChart';
@@ -205,6 +206,7 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
               item.short_label
             )}
           </span>
+          <TimeframeChip timeframe={item.timeframe} />
           {(detailEntries.length > 0 || chartName !== null) && (
             <span aria-hidden="true" className="text-xs text-slate-500">
               詳細

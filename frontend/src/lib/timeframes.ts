@@ -27,3 +27,23 @@ export const TIMEFRAME_STYLE: Record<Timeframe, TimeframeStyle> = {
     ariaLabel: '長期訊號',
   },
 };
+
+// Mirror of backend ``app/indicators/timeframes.py::INDICATOR_TIMEFRAMES``.
+// Authoritative source is the backend (and the API ships ``timeframe`` on
+// every ProsConsItem); this map exists for components that render an
+// indicator row directly without a ProsConsItem in hand — e.g. the
+// per-ticker IndicatorRow and the MarketRegimeIndicatorList.
+export const INDICATOR_TIMEFRAMES: Record<string, Timeframe> = {
+  price_vs_ma: 'mid',
+  rsi: 'short',
+  volume_anomaly: 'short',
+  relative_strength: 'mid',
+  spx_ma: 'mid',
+  ad_day: 'short',
+  vix: 'short',
+  yield_spread: 'long',
+  macd: 'short',
+  bollinger: 'short',
+  dxy: 'long',
+  fed_rate: 'long',
+};

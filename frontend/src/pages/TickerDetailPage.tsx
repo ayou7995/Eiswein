@@ -47,6 +47,7 @@ import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useIndicatorSeries } from '../hooks/useIndicatorSeries';
 import { IndicatorRangeSelector } from '../components/IndicatorRangeSelector';
+import { TimeframeChip } from '../components/TimeframeChip';
 import {
   MARKET_INDICATOR_RANGES,
   type MarketIndicatorRangeKey,
@@ -398,6 +399,7 @@ function IndicatorRow({
             ariaLabel={`${title}：${result.short_label}`}
           />
           <span className="flex-1 text-slate-400">{result.short_label}</span>
+          <TimeframeChip indicatorName={indicatorKey} />
         </div>
       </li>
     );
@@ -419,6 +421,7 @@ function IndicatorRow({
             tone={result.signal}
             ariaLabel={`${title}：${result.short_label}`}
           />
+          <TimeframeChip indicatorName={indicatorKey} />
           <span className="flex-1 text-slate-400">
             {isPriceVsMa ? (
               <MaPositionHeadlineExplainable
