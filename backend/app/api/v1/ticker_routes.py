@@ -177,6 +177,7 @@ class ProsConsItemResponse(BaseModel):
     short_label: str
     detail: dict[str, object]
     indicator_name: str
+    timeframe: str
 
 
 class ComposedSignalResponse(BaseModel):
@@ -317,6 +318,7 @@ def _to_wire_pros_cons(item: ProsConsItem) -> ProsConsItemResponse:
         short_label=item.short_label,
         detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
+        timeframe=item.timeframe,
     )
 
 

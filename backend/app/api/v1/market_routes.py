@@ -104,6 +104,7 @@ class ProsConsItemResponse(BaseModel):
     short_label: str
     detail: dict[str, object]
     indicator_name: str
+    timeframe: str
 
 
 class MarketPostureResponse(BaseModel):
@@ -235,6 +236,7 @@ def _to_wire(item: ProsConsItem) -> ProsConsItemResponse:
         short_label=item.short_label,
         detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
+        timeframe=item.timeframe,
     )
 
 

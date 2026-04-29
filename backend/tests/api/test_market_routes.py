@@ -96,6 +96,13 @@ def test_market_posture_returns_latest_snapshot(
     spx_item = next(i for i in body["pros_cons"] if i["indicator_name"] == "spx_ma")
     assert spx_item["tone"] == "pro"
     assert spx_item["category"] == "macro"
+    # Regression: every emitted item carries timeframe so the frontend's
+    # Zod schema parses without failing the whole posture card.
+    assert spx_item["timeframe"] == "mid"
+    for entry in body["pros_cons"]:
+        assert entry["timeframe"] in {"short", "mid", "long"}, (
+            f"missing/invalid timeframe on {entry['indicator_name']}"
+        )
 
 
 def test_market_posture_streak_badge_emitted_at_3_days(
