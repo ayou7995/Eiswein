@@ -36,4 +36,5 @@ migrate:
 	cd backend && alembic upgrade head
 
 dev:
-	cd backend && uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
+	cd backend && uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000 \
+		--ssl-keyfile=local-key.pem --ssl-certfile=local-cert.pem
