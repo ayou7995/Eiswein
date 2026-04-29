@@ -61,7 +61,11 @@ import type {
 } from '../api/tickerIndicatorSeries';
 import { EisweinApiError } from '../api/errors';
 
-const DIRECTION_INDICATORS = ['price_vs_ma', 'rsi', 'volume_anomaly', 'relative_strength'];
+// Sorted short → mid → long: tactical (RSI, volume) first, then mid-term
+// trend (price vs MA, relative strength). Same scan order as the dashboard.
+const DIRECTION_INDICATORS = ['rsi', 'volume_anomaly', 'price_vs_ma', 'relative_strength'];
+// Both timing indicators are short-term — leaving MACD first (the more
+// commonly-cited momentum signal) before the band-position view.
 const TIMING_INDICATORS = ['macd', 'bollinger'];
 const INDICATOR_TITLES: Record<string, string> = {
   price_vs_ma: '價格 vs 50/200 MA',

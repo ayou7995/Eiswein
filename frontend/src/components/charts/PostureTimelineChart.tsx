@@ -49,8 +49,8 @@ const REGIME_LABEL: Record<string, string> = {
 
 // Render order for the regime indicators inside the hover tooltip.
 // Mirrors the dashboard's MarketPostureCard ordering so the user
-// learns one stable left-to-right scan.
-const REGIME_ORDER: ReadonlyArray<string> = ['spx_ma', 'ad_day', 'vix', 'yield_spread'];
+// learns one stable left-to-right scan: short → mid → long.
+const REGIME_ORDER: ReadonlyArray<string> = ['vix', 'ad_day', 'spx_ma', 'yield_spread'];
 
 const PRICE_AREA_HEIGHT = 200;
 const STRIPE_HEIGHT = 14;

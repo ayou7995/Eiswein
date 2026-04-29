@@ -27,9 +27,10 @@ import { EisweinApiError } from '../api/errors';
 import { ROUTES } from '../lib/constants';
 
 // Display order for the 4 regime indicators inside MarketPostureCard.
-// Backend dict ordering isn't guaranteed across the load path, so sort
-// here so the dashboard always reads SPX → VIX → A/D Day → 10Y-2Y.
-const REGIME_ORDER: ReadonlyArray<string> = ['spx_ma', 'vix', 'ad_day', 'yield_spread'];
+// Sorted short → mid → long so the user scans tactical signals first
+// (today's VIX, today's breadth) and macro/regime context last
+// (mid-term SPX MA, long-term yield curve).
+const REGIME_ORDER: ReadonlyArray<string> = ['vix', 'ad_day', 'spx_ma', 'yield_spread'];
 
 // DXY + Fed Rate are the two "macro backdrop" indicators that DON'T
 // feed into Market Posture (which shows SPX MA, A/D Day, VIX, Yield

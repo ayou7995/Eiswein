@@ -10,8 +10,8 @@ interface NavItem {
 
 const NAV_ITEMS: readonly NavItem[] = [
   { to: ROUTES.DASHBOARD, label: '儀表板' },
-  { to: ROUTES.POSITIONS, label: '持倉' },
   { to: ROUTES.HISTORY, label: '歷史' },
+  { to: ROUTES.POSITIONS, label: '持倉' },
   { to: ROUTES.SETTINGS, label: '設定' },
 ];
 
