@@ -125,7 +125,7 @@ export function MarketRegimeIndicatorList({
   }
 
   return (
-    <ul className="flex flex-col divide-y divide-slate-800 overflow-hidden rounded-md border border-slate-800">
+    <ul className="flex flex-col gap-2">
       {items.map((item) => (
         <RegimeRow
           key={item.indicator_name}
@@ -152,7 +152,7 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
   const chartName = resolveChartName(item.indicator_name);
 
   return (
-    <li className="bg-slate-900/40">
+    <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
       <details
         onToggle={(event) => {
           if ((event.currentTarget as HTMLDetailsElement).open) {

@@ -57,12 +57,12 @@ export function ProsConsList({
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-col divide-y divide-slate-800 overflow-hidden rounded-md border border-slate-800">
+      <ul className="flex flex-col gap-2">
         {nonNeutral.map((item) => (
           <ProsConsRow key={`${item.indicator_name}-${item.tone}`} item={item} />
         ))}
         {!collapseNeutrals && nonNeutral.length === 0 && (
-          <li className="bg-slate-900/40 px-3 py-2 text-sm text-slate-400">
+          <li className="rounded-md border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-400">
             {emptyMessage}
           </li>
         )}
@@ -75,7 +75,7 @@ export function ProsConsList({
           >
             ⚪ 中性訊號 ({neutrals.length})
           </summary>
-          <ul className="flex flex-col divide-y divide-slate-800 border-t border-slate-800">
+          <ul className="flex flex-col gap-2 border-t border-slate-800 p-2">
             {neutrals.map((item) => (
               <ProsConsRow key={`${item.indicator_name}-neutral`} item={item} />
             ))}
@@ -94,7 +94,7 @@ function ProsConsRow({ item }: ProsConsRowProps): JSX.Element {
   const tone = TONE_DOT[item.tone];
   const detailEntries = Object.entries(item.detail);
   return (
-    <li className="bg-slate-900/40">
+    <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
       <details>
         <summary
           data-testid="pros-cons-summary"

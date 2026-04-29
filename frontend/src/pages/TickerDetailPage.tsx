@@ -319,7 +319,7 @@ function IndicatorList({
   }
 
   return (
-    <ul className="flex flex-col divide-y divide-slate-800 overflow-hidden rounded-md border border-slate-800">
+    <ul className="flex flex-col gap-2">
       {rows.map(({ key, result }) => (
         <IndicatorRow key={key} symbol={symbol} indicatorKey={key} result={result} />
       ))}
@@ -391,7 +391,7 @@ function IndicatorRow({
   // the simple flat row — no <details> needed.
   if (!expandable) {
     return (
-      <li className="bg-slate-900/40">
+      <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
           <span className="min-w-[120px] text-slate-300">{title}</span>
           <SignalBadge
@@ -406,7 +406,7 @@ function IndicatorRow({
   }
 
   return (
-    <li className="bg-slate-900/40">
+    <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
       <details
         onToggle={(event) =>
           setOpen((event.currentTarget as HTMLDetailsElement).open)
