@@ -421,7 +421,6 @@ function IndicatorRow({
             tone={result.signal}
             ariaLabel={`${title}：${result.short_label}`}
           />
-          <TimeframeChip indicatorName={indicatorKey} />
           <span className="flex-1 text-slate-400">
             {isPriceVsMa ? (
               <MaPositionHeadlineExplainable
@@ -463,6 +462,7 @@ function IndicatorRow({
               result.short_label
             )}
           </span>
+          <TimeframeChip indicatorName={indicatorKey} />
           <span aria-hidden="true" className="text-xs text-slate-500">
             {open ? '收合' : '詳細'}
           </span>
