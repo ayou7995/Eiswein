@@ -48,6 +48,7 @@ import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useIndicatorSeries } from '../hooks/useIndicatorSeries';
 import { IndicatorRangeSelector } from '../components/IndicatorRangeSelector';
 import { TimeframeChip } from '../components/TimeframeChip';
+import { INDICATOR_TIMEFRAMES } from '../lib/timeframes';
 import {
   MARKET_INDICATOR_RANGES,
   type MarketIndicatorRangeKey,
@@ -528,9 +529,12 @@ function IndicatorChartSection({
   enabled,
 }: IndicatorChartSectionProps): JSX.Element {
   // Per-chart range state — same UX as the market regime cards. Default
-  // to 3M (60 trading days) which matches every per-ticker indicator's
-  // legacy window.
-  const [range, setRange] = useState<MarketIndicatorRangeKey>('3M');
+  // matches the indicator's timeframe horizon (short → 1M, mid → 3M,
+  // long → 1Y) so the chart opens at the window that's most decision-
+  // useful for what the indicator is asking the operator to judge.
+  const [range, setRange] = useState<MarketIndicatorRangeKey>(
+    defaultRangeForIndicator(indicatorKey),
+  );
   const query = useIndicatorSeries(symbol, seriesName, {
     enabled,
     days: rangeToDays(range),
@@ -566,6 +570,13 @@ function IndicatorChartSection({
 
 function rangeToDays(range: MarketIndicatorRangeKey): number {
   return MARKET_INDICATOR_RANGES.find((r) => r.key === range)?.days ?? 60;
+}
+
+function defaultRangeForIndicator(indicatorKey: string): MarketIndicatorRangeKey {
+  const tf = INDICATOR_TIMEFRAMES[indicatorKey];
+  if (tf === 'short') return '1M';
+  if (tf === 'long') return '1Y';
+  return '3M';
 }
 
 interface IndicatorChartProps {

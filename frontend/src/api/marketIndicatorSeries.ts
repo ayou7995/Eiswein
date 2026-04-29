@@ -178,14 +178,18 @@ export const MARKET_INDICATOR_RANGES = [
 
 export type MarketIndicatorRangeKey = (typeof MARKET_INDICATOR_RANGES)[number]['key'];
 
-// Per-indicator default range — picked so each indicator's chart shows
-// the most decision-useful window without further user input.
+// Per-indicator default range — picked to match the indicator's
+// timeframe horizon (short → 1M, mid → 3M, long → 1Y) so the chart's
+// default window matches what the operator is being asked to judge.
 export const DEFAULT_RANGE_BY_INDICATOR: Record<MarketIndicatorSeriesName, MarketIndicatorRangeKey> = {
+  // Short-term tactical indicators
+  vix: '1M',
+  ad_day: '1M',
+  // Mid-term trend
   spx_ma: '3M',
-  vix: '3M',
-  ad_day: '3M',
+  // Long-term macro
   yield_spread: '1Y',
-  dxy: '3M',
+  dxy: '1Y',
   fed_rate: '1Y',
 };
 
