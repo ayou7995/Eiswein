@@ -37,6 +37,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -240,6 +241,116 @@ class Watchlist(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
     last_refresh_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Phase B (commit B): folder-style grouping. Nullable — ON DELETE SET
+    # NULL when the group disappears so the row survives. The
+    # ``selectin`` eager-load avoids the N+1 read pattern on the list
+    # endpoint (group_name is denormalized into the response).
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("watchlist_group.id", ondelete="SET NULL"), nullable=True
+    )
+    group: Mapped[WatchlistGroup | None] = relationship(
+        "WatchlistGroup", back_populates="watchlists", lazy="selectin"
+    )
+    tags: Mapped[list[WatchlistTag]] = relationship(
+        "WatchlistTag",
+        secondary="watchlist_symbol_tag",
+        back_populates="watchlists",
+        lazy="selectin",
+    )
+
+
+class WatchlistGroup(Base):
+    """Folder-style grouping of watchlist rows (Phase B).
+
+    One row per ``(user_id, name)`` — case-insensitive via the functional
+    LOWER(name) unique index in migration 0017. ``position`` keeps the
+    sidebar order stable across renames and reorders.
+
+    Group deletion sets ``watchlist.group_id = NULL`` for its members
+    (ON DELETE SET NULL) — the watchlist rows survive in the
+    "unassigned" bucket and the UI surfaces them under a synthetic
+    "未分類" header.
+    """
+
+    __tablename__ = "watchlist_group"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_watchlist_group_user_name"),
+        Index("ix_watchlist_group_user", "user_id", "position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(32), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    watchlists: Mapped[list[Watchlist]] = relationship(
+        "Watchlist", back_populates="group"
+    )
+
+
+class WatchlistTag(Base):
+    """Free-form multi-tag label for watchlist rows (Phase B).
+
+    Color is locked to a 6-digit hex (``#RRGGBB``) at the DB level via a
+    CHECK constraint. The repository validates the format too — both
+    layers stay in sync so an SQLAlchemy bypass (raw INSERT in a
+    migration, say) still fails before the row lands.
+
+    Case-insensitive uniqueness via the functional LOWER(name) index in
+    migration 0017 — mirrors the watchlist_group story.
+    """
+
+    __tablename__ = "watchlist_tag"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_watchlist_tag_user_name"),
+        CheckConstraint(
+            "color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]"
+            "[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'",
+            name="ck_watchlist_tag_color_hex",
+        ),
+        Index("ix_watchlist_tag_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(32), nullable=False)
+    color: Mapped[str] = mapped_column(String(7), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    watchlists: Mapped[list[Watchlist]] = relationship(
+        "Watchlist",
+        secondary="watchlist_symbol_tag",
+        back_populates="tags",
+    )
+
+
+class WatchlistSymbolTag(Base):
+    """Join table between :class:`Watchlist` and :class:`WatchlistTag`.
+
+    Composite primary key on (watchlist_id, tag_id) gives natural
+    idempotency for attach — re-attaching the same tag raises
+    IntegrityError which the repository swallows. CASCADE on both FKs
+    keeps the table self-cleaning when either side disappears.
+    """
+
+    __tablename__ = "watchlist_symbol_tag"
+
+    watchlist_id: Mapped[int] = mapped_column(
+        ForeignKey("watchlist.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[int] = mapped_column(
+        ForeignKey("watchlist_tag.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 class DailyPrice(Base):

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { apiRequest } from './client';
+import { watchlistTagSchema, type WatchlistTag } from './watchlistTags';
 
 export const dataStatusSchema = z.enum(['pending', 'ready', 'failed', 'delisted']);
 export type DataStatus = z.infer<typeof dataStatusSchema>;
@@ -12,11 +13,17 @@ export const watchlistItemSchema = z.object({
   data_status: dataStatusSchema,
   added_at: z.string(),
   last_refresh_at: z.string().nullable(),
-  // New Phase 1 fields. `is_system=true` pins SPY (system benchmark) so
-  // the delete button is suppressed. `active_onboarding_job_id` lets
-  // the UI subscribe to onboarding progress without a second round-trip.
+  // `is_system=true` pins SPY (system benchmark) so the delete button is
+  // suppressed. `active_onboarding_job_id` lets the UI subscribe to
+  // onboarding progress without a second round-trip.
   is_system: z.boolean(),
   active_onboarding_job_id: z.number().int().nonnegative().nullable(),
+  // Commit B: each row belongs to at most one group (null = 未分類); has
+  // any number of tags. `group_name` is denormalized so the sidebar
+  // doesn't need to cross-reference groups[] for the group header.
+  group_id: z.number().int().nonnegative().nullable(),
+  group_name: z.string().nullable(),
+  tags: z.array(watchlistTagSchema),
 });
 export type WatchlistItemRaw = z.infer<typeof watchlistItemSchema>;
 
@@ -27,6 +34,9 @@ export interface WatchlistItem {
   lastRefreshAt: Date | null;
   isSystem: boolean;
   activeOnboardingJobId: number | null;
+  groupId: number | null;
+  groupName: string | null;
+  tags: WatchlistTag[];
 }
 
 function toWatchlistItem(raw: WatchlistItemRaw): WatchlistItem {
@@ -37,6 +47,9 @@ function toWatchlistItem(raw: WatchlistItemRaw): WatchlistItem {
     lastRefreshAt: raw.last_refresh_at ? new Date(raw.last_refresh_at) : null,
     isSystem: raw.is_system,
     activeOnboardingJobId: raw.active_onboarding_job_id,
+    groupId: raw.group_id,
+    groupName: raw.group_name,
+    tags: raw.tags,
   };
 }
 

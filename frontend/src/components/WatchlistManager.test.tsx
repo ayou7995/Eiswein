@@ -42,6 +42,9 @@ function makeItem(overrides: Partial<WatchlistItem> = {}): WatchlistItem {
     lastRefreshAt: new Date('2026-04-21T21:00:00Z'),
     isSystem: false,
     activeOnboardingJobId: null,
+    groupId: null,
+    groupName: null,
+    tags: [],
     ...overrides,
   };
 }

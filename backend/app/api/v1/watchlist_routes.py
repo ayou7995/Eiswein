@@ -32,8 +32,9 @@ from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
-from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy.orm import Session, sessionmaker
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from app.api.dependencies import (
     current_user_id,
@@ -130,6 +131,21 @@ class SymbolInput(BaseModel):
 DataStatusLiteral = Literal["pending", "ready", "failed", "delisted"]
 
 
+class WatchlistTagOut(BaseModel):
+    """Mirror of :class:`app.api.v1.watchlist_tag_routes.TagOut`.
+
+    Duplicated here rather than imported so the watchlist routes do not
+    create an import cycle with the tag routes module (the tag module
+    imports back into ``watchlist_routes.validate_symbol_or_raise``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: int
+    name: str
+    color: str
+
+
 class WatchlistItem(BaseModel):
     symbol: str
     data_status: DataStatusLiteral
@@ -140,6 +156,12 @@ class WatchlistItem(BaseModel):
     # when the symbol is not currently onboarding.
     active_onboarding_job_id: int | None = None
     is_system: bool = False
+    # Phase B: folder + tag membership. ``group_name`` is denormalized so
+    # the sidebar can render groups without a second ``/watchlist/groups``
+    # round-trip when it only needs to show row labels.
+    group_id: int | None = None
+    group_name: str | None = None
+    tags: list[WatchlistTagOut] = []
 
     @classmethod
     def from_row(
@@ -148,6 +170,10 @@ class WatchlistItem(BaseModel):
         *,
         active_onboarding_job_id: int | None = None,
     ) -> "WatchlistItem":
+        group_name = row.group.name if row.group is not None else None
+        tag_items = [
+            WatchlistTagOut(id=t.id, name=t.name, color=t.color) for t in row.tags
+        ]
         return cls(
             symbol=row.symbol,
             data_status=_coerce_status(row.data_status),
@@ -155,6 +181,9 @@ class WatchlistItem(BaseModel):
             last_refresh_at=row.last_refresh_at,
             active_onboarding_job_id=active_onboarding_job_id,
             is_system=row.symbol.upper() in _SYSTEM_SYMBOLS,
+            group_id=row.group_id,
+            group_name=group_name,
+            tags=tag_items,
         )
 
 
@@ -213,7 +242,21 @@ def list_watchlist(
     repo: WatchlistRepository = Depends(get_watchlist_repository),
     session: Session = Depends(get_db_session),
 ) -> WatchlistListResponse:
-    rows = repo.list_for_user(user_id)
+    # The base repository ``list_for_user`` does not eager-load
+    # ``group`` / ``tags`` — the relationship loaders on the Watchlist
+    # model default to ``selectin`` so subsequent attribute access
+    # triggers exactly one extra SELECT each (no N+1). We re-issue the
+    # query here with explicit ``selectinload`` to document the intent
+    # and guarantee the loader runs even if a future refactor flips the
+    # default to ``lazy='select'``.
+    stmt = (
+        select(Watchlist)
+        .where(Watchlist.user_id == user_id)
+        .options(selectinload(Watchlist.group), selectinload(Watchlist.tags))
+        .order_by(Watchlist.added_at.asc(), Watchlist.id.asc())
+    )
+    rows = session.execute(stmt).scalars().all()
+    _ = repo  # silence unused-arg lint; repo dependency still validates auth
     job_repo = BackfillJobRepository(session)
     items: list[WatchlistItem] = []
     for row in rows:

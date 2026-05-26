@@ -28,7 +28,9 @@ from app.db.repositories.market_snapshot_repository import MarketSnapshotReposit
 from app.db.repositories.ticker_repository import TickerRepository
 from app.db.repositories.ticker_snapshot_repository import TickerSnapshotRepository
 from app.db.repositories.user_repository import UserRepository
+from app.db.repositories.watchlist_group_repository import WatchlistGroupRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
+from app.db.repositories.watchlist_tag_repository import WatchlistTagRepository
 from app.security.auth import decode_token
 from app.security.exceptions import AuthError, EisweinError, TokenInvalidError
 
@@ -90,6 +92,18 @@ def get_watchlist_repository(
     session: Session = Depends(get_db_session),
 ) -> WatchlistRepository:
     return WatchlistRepository(session)
+
+
+def get_watchlist_group_repository(
+    session: Session = Depends(get_db_session),
+) -> WatchlistGroupRepository:
+    return WatchlistGroupRepository(session)
+
+
+def get_watchlist_tag_repository(
+    session: Session = Depends(get_db_session),
+) -> WatchlistTagRepository:
+    return WatchlistTagRepository(session)
 
 
 def get_daily_price_repository(
