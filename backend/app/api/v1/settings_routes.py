@@ -29,9 +29,7 @@ from app.api.dependencies import (
     get_audit_repository,
     get_data_source_dep,
     get_db_session,
-    get_position_repository,
     get_settings_dep,
-    get_trade_repository,
     get_user_repository,
     get_watchlist_repository,
 )
@@ -42,13 +40,11 @@ from app.db.repositories.audit_repository import (
     PASSWORD_CHANGED,
     AuditRepository,
 )
-from app.db.repositories.position_repository import PositionRepository
 from app.db.repositories.system_metadata_repository import (
     KEY_LAST_BACKUP_AT,
     KEY_LAST_DAILY_UPDATE_AT,
     SystemMetadataRepository,
 )
-from app.db.repositories.trade_repository import TradeRepository
 from app.db.repositories.user_repository import UserRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.ingestion.daily_ingestion import run_daily_update
@@ -233,8 +229,6 @@ class SystemInfoResponse(BaseModel):
     last_daily_update_at: datetime | None
     last_backup_at: datetime | None
     watchlist_count: int
-    positions_count: int
-    trade_count: int
     user_count: int | None
     data_freshness: DataFreshness
 
@@ -318,8 +312,6 @@ def system_info(
     user_id: int = Depends(current_user_id),
     users: UserRepository = Depends(get_user_repository),
     watchlist: WatchlistRepository = Depends(get_watchlist_repository),
-    positions: PositionRepository = Depends(get_position_repository),
-    trades: TradeRepository = Depends(get_trade_repository),
     settings: Settings = Depends(get_settings_dep),
     session: Session = Depends(get_db_session),
 ) -> SystemInfoResponse:
@@ -352,8 +344,6 @@ def system_info(
         last_daily_update_at=last_update_at,
         last_backup_at=last_backup_at,
         watchlist_count=int(wl_count),
-        positions_count=positions.count_for_user(user_id, include_closed=True),
-        trade_count=trades.count_for_user(user_id),
         # Keep non-admin users from seeing aggregate user counts; v1 is
         # single-admin anyway, but the shape should be correct.
         user_count=users.count() if is_admin else None,

@@ -65,8 +65,6 @@ export const systemInfoResponseSchema = z.object({
   last_daily_update_at: z.string().nullable(),
   last_backup_at: z.string().nullable(),
   watchlist_count: z.number().int().nonnegative(),
-  positions_count: z.number().int().nonnegative(),
-  trade_count: z.number().int().nonnegative(),
   user_count: z.number().int().nonnegative().nullable(),
   data_freshness: dataFreshnessSchema,
 });

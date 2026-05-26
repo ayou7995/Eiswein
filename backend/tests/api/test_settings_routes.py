@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import AuditLog, Trade, User
+from app.db.models import AuditLog, User
 
 
 def _login(client: TestClient, password: str) -> None:
@@ -156,7 +156,6 @@ def test_audit_log_redacts_secret_keys_in_details(
 def test_system_info_counts_match_fixtures(
     client: TestClient,
     test_password: str,
-    session_factory: sessionmaker[Session],
 ) -> None:
     from app.api.v1.settings_routes import _clear_system_info_cache
 
@@ -166,28 +165,9 @@ def test_system_info_counts_match_fixtures(
     client.post("/api/v1/watchlist", json={"symbol": "SPY"})
     client.post("/api/v1/watchlist", json={"symbol": "QQQ"})
 
-    with session_factory() as session:
-        import sqlalchemy as sa
-
-        admin = session.execute(sa.select(User).where(User.username == "admin")).scalar_one()
-        session.add(
-            Trade(
-                user_id=admin.id,
-                position_id=None,
-                symbol="SPY",
-                side="buy",
-                shares=Decimal("1"),
-                price=Decimal("100"),
-                executed_at=datetime.now(UTC),
-            )
-        )
-        session.commit()
-
     _clear_system_info_cache()
     body = client.get("/api/v1/settings/system-info").json()
     assert body["watchlist_count"] == 2
-    assert body["trade_count"] == 1
-    assert body["positions_count"] == 0
     # admin → user_count populated.
     assert body["user_count"] == 1
 

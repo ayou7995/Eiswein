@@ -6,16 +6,10 @@
   for each historical TickerSnapshot, did the action's directional
   sign match the N-day forward return? Used on the per-ticker
   TickerDetail page.
-* GET /history/decisions         — caller's last N trades joined with
-  the Eiswein recommendation on the same trade date. Cosine-similarity
-  pattern matching is explicitly out of scope for this phase.
-
-Pattern matching across the broader trade history (cosine similarity
-vs historical signals) will land in a later phase.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal, cast
 
@@ -31,7 +25,6 @@ from app.api.dependencies import (
     get_db_session,
     get_market_snapshot_repository,
     get_ticker_snapshot_repository,
-    get_trade_repository,
     get_watchlist_repository,
 )
 from app.api.v1.watchlist_routes import validate_symbol_or_raise
@@ -44,7 +37,6 @@ from app.db.models import (
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.market_snapshot_repository import MarketSnapshotRepository
 from app.db.repositories.ticker_snapshot_repository import TickerSnapshotRepository
-from app.db.repositories.trade_repository import TradeRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.security.exceptions import NotFoundError
 from app.signals.types import ActionCategory
@@ -706,81 +698,3 @@ def ticker_signals_history(
     return TickerSignalsResponse(symbol=validated, data=points)
 
 
-# --- /history/decisions --------------------------------------------------
-
-
-class DecisionItem(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    trade_id: int
-    trade_date: datetime
-    symbol: str
-    side: str
-    shares: str
-    price: str
-    eiswein_action: str | None
-    matched_recommendation: bool | None
-
-
-class DecisionHistoryResponse(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    data: list[DecisionItem]
-    total: int
-    has_more: bool = False
-
-
-def _matches(side: str, action: ActionCategory) -> bool:
-    if side == "buy":
-        return action in _BUY_ACTIONS or action == ActionCategory.HOLD
-    if side == "sell":
-        return action in _SELL_ACTIONS
-    return False
-
-
-@router.get(
-    "/history/decisions",
-    response_model=DecisionHistoryResponse,
-    summary="Recent trades aligned with the day's Eiswein recommendation",
-)
-def decisions_history(
-    limit: int = Query(default=30, ge=1, le=200),
-    user_id: int = Depends(current_user_id),
-    trades: TradeRepository = Depends(get_trade_repository),
-    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
-) -> DecisionHistoryResponse:
-    rows = trades.list_for_user(user_id=user_id, limit=limit)
-    items: list[DecisionItem] = []
-    # Group snapshot lookups by symbol to reduce redundant round-trips
-    # when the same symbol appears many times.
-    snapshot_cache: dict[tuple[str, date], TickerSnapshot | None] = {}
-    for trade in rows:
-        trade_day = trade.executed_at.astimezone(UTC).date()
-        key = (trade.symbol, trade_day)
-        if key not in snapshot_cache:
-            snapshot_cache[key] = snapshots.get_on_or_before(
-                symbol=trade.symbol, on_or_before=trade_day
-            )
-        snapshot = snapshot_cache[key]
-        action_str: str | None = None
-        matched: bool | None = None
-        if snapshot is not None:
-            action_str = snapshot.action
-            try:
-                action = ActionCategory(snapshot.action)
-                matched = _matches(trade.side, action)
-            except ValueError:
-                matched = None
-        items.append(
-            DecisionItem(
-                trade_id=trade.id,
-                trade_date=trade.executed_at,
-                symbol=trade.symbol,
-                side=trade.side,
-                shares=str(Decimal(str(trade.shares)).quantize(Decimal("0.000001"))),
-                price=str(Decimal(str(trade.price)).quantize(Decimal("0.000001"))),
-                eiswein_action=action_str,
-                matched_recommendation=matched,
-            )
-        )
-    return DecisionHistoryResponse(data=items, total=len(items), has_more=False)

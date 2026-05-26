@@ -12,7 +12,6 @@ from app.db.models import (
     DailyPrice,
     MarketSnapshot,
     TickerSnapshot,
-    Trade,
     User,
     Watchlist,
 )
@@ -26,7 +25,6 @@ def _login(client: TestClient, password: str) -> None:
 def test_history_requires_auth(client: TestClient) -> None:
     assert client.get("/api/v1/history/market-posture").status_code == 401
     assert client.get("/api/v1/history/signal-accuracy?symbol=SPY").status_code == 401
-    assert client.get("/api/v1/history/decisions").status_code == 401
 
 
 def test_market_posture_history_empty(client: TestClient, test_password: str) -> None:
@@ -180,79 +178,3 @@ def test_signal_accuracy_skips_signals_without_forward_data(
     assert body["total_signals"] == 0
 
 
-def test_decisions_history_matches_snapshot(
-    client: TestClient,
-    test_password: str,
-    session_factory: sessionmaker[Session],
-) -> None:
-    with session_factory() as session:
-        admin = session.execute(
-            __import__("sqlalchemy").select(User).where(User.username == "admin")
-        ).scalar_one()
-        session.add(
-            TickerSnapshot(
-                symbol="SPY",
-                date=date(2026, 1, 2),
-                action="buy",
-                direction_green_count=3,
-                direction_red_count=0,
-                timing_modifier="good",
-                show_timing_modifier=True,
-                entry_aggressive=None,
-                entry_ideal=None,
-                entry_conservative=None,
-                stop_loss=None,
-                market_posture_at_compute="normal",
-                indicator_version="v1",
-                computed_at=datetime(2026, 1, 2, tzinfo=UTC),
-            )
-        )
-        session.add(
-            Trade(
-                user_id=admin.id,
-                position_id=None,
-                symbol="SPY",
-                side="buy",
-                shares=Decimal("1"),
-                price=Decimal("100"),
-                executed_at=datetime(2026, 1, 2, 15, 0, tzinfo=UTC),
-            )
-        )
-        session.commit()
-
-    _login(client, test_password)
-    body = client.get("/api/v1/history/decisions?limit=30").json()
-    assert body["total"] == 1
-    item = body["data"][0]
-    assert item["symbol"] == "SPY"
-    assert item["eiswein_action"] == "buy"
-    assert item["matched_recommendation"] is True
-
-
-def test_decisions_history_user_isolation(
-    client: TestClient,
-    test_password: str,
-    session_factory: sessionmaker[Session],
-    admin_password_hash: str,
-) -> None:
-    """Another user's trades must never appear in caller's history."""
-    with session_factory() as session:
-        bob = User(username="bob", password_hash=admin_password_hash, is_active=True)
-        session.add(bob)
-        session.flush()
-        session.add(
-            Trade(
-                user_id=bob.id,
-                position_id=None,
-                symbol="TSLA",
-                side="buy",
-                shares=Decimal("1"),
-                price=Decimal("200"),
-                executed_at=datetime(2026, 1, 2, 15, 0, tzinfo=UTC),
-            )
-        )
-        session.commit()
-
-    _login(client, test_password)  # as admin
-    body = client.get("/api/v1/history/decisions").json()
-    assert body["total"] == 0

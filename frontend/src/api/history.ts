@@ -125,25 +125,6 @@ export function tickerSignalsHistory(
   });
 }
 
-export const decisionItemSchema = z.object({
-  trade_id: z.number().int().nonnegative(),
-  trade_date: z.string(),
-  symbol: z.string(),
-  side: z.enum(['buy', 'sell']),
-  shares: z.string(),
-  price: z.string(),
-  eiswein_action: z.string().nullable(),
-  matched_recommendation: z.boolean().nullable(),
-});
-export type DecisionItem = z.infer<typeof decisionItemSchema>;
-
-export const decisionHistoryResponseSchema = z.object({
-  data: z.array(decisionItemSchema),
-  total: z.number().int().nonnegative(),
-  has_more: z.boolean(),
-});
-export type DecisionHistoryResponse = z.infer<typeof decisionHistoryResponseSchema>;
-
 export function marketPostureHistory(days: number): Promise<PostureHistoryResponse> {
   const search = new URLSearchParams({ days: String(days) });
   return apiRequest(`/api/v1/history/market-posture?${search.toString()}`, {
@@ -165,13 +146,5 @@ export function signalAccuracy(
   return apiRequest(`/api/v1/history/signal-accuracy?${search.toString()}`, {
     method: 'GET',
     schema: signalAccuracyResponseSchema,
-  });
-}
-
-export function decisions(limit: number): Promise<DecisionHistoryResponse> {
-  const search = new URLSearchParams({ limit: String(limit) });
-  return apiRequest(`/api/v1/history/decisions?${search.toString()}`, {
-    method: 'GET',
-    schema: decisionHistoryResponseSchema,
   });
 }

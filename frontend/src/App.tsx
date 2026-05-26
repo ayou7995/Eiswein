@@ -15,9 +15,6 @@ const DashboardPage = lazy(() =>
 const TickerDetailPage = lazy(() =>
   import('./pages/TickerDetailPage').then((m) => ({ default: m.TickerDetailPage })),
 );
-const PositionsPage = lazy(() =>
-  import('./pages/PositionsPage').then((m) => ({ default: m.PositionsPage })),
-);
 const HistoryPage = lazy(() =>
   import('./pages/HistoryPage').then((m) => ({ default: m.HistoryPage })),
 );
@@ -66,14 +63,6 @@ export function App(): JSX.Element {
           element={
             <PageSuspense>
               <TickerDetailPage />
-            </PageSuspense>
-          }
-        />
-        <Route
-          path={ROUTES.POSITIONS}
-          element={
-            <PageSuspense>
-              <PositionsPage />
             </PageSuspense>
           }
         />

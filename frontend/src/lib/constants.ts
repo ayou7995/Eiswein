@@ -2,7 +2,6 @@ export const ROUTES = {
   LOGIN: '/login',
   DASHBOARD: '/dashboard',
   TICKER: '/ticker/:symbol',
-  POSITIONS: '/positions',
   HISTORY: '/history',
   SETTINGS: '/settings',
 } as const;

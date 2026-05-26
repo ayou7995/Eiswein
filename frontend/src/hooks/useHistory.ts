@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  decisions,
   marketPostureHistory,
   postureAccuracy,
   signalAccuracy,
   tickerSignalsHistory,
-  type DecisionHistoryResponse,
   type PostureAccuracyResponse,
   type PostureHistoryResponse,
   type SignalAccuracyHorizon,
@@ -78,13 +76,3 @@ export function useTickerSignals(
   });
 }
 
-export function useDecisions(
-  limit: number,
-): ReturnType<typeof useQuery<DecisionHistoryResponse>> {
-  return useQuery({
-    queryKey: ['history', 'decisions', limit] as const,
-    queryFn: () => decisions(limit),
-    refetchOnWindowFocus: false,
-    staleTime: 60 * 1000,
-  });
-}

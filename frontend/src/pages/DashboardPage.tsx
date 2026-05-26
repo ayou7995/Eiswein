@@ -20,7 +20,6 @@ import {
   useDashboardWatchlistSignals,
   type WatchlistSignalRow,
 } from '../hooks/useDashboardWatchlistSignals';
-import { usePositions } from '../hooks/usePositions';
 import type { ActionCategoryCode } from '../api/tickerSignal';
 import type { ProsConsItem } from '../api/prosCons';
 import { EisweinApiError } from '../api/errors';
@@ -73,7 +72,6 @@ export function DashboardPage(): JSX.Element {
       <MacroBackdropCard />
       <AttentionAlertsCard />
       <WatchlistOverviewCard />
-      <PositionsSummaryCard />
     </div>
   );
 }
@@ -516,110 +514,6 @@ function ToneDotGroup({ title, keys, byName }: ToneDotGroupProps): JSX.Element {
   );
 }
 
-function parseDecimal(value: string | null): number {
-  if (value === null) return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatCurrency(value: number): string {
-  // Sum across positions is display-only; tolerating JS float error is
-  // fine (positions rarely exceed 1e7 USD for a personal portfolio).
-  return value.toLocaleString('zh-TW', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  });
-}
-
-function PositionsSummaryCard(): JSX.Element {
-  const { data, isLoading, isError, refetch } = usePositions(false);
-
-  const { totalMarketValue, totalUnrealizedPnl, openCount } = useMemo(() => {
-    if (!data) return { totalMarketValue: 0, totalUnrealizedPnl: 0, openCount: 0 };
-    let marketValue = 0;
-    let pnl = 0;
-    for (const p of data.data) {
-      const shares = parseDecimal(p.shares);
-      const price = parseDecimal(p.current_price);
-      marketValue += shares * price;
-      pnl += parseDecimal(p.unrealized_pnl);
-    }
-    return { totalMarketValue: marketValue, totalUnrealizedPnl: pnl, openCount: data.data.length };
-  }, [data]);
-
-  const pnlTone =
-    totalUnrealizedPnl > 0
-      ? 'text-signal-green'
-      : totalUnrealizedPnl < 0
-        ? 'text-signal-red'
-        : 'text-slate-300';
-
-  return (
-    <section
-      aria-labelledby="positions-summary-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header className="flex items-baseline justify-between">
-        <h2 id="positions-summary-heading" className="text-lg font-semibold">
-          持倉摘要
-        </h2>
-        <Link
-          to={ROUTES.POSITIONS}
-          className="text-xs text-sky-400 hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          查看全部 →
-        </Link>
-      </header>
-      {isLoading && (
-        <div className="flex items-center gap-2 text-slate-400">
-          <LoadingSpinner label="載入持倉…" />
-          <span className="text-sm">載入中…</span>
-        </div>
-      )}
-      {isError && (
-        <div className="flex items-center justify-between rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-sm text-signal-red">
-          <span>載入持倉失敗。</span>
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            className="underline hover:text-signal-red"
-          >
-            重試
-          </button>
-        </div>
-      )}
-      {!isLoading && !isError && data && data.data.length === 0 && (
-        <p role="status" className="text-sm text-slate-400">
-          尚未建立持倉。
-          <Link to={ROUTES.POSITIONS} className="ml-1 text-sky-400 hover:text-sky-300">
-            前往開立 →
-          </Link>
-        </p>
-      )}
-      {!isLoading && !isError && data && data.data.length > 0 && (
-        <dl data-testid="positions-summary" className="grid grid-cols-3 gap-4 text-sm">
-          <div className="flex flex-col">
-            <dt className="text-xs text-slate-500">持倉數</dt>
-            <dd className="text-xl font-semibold text-slate-100">{openCount}</dd>
-          </div>
-          <div className="flex flex-col">
-            <dt className="text-xs text-slate-500">總市值</dt>
-            <dd className="text-xl font-semibold text-slate-100">
-              {formatCurrency(totalMarketValue)}
-            </dd>
-          </div>
-          <div className="flex flex-col">
-            <dt className="text-xs text-slate-500">未實現損益</dt>
-            <dd className={`text-xl font-semibold ${pnlTone}`}>
-              {formatCurrency(totalUnrealizedPnl)}
-            </dd>
-          </div>
-        </dl>
-      )}
-    </section>
-  );
-}
 
 function MacroBackdropCard(): JSX.Element {
   const { rows } = useDashboardWatchlistSignals();

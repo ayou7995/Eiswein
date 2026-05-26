@@ -24,10 +24,6 @@ const EVENT_LABELS: Record<string, string> = {
   login_failed: '登入失敗',
   logout: '登出',
   password_changed: '變更密碼',
-  position_opened: '開倉',
-  position_add: '加碼',
-  position_reduce: '減碼',
-  position_closed: '關閉持倉',
   watchlist_added: '新增觀察標的',
   watchlist_removed: '移除觀察標的',
   manual_data_refresh: '手動更新資料',
@@ -92,8 +88,6 @@ function SystemInfoCard(): JSX.Element {
           <InfoStat label="最近資料更新" value={relativeTime(data.last_daily_update_at)} />
           <InfoStat label="最近備份" value={relativeTime(data.last_backup_at)} />
           <InfoStat label="觀察標的數" value={String(data.watchlist_count)} />
-          <InfoStat label="持倉數" value={String(data.positions_count)} />
-          <InfoStat label="交易筆數" value={String(data.trade_count)} />
         </dl>
       )}
     </section>
