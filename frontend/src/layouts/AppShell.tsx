@@ -56,7 +56,7 @@ export function AppShell(): JSX.Element {
           <span className="h-9 w-9" aria-hidden="true" />
         </header>
 
-        <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
 
