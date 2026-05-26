@@ -125,7 +125,7 @@ export function MarketRegimeIndicatorList({
   }
 
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {items.map((item) => (
         <RegimeRow
           key={item.indicator_name}
@@ -143,104 +143,92 @@ interface RegimeRowProps {
 }
 
 function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
-  // The chart is lazy-loaded: useMarketIndicatorSeries is gated on `enabled`,
-  // and `enabled` flips true the first time the user expands this row.
-  const [hasOpened, setHasOpened] = useState(false);
+  // Indicator details are always shown inline — no collapse mechanism.
+  // Charts load eagerly on mount via ``useMarketIndicatorSeries`` inside
+  // ``RegimeChartSection``; with 4-6 cards per page the parallel queries
+  // are well within TanStack Query's batching budget.
   const tone = TONE_DOT[item.tone];
   const detailEntries = Object.entries(item.detail);
 
   const chartName = resolveChartName(item.indicator_name);
 
   return (
-    <li className="overflow-hidden rounded-md border border-stone-200 bg-stone-50">
-      <details
-        onToggle={(event) => {
-          if ((event.currentTarget as HTMLDetailsElement).open) {
-            setHasOpened(true);
-          }
-        }}
-      >
-        <summary
-          data-testid="regime-row-summary"
-          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-stone-800 hover:text-stone-900"
-        >
-          <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
-          <span className="flex-1">
-            {item.indicator_name === 'spx_ma' ? (
-              <MaPositionHeadlineExplainable
-                shortLabel={item.short_label}
-                detail={item.detail}
-                labels={SPX_MA_HEADLINE_LABELS}
-              />
-            ) : item.indicator_name === 'vix' ? (
-              <VixHeadlineExplainable
-                shortLabel={item.short_label}
-                detail={item.detail}
-                labels={VIX_HEADLINE_LABELS}
-              />
-            ) : item.indicator_name === 'ad_day' ? (
-              <AdDayHeadlineExplainable
-                shortLabel={item.short_label}
-                detail={item.detail}
-                labels={AD_DAY_HEADLINE_LABELS}
-              />
-            ) : item.indicator_name === 'yield_spread' ? (
-              <YieldSpreadHeadlineExplainable
-                shortLabel={item.short_label}
-                detail={item.detail}
-                labels={YIELD_SPREAD_HEADLINE_LABELS}
-              />
-            ) : item.indicator_name === 'dxy' ? (
-              <DxyHeadlineExplainable
-                shortLabel={item.short_label}
-                detail={item.detail}
-                labels={DXY_HEADLINE_LABELS}
-              />
-            ) : item.indicator_name === 'fed_rate' ? (
-              <FedRateHeadlineExplainable
-                shortLabel={item.short_label}
-                detail={item.detail}
-                labels={FED_RATE_HEADLINE_LABELS}
-              />
-            ) : (
-              item.short_label
-            )}
-          </span>
-          <TimeframeChip timeframe={item.timeframe} />
-          {(detailEntries.length > 0 || chartName !== null) && (
-            <span aria-hidden="true" className="text-xs text-stone-400">
-              詳細
-            </span>
-          )}
-        </summary>
-        <div className="border-t border-stone-200 bg-stone-50">
-          {chartName !== null && hasOpened && <RegimeChartSection name={chartName} />}
+    <li
+      data-testid="regime-row"
+      className="flex flex-col overflow-hidden rounded-md border border-stone-200 bg-white"
+    >
+      <header className="flex items-center gap-2 px-3 py-2 text-sm text-stone-800">
+        <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
+        <span className="flex-1">
           {item.indicator_name === 'spx_ma' ? (
-            <MaPositionEnhancedDetail detail={item.detail} />
+            <MaPositionHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={SPX_MA_HEADLINE_LABELS}
+            />
           ) : item.indicator_name === 'vix' ? (
-            <VixEnhancedDetail detail={item.detail} />
+            <VixHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={VIX_HEADLINE_LABELS}
+            />
           ) : item.indicator_name === 'ad_day' ? (
-            <AdDayEnhancedDetail detail={item.detail} />
+            <AdDayHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={AD_DAY_HEADLINE_LABELS}
+            />
           ) : item.indicator_name === 'yield_spread' ? (
-            <YieldSpreadEnhancedDetail detail={item.detail} />
+            <YieldSpreadHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={YIELD_SPREAD_HEADLINE_LABELS}
+            />
           ) : item.indicator_name === 'dxy' ? (
-            <DxyEnhancedDetail detail={item.detail} />
+            <DxyHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={DXY_HEADLINE_LABELS}
+            />
           ) : item.indicator_name === 'fed_rate' ? (
-            <FedRateEnhancedDetail detail={item.detail} />
+            <FedRateHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={FED_RATE_HEADLINE_LABELS}
+            />
           ) : (
-            detailEntries.length > 0 && (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-stone-700">
-                {detailEntries.map(([key, value]) => (
-                  <div key={key} className="contents">
-                    <dt className="font-mono text-stone-400">{humanizeKey(key)}</dt>
-                    <dd className="font-mono text-stone-800">{renderValue(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            )
+            item.short_label
           )}
-        </div>
-      </details>
+        </span>
+        <TimeframeChip timeframe={item.timeframe} />
+      </header>
+      <div className="flex flex-col gap-2 border-t border-stone-200 bg-stone-50 p-3">
+        {chartName !== null && <RegimeChartSection name={chartName} />}
+        {item.indicator_name === 'spx_ma' ? (
+          <MaPositionEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'vix' ? (
+          <VixEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'ad_day' ? (
+          <AdDayEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'yield_spread' ? (
+          <YieldSpreadEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'dxy' ? (
+          <DxyEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'fed_rate' ? (
+          <FedRateEnhancedDetail detail={item.detail} />
+        ) : (
+          detailEntries.length > 0 && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-stone-700">
+              {detailEntries.map(([key, value]) => (
+                <div key={key} className="contents">
+                  <dt className="font-mono text-stone-400">{humanizeKey(key)}</dt>
+                  <dd className="font-mono text-stone-800">{renderValue(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          )
+        )}
+      </div>
     </li>
   );
 }
