@@ -366,19 +366,22 @@ function IndicatorGroup({
           </p>
         </div>
       )}
-      {indicators &&
-        keys.map((key) => {
-          const result = indicators[key];
-          if (!result) return null;
-          return (
-            <IndicatorCard
-              key={key}
-              symbol={symbol}
-              indicatorKey={key}
-              result={result}
-            />
-          );
-        })}
+      {indicators && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {keys.map((key) => {
+            const result = indicators[key];
+            if (!result) return null;
+            return (
+              <IndicatorCard
+                key={key}
+                symbol={symbol}
+                indicatorKey={key}
+                result={result}
+              />
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
