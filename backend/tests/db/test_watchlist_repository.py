@@ -135,3 +135,46 @@ def test_list_all_for_symbol_returns_per_user_rows(db_session: Session) -> None:
     repo.add(user_id=uid_b, symbol="SPY", max_size=100)
     rows = repo.list_all_for_symbol("SPY")
     assert len(rows) == 2
+
+
+def test_add_auto_assigns_to_watching_group_when_present(db_session: Session) -> None:
+    """New symbols default into the user's Watching group when it
+    exists. Mirrors what Migration 0017 seeds for fresh installs."""
+    from app.db.models import WatchlistGroup
+
+    uid = _mk_user(db_session, "alice")
+    group = WatchlistGroup(user_id=uid, name="Watching", position=1)
+    db_session.add(group)
+    db_session.flush()
+
+    repo = WatchlistRepository(db_session)
+    row = repo.add(user_id=uid, symbol="SPY", max_size=100)
+    assert row.group_id == group.id
+
+
+def test_add_falls_back_to_null_group_when_watching_deleted(db_session: Session) -> None:
+    """If the operator deleted their Watching group, new adds land
+    in unassigned (group_id = NULL) - the add path never blocks."""
+    uid = _mk_user(db_session, "alice")
+    # No Watching group exists.
+    repo = WatchlistRepository(db_session)
+    row = repo.add(user_id=uid, symbol="SPY", max_size=100)
+    assert row.group_id is None
+
+
+def test_add_uses_only_caller_users_watching_group(db_session: Session) -> None:
+    """Two users, each with their own Watching group - a new SPY add
+    for user A must land in A's group, never B's."""
+    from app.db.models import WatchlistGroup
+
+    uid_a = _mk_user(db_session, "alice")
+    uid_b = _mk_user(db_session, "bob")
+    group_a = WatchlistGroup(user_id=uid_a, name="Watching", position=1)
+    group_b = WatchlistGroup(user_id=uid_b, name="Watching", position=1)
+    db_session.add_all([group_a, group_b])
+    db_session.flush()
+
+    repo = WatchlistRepository(db_session)
+    row = repo.add(user_id=uid_a, symbol="SPY", max_size=100)
+    assert row.group_id == group_a.id
+    assert row.group_id != group_b.id

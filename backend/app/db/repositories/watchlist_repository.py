@@ -25,8 +25,13 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Watchlist
+from app.db.models import Watchlist, WatchlistGroup
 from app.security.exceptions import ConflictError, EisweinError, NotFoundError
+
+# New symbols default to the user's ``Watching`` group when present.
+# Other group names are not auto-assigned — the operator curates
+# Core / Speculative / Macro themselves.
+_DEFAULT_GROUP_NAME = "Watching"
 
 
 class WatchlistFullError(EisweinError):
@@ -81,7 +86,22 @@ class WatchlistRepository:
         # the duplicate check above — the explicit ``get`` avoids an
         # IntegrityError round-trip on the common path but the DB
         # constraint remains the source of truth.
-        row = Watchlist(user_id=user_id, symbol=normalized, data_status="pending")
+        #
+        # Auto-assign to the user's ``Watching`` group if it exists.
+        # Falls back to NULL (= 未分類) when the user has deleted that
+        # group — never blocks the add path on a missing group.
+        watching_group_id = self._session.execute(
+            select(WatchlistGroup.id).where(
+                WatchlistGroup.user_id == user_id,
+                WatchlistGroup.name == _DEFAULT_GROUP_NAME,
+            )
+        ).scalar_one_or_none()
+        row = Watchlist(
+            user_id=user_id,
+            symbol=normalized,
+            data_status="pending",
+            group_id=watching_group_id,
+        )
         self._session.add(row)
         self._session.flush()
         return row
