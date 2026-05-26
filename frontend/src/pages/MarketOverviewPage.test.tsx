@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '../hooks/useAuth';
 import { resetAuthClient } from '../api/client';
-import { DashboardPage } from './DashboardPage';
+import { MarketOverviewPage } from './MarketOverviewPage';
 
 type Handler = (url: string) => { status: number; body: unknown };
 
@@ -24,7 +24,7 @@ function installFetch(handler: Handler): () => void {
   };
 }
 
-function renderDashboard(): void {
+function renderPage(): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0, gcTime: 0 } },
   });
@@ -36,7 +36,7 @@ function renderDashboard(): void {
           initialUser={{ username: 'admin', is_admin: true }}
         >
           <Routes>
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard" element={<MarketOverviewPage />} />
             <Route path="/ticker/:symbol" element={<div>ticker-page</div>} />
           </Routes>
         </AuthProvider>
@@ -45,7 +45,7 @@ function renderDashboard(): void {
   );
 }
 
-describe('DashboardPage', () => {
+describe('MarketOverviewPage', () => {
   beforeEach(() => {
     resetAuthClient();
   });
@@ -54,7 +54,7 @@ describe('DashboardPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders market posture, watchlist, and attention alerts on happy path', async () => {
+  it('renders the hero card + attention banner on happy path', async () => {
     const restore = installFetch((url) => {
       if (url.endsWith('/api/v1/market-posture')) {
         return {
@@ -157,30 +157,40 @@ describe('DashboardPage', () => {
           },
         };
       }
+      if (url.includes('/settings/system-info')) {
+        return {
+          status: 200,
+          body: {
+            db_size_bytes: 1024,
+            last_daily_update_at: null,
+            last_backup_at: null,
+            watchlist_count: 2,
+            user_count: 1,
+            data_freshness: null,
+          },
+        };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
 
     try {
-      renderDashboard();
+      renderPage();
       await waitFor(() => {
-        expect(screen.getByTestId('market-posture-label')).toHaveTextContent('市場態勢：正常');
+        expect(screen.getByTestId('market-posture-label')).toHaveTextContent(
+          '市場態勢：正常',
+        );
       });
-      await waitFor(() => {
-        expect(screen.getByTestId('watchlist-table')).toBeInTheDocument();
-      });
-      // AAPL signal is strong_buy → attention list.
+      // AAPL strong_buy → attention banner.
       await waitFor(() => {
         expect(screen.getByTestId('attention-list')).toBeInTheDocument();
       });
       expect(screen.getByTestId('attention-list')).toHaveTextContent('AAPL');
-      // TSLA 404 → "分析運算中" row.
-      expect(screen.getByText('分析運算中')).toBeInTheDocument();
     } finally {
       restore();
     }
   });
 
-  it('renders empty-state when watchlist is empty', async () => {
+  it('shows the wait-for-snapshot message when posture is 404', async () => {
     const restore = installFetch((url) => {
       if (url.endsWith('/api/v1/market-posture')) {
         return {
@@ -200,17 +210,29 @@ describe('DashboardPage', () => {
           body: { data: [], total: 0, has_more: false },
         };
       }
+      if (url.includes('/settings/system-info')) {
+        return {
+          status: 200,
+          body: {
+            db_size_bytes: 1024,
+            last_daily_update_at: null,
+            last_backup_at: null,
+            watchlist_count: 0,
+            user_count: 1,
+            data_freshness: null,
+          },
+        };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
 
     try {
-      renderDashboard();
+      renderPage();
       await waitFor(() => {
-        expect(screen.getByText('等待首次運算（每日收盤後產出）。')).toBeInTheDocument();
+        expect(
+          screen.getByText('等待首次運算（每日收盤後產出）。'),
+        ).toBeInTheDocument();
       });
-      expect(
-        screen.getByText('尚未加入任何標的。請前往「設定」新增。'),
-      ).toBeInTheDocument();
     } finally {
       restore();
     }

@@ -37,7 +37,7 @@ const DIRECTION_EMOJI: Record<TrendDirection, string> = {
 const TONE_CLASS: Record<'pro' | 'con' | 'neutral', string> = {
   pro: 'border-signal-green/40 bg-signal-green/10 text-signal-green',
   con: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
-  neutral: 'border-slate-700 bg-slate-950/40 text-slate-300',
+  neutral: 'border-stone-300 bg-stone-50 text-stone-700',
 };
 
 function formatMagnitude(value: number | null): string {
@@ -62,9 +62,9 @@ export function TrendPill({
       className={`flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs ${TONE_CLASS[tone]}`}
     >
       <span aria-hidden="true">{DIRECTION_EMOJI[direction]}</span>
-      <span className="text-slate-300">{windowLabel}</span>
+      <span className="text-stone-700">{windowLabel}</span>
       <span className="font-mono tabular-nums">{formatMagnitude(magnitude)}</span>
-      <span className="text-slate-500">·</span>
+      <span className="text-stone-400">·</span>
       <span>{interp}</span>
     </div>
   );

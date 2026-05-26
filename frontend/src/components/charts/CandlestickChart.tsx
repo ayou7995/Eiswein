@@ -104,15 +104,15 @@ export function CandlestickChart({
       width: container.clientWidth,
       height: 360,
       layout: {
-        background: { type: ColorType.Solid, color: '#020617' },
-        textColor: '#cbd5f5',
+        background: { type: ColorType.Solid, color: '#ffffff' },
+        textColor: '#44403c',
       },
       grid: {
-        horzLines: { color: '#1e293b' },
-        vertLines: { color: '#1e293b' },
+        horzLines: { color: 'rgba(0,0,0,0.06)' },
+        vertLines: { color: 'rgba(0,0,0,0.06)' },
       },
-      rightPriceScale: { borderColor: '#334155' },
-      timeScale: { borderColor: '#334155', timeVisible: false, secondsVisible: false },
+      rightPriceScale: { borderColor: 'rgba(0,0,0,0.12)' },
+      timeScale: { borderColor: 'rgba(0,0,0,0.12)', timeVisible: false, secondsVisible: false },
       crosshair: { mode: 0 },
     });
 
@@ -201,7 +201,7 @@ export function CandlestickChart({
         </h2>
         <RangeSelector range={range} onChange={onRangeChange} />
       </header>
-      <div className="relative rounded-lg border border-slate-800 bg-slate-950">
+      <div className="relative rounded-lg border border-stone-200 bg-stone-50">
         <div
           ref={containerRef}
           data-testid="candlestick-chart-container"
@@ -210,14 +210,14 @@ export function CandlestickChart({
           className="h-[360px] w-full"
         />
         {loading && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/60">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-stone-100/80">
             <LoadingSpinner label="載入價格資料…" />
           </div>
         )}
         {!loading && bars.length === 0 && (
           <div
             role="status"
-            className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-400"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-500"
           >
             {emptyMessage}
           </div>
@@ -237,7 +237,7 @@ function RangeSelector({ range, onChange }: RangeSelectorProps): JSX.Element {
     <div
       role="radiogroup"
       aria-label="價格區間"
-      className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
+      className="inline-flex rounded-md border border-stone-300 bg-stone-50 p-0.5"
     >
       {PRICE_RANGES.map((option) => {
         const active = option === range;
@@ -252,7 +252,7 @@ function RangeSelector({ range, onChange }: RangeSelectorProps): JSX.Element {
             className={`rounded px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
               active
                 ? 'bg-sky-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                : 'text-stone-700 hover:bg-stone-100 hover:text-stone-900'
             }`}
           >
             {option}

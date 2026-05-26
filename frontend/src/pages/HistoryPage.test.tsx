@@ -52,7 +52,7 @@ describe('HistoryPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the merged posture section and signal section with happy-path data', async () => {
+  it('renders posture timeline + posture accuracy + symbol ranking', async () => {
     const restore = installFetch((url) => {
       if (url.includes('/history/market-posture')) {
         return {
@@ -100,59 +100,18 @@ describe('HistoryPage', () => {
           },
         };
       }
-      if (url.endsWith('/api/v1/watchlist')) {
+      if (url.includes('/history/symbol-accuracy-ranking')) {
         return {
           status: 200,
           body: {
-            data: [
-              {
-                symbol: 'AAPL',
-                data_status: 'ready',
-                added_at: '2026-04-10T00:00:00Z',
-                last_refresh_at: '2026-04-17T21:00:00Z',
-                is_system: false,
-                active_onboarding_job_id: null,
-                group_id: null,
-                group_name: null,
-                tags: [],
-              },
-            ],
-            total: 1,
-            has_more: false,
-          },
-        };
-      }
-      if (url.includes('/history/ticker-signals')) {
-        return {
-          status: 200,
-          body: {
-            symbol: 'AAPL',
-            data: [
-              { date: '2026-04-01', action: 'hold', close: 175 },
-              { date: '2026-04-02', action: 'buy', close: 178 },
-              { date: '2026-04-03', action: 'reduce', close: 172 },
-            ],
-          },
-        };
-      }
-      if (url.includes('/history/signal-accuracy')) {
-        return {
-          status: 200,
-          body: {
-            symbol: 'AAPL',
             horizon: 20,
-            total_signals: 10,
-            correct: 7,
-            accuracy_pct: 70.0,
-            by_action: {
-              buy: { total: 6, correct: 5, accuracy_pct: 83.3 },
-              reduce: { total: 4, correct: 2, accuracy_pct: 50.0 },
-            },
-            baseline: {
-              total: 10,
-              spy_up_count: 6,
-              spy_up_pct: 60.0,
-            },
+            days: 90,
+            data: [
+              { symbol: 'QCOM', total_signals: 53, correct: 45, accuracy_pct: 84.9 },
+              { symbol: 'TSLA', total_signals: 12, correct: 8, accuracy_pct: 66.7 },
+              { symbol: 'META', total_signals: 21, correct: 9, accuracy_pct: 42.9 },
+            ],
+            baseline: { total: 90, spy_up_count: 54, spy_up_pct: 60.0 },
           },
         };
       }
@@ -163,30 +122,26 @@ describe('HistoryPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('posture-timeline')).toBeInTheDocument();
       });
+      expect(screen.getByTestId('posture-accuracy-headline')).toHaveTextContent(
+        '75.0%',
+      );
+      // Symbol ranking card renders + lists the mocked symbols.
       await waitFor(() => {
-        expect(screen.getByTestId('accuracy-headline')).toHaveTextContent('70.0%');
+        expect(screen.getByText('QCOM')).toBeInTheDocument();
       });
-      // Both posture-accuracy and signal-accuracy headlines surface a
-      // "同期 SPY 上漲 baseline" label — the merged section means the
-      // string now appears twice on the page.
-      expect(screen.getAllByText('同期 SPY 上漲 baseline').length).toBeGreaterThanOrEqual(2);
-      // Posture-accuracy headline shows its own % derived from the
-      // mocked posture-accuracy response.
-      expect(screen.getByTestId('posture-accuracy-headline')).toHaveTextContent('75.0%');
-      expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0);
+      expect(screen.getByText('TSLA')).toBeInTheDocument();
+      expect(screen.getByText('META')).toBeInTheDocument();
     } finally {
       restore();
     }
   });
 
-  it('each section renders independently when one endpoint errors', async () => {
+  it('renders the posture timeline error state independently', async () => {
     const restore = installFetch((url) => {
       if (url.includes('/history/market-posture')) {
         return {
           status: 500,
-          body: {
-            error: { code: 'server_error', message: 'oops' },
-          },
+          body: { error: { code: 'server_error', message: 'oops' } },
         };
       }
       if (url.includes('/history/posture-accuracy')) {
@@ -203,22 +158,24 @@ describe('HistoryPage', () => {
           },
         };
       }
-      if (url.endsWith('/api/v1/watchlist')) {
+      if (url.includes('/history/symbol-accuracy-ranking')) {
         return {
           status: 200,
-          body: { data: [], total: 0, has_more: false },
+          body: {
+            horizon: 20,
+            days: 90,
+            data: [],
+            baseline: { total: 0, spy_up_count: 0, spy_up_pct: 0 },
+          },
         };
       }
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
       renderHistory();
-      // Timeline section shows its error.
       await waitFor(() => {
         expect(screen.getByText('載入市場態勢歷史失敗。')).toBeInTheDocument();
       });
-      // Accuracy section still rendered (but empty watchlist message).
-      expect(screen.getByText('請先於「設定」加入觀察清單。')).toBeInTheDocument();
     } finally {
       restore();
     }

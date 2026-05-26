@@ -148,3 +148,41 @@ export function signalAccuracy(
     schema: signalAccuracyResponseSchema,
   });
 }
+
+// Per-symbol hit-rate ranking — sorts the watchlist by accuracy_pct over the
+// requested window. Backend caps at 20 symbols and runs sub-100ms, so the UI
+// can rerun on every range-button switch without debounce.
+export const symbolAccuracyEntrySchema = z.object({
+  symbol: z.string(),
+  total_signals: z.number().int().nonnegative(),
+  correct: z.number().int().nonnegative(),
+  accuracy_pct: z.number(),
+});
+export type SymbolAccuracyEntry = z.infer<typeof symbolAccuracyEntrySchema>;
+
+export const symbolAccuracyRankingResponseSchema = z.object({
+  horizon: z.number().int(),
+  days: z.number().int(),
+  data: z.array(symbolAccuracyEntrySchema),
+  baseline: signalAccuracyBaselineSchema,
+});
+export type SymbolAccuracyRankingResponse = z.infer<
+  typeof symbolAccuracyRankingResponseSchema
+>;
+
+export function symbolAccuracyRanking(
+  days: number,
+  horizon: SignalAccuracyHorizon = 20,
+): Promise<SymbolAccuracyRankingResponse> {
+  const search = new URLSearchParams({
+    days: String(days),
+    horizon: String(horizon),
+  });
+  return apiRequest(
+    `/api/v1/history/symbol-accuracy-ranking?${search.toString()}`,
+    {
+      method: 'GET',
+      schema: symbolAccuracyRankingResponseSchema,
+    },
+  );
+}

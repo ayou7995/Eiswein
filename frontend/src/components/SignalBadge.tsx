@@ -31,7 +31,7 @@ const TONE_PRESET: Record<
     emoji: '⚪',
     letter: 'N',
     label: '—',
-    classes: 'bg-slate-500/10 text-slate-300 border-slate-500/40',
+    classes: 'bg-stone-100 text-stone-700 border-stone-300',
   },
 };
 

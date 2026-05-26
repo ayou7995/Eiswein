@@ -74,17 +74,17 @@ export function IndicatorVolumeBars({
       width: container.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: '#020617' },
-        textColor: '#cbd5f5',
+        background: { type: ColorType.Solid, color: '#ffffff' },
+        textColor: '#44403c',
         fontSize: 11,
       },
       grid: {
-        horzLines: { color: '#1e293b' },
-        vertLines: { color: '#1e293b' },
+        horzLines: { color: 'rgba(0,0,0,0.06)' },
+        vertLines: { color: 'rgba(0,0,0,0.06)' },
       },
-      rightPriceScale: { borderColor: '#334155' },
+      rightPriceScale: { borderColor: 'rgba(0,0,0,0.12)' },
       timeScale: {
-        borderColor: '#334155',
+        borderColor: 'rgba(0,0,0,0.12)',
         timeVisible: false,
         secondsVisible: false,
       },
@@ -158,7 +158,7 @@ export function IndicatorVolumeBars({
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-700">
         <li className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
@@ -175,7 +175,7 @@ export function IndicatorVolumeBars({
           />
           <span>下跌日成交量</span>
         </li>
-        <li className="flex items-center gap-1.5 text-slate-400">
+        <li className="flex items-center gap-1.5 text-stone-500">
           <span
             aria-hidden="true"
             className="inline-block h-0.5 w-4"
@@ -189,7 +189,7 @@ export function IndicatorVolumeBars({
         data-testid="indicator-volume-bars"
         role="img"
         aria-label={ariaLabel}
-        className="w-full rounded-md border border-slate-800 bg-slate-950"
+        className="w-full rounded-md border border-stone-200 bg-stone-50"
         style={{ height }}
       />
     </div>

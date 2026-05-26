@@ -146,7 +146,7 @@ export function Explainable({
 
   const markerClass =
     marker === 'underline'
-      ? 'cursor-help underline decoration-dotted decoration-slate-600 underline-offset-[3px] hover:decoration-slate-400'
+      ? 'cursor-help underline decoration-dotted decoration-stone-400 underline-offset-[3px] hover:decoration-stone-500'
       : 'cursor-help';
 
   return (
@@ -178,10 +178,10 @@ export function Explainable({
                 width: POPOVER_MAX_WIDTH_PX,
                 transform: position.above ? 'translateY(-100%)' : undefined,
               }}
-              className="z-50 rounded-md border border-slate-700 bg-slate-900/98 p-3 text-xs text-slate-200 shadow-xl backdrop-blur"
+              className="z-50 rounded-md border border-stone-300 bg-white/98 p-3 text-xs text-stone-800 shadow-xl backdrop-blur"
             >
               <div className="mb-2 flex items-start justify-between gap-2">
-                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                   {title}
                 </h4>
                 {pinned && (
@@ -189,7 +189,7 @@ export function Explainable({
                     type="button"
                     aria-label="關閉說明"
                     onClick={() => setPinned(false)}
-                    className="text-slate-500 hover:text-slate-200"
+                    className="text-stone-400 hover:text-stone-800"
                   >
                     ✕
                   </button>
@@ -197,7 +197,7 @@ export function Explainable({
               </div>
               {explanation}
               {!pinned && (
-                <p className="mt-2 text-[10px] text-slate-500">
+                <p className="mt-2 text-[10px] text-stone-400">
                   點一下可釘選；Esc 或點外面關閉
                 </p>
               )}
@@ -235,9 +235,9 @@ export function RuleTable({
 }: RuleTableProps): JSX.Element {
   return (
     <div className="flex flex-col gap-2">
-      {preface !== undefined && <p className="text-slate-300">{preface}</p>}
+      {preface !== undefined && <p className="text-stone-700">{preface}</p>}
       <table className="w-full text-[11px]">
-        <thead className="text-slate-500">
+        <thead className="text-stone-400">
           <tr>
             <th scope="col" className="py-1 pr-2 text-left font-medium">
               條件
@@ -247,19 +247,19 @@ export function RuleTable({
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800">
+        <tbody className="divide-y divide-stone-200">
           {rows.map((row, idx) => (
             <tr
               key={`${row.condition}-${idx}`}
               className={
                 row.current === true
-                  ? 'bg-sky-500/10 font-medium text-slate-100'
-                  : 'text-slate-300'
+                  ? 'bg-sky-500/10 font-medium text-stone-900'
+                  : 'text-stone-700'
               }
             >
               <td className="py-1 pr-2 font-mono">
                 {row.current === true && (
-                  <span aria-hidden="true" className="mr-1 text-sky-300">
+                  <span aria-hidden="true" className="mr-1 text-sky-700">
                     ▸
                   </span>
                 )}
@@ -271,10 +271,10 @@ export function RuleTable({
         </tbody>
       </table>
       {currentValueText !== undefined && (
-        <p className="text-[11px] text-sky-300">{currentValueText}</p>
+        <p className="text-[11px] text-sky-700">{currentValueText}</p>
       )}
       {note !== undefined && (
-        <p className="text-[10px] text-slate-500">{note}</p>
+        <p className="text-[10px] text-stone-400">{note}</p>
       )}
     </div>
   );

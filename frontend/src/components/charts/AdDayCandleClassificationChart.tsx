@@ -140,16 +140,16 @@ export function AdDayCandleClassificationChart({
       width: container.clientWidth,
       height: 320,
       layout: {
-        background: { type: ColorType.Solid, color: '#020617' },
-        textColor: '#cbd5f5',
+        background: { type: ColorType.Solid, color: '#ffffff' },
+        textColor: '#44403c',
       },
       grid: {
-        horzLines: { color: '#1e293b' },
-        vertLines: { color: '#1e293b' },
+        horzLines: { color: 'rgba(0,0,0,0.06)' },
+        vertLines: { color: 'rgba(0,0,0,0.06)' },
       },
-      rightPriceScale: { borderColor: '#334155', scaleMargins: PRICE_PANE },
+      rightPriceScale: { borderColor: 'rgba(0,0,0,0.12)', scaleMargins: PRICE_PANE },
       timeScale: {
-        borderColor: '#334155',
+        borderColor: 'rgba(0,0,0,0.12)',
         timeVisible: false,
         secondsVisible: false,
       },
@@ -241,7 +241,7 @@ export function AdDayCandleClassificationChart({
 
 function Legend(): JSX.Element {
   return (
-    <div className="flex flex-col gap-1 text-[11px] text-slate-400">
+    <div className="flex flex-col gap-1 text-[11px] text-stone-500">
       <p>上方為 SPX 蠟燭（漲綠跌紅）+ 成交量；下方色條為當日 A/D 分類：</p>
       <ul aria-hidden="true" className="flex flex-wrap gap-x-3 gap-y-1">
         <li className="flex items-center gap-1">

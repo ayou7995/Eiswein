@@ -28,7 +28,7 @@ import type { YieldSpreadSeriesResponse } from '../../api/marketIndicatorSeries'
 const COLORS = {
   ten: '#38bdf8',
   two: '#f59e0b',
-  spread: '#e2e8f0',
+  spread: '#1c1917',
   zero: '#ef4444',
 };
 
@@ -72,16 +72,16 @@ export function YieldSpreadDualPaneChart({
       width: container.clientWidth,
       height: 320,
       layout: {
-        background: { type: ColorType.Solid, color: '#020617' },
-        textColor: '#cbd5f5',
+        background: { type: ColorType.Solid, color: '#ffffff' },
+        textColor: '#44403c',
       },
       grid: {
-        horzLines: { color: '#1e293b' },
-        vertLines: { color: '#1e293b' },
+        horzLines: { color: 'rgba(0,0,0,0.06)' },
+        vertLines: { color: 'rgba(0,0,0,0.06)' },
       },
-      rightPriceScale: { borderColor: '#334155', scaleMargins: YIELD_PANE },
+      rightPriceScale: { borderColor: 'rgba(0,0,0,0.12)', scaleMargins: YIELD_PANE },
       timeScale: {
-        borderColor: '#334155',
+        borderColor: 'rgba(0,0,0,0.12)',
         timeVisible: false,
         secondsVisible: false,
       },
@@ -109,7 +109,7 @@ export function YieldSpreadDualPaneChart({
       lastValueVisible: true,
     });
     chart.priceScale('spread').applyOptions({
-      borderColor: '#334155',
+      borderColor: 'rgba(0,0,0,0.12)',
       scaleMargins: SPREAD_PANE,
     });
     // The 0-line is the inversion threshold — show it on the spread pane
@@ -179,7 +179,7 @@ function Legend(): JSX.Element {
   return (
     <ul
       aria-hidden="true"
-      className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400"
+      className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-stone-500"
     >
       <li className="flex items-center gap-1">
         <span className="inline-block h-0.5 w-4" style={{ background: COLORS.ten }} />

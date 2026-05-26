@@ -135,7 +135,7 @@ export function VixEnhancedDetail({
       upTo: d.threshold_low,
       label: '自滿',
       bg: 'bg-amber-400/30',
-      text: 'text-amber-400',
+      text: 'text-amber-700',
     },
     {
       upTo: d.threshold_normal_high,
@@ -147,7 +147,7 @@ export function VixEnhancedDetail({
       upTo: d.threshold_elevated_high,
       label: '警戒',
       bg: 'bg-amber-400/30',
-      text: 'text-amber-400',
+      text: 'text-amber-700',
     },
     {
       upTo: VIX_GAUGE_MAX,
@@ -196,20 +196,20 @@ function PositionSection({
   return (
     <section aria-label="VIX 位置條" className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-slate-400">位置（0–{VIX_GAUGE_MAX} 區間）</h3>
-        <span className="text-slate-400">
-          <span className="font-mono tabular-nums text-slate-100">
+        <h3 className="text-stone-500">位置（0–{VIX_GAUGE_MAX} 區間）</h3>
+        <span className="text-stone-500">
+          <span className="font-mono tabular-nums text-stone-900">
             {d.level.toFixed(2)}
           </span>
           {percentile !== null && (
             <>
-              <span className="mx-1 text-slate-600">·</span>
+              <span className="mx-1 text-stone-400">·</span>
               <span>
                 過去 1 年{' '}
-                <span className="font-mono tabular-nums text-slate-200">
+                <span className="font-mono tabular-nums text-stone-800">
                   {Math.round(percentile * 100)}%
                 </span>
-                <span className="ml-1 text-slate-500">
+                <span className="ml-1 text-stone-400">
                   ({describePercentile(percentile)})
                 </span>
               </span>
@@ -277,7 +277,7 @@ function Watchpoints({
   const points = buildWatchpoints(zone, detail);
   return (
     <section aria-label="VIX 看點" className="flex flex-col gap-2 text-xs">
-      <h3 className="text-slate-400">
+      <h3 className="text-stone-500">
         <Explainable
           title="看點生成規則"
           explanation={
@@ -317,13 +317,13 @@ function Watchpoints({
         {points.map((p) => (
           <li
             key={`${p.direction}-${p.threshold}`}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1.5"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
           >
-            <span className="text-slate-300">
+            <span className="text-stone-700">
               {p.direction === 'up' ? '突破' : '跌破'} {p.threshold}
             </span>
-            <span className="text-slate-500">→</span>
-            <span className="text-slate-300">{ZONE_LABEL[p.nextZone]}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{ZONE_LABEL[p.nextZone]}</span>
           </li>
         ))}
       </ul>

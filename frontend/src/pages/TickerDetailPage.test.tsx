@@ -14,6 +14,7 @@ vi.mock('lightweight-charts', () => {
     addCandlestickSeries: vi.fn(makeSeries),
     addHistogramSeries: vi.fn(makeSeries),
     addLineSeries: vi.fn(makeSeries),
+    addAreaSeries: vi.fn(makeSeries),
     priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
     timeScale: vi.fn(() => ({ fitContent: vi.fn() })),
     applyOptions: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('lightweight-charts', () => {
   return {
     createChart: vi.fn(() => chart),
     ColorType: { Solid: 'solid' },
+    LineStyle: { Solid: 0, Dashed: 1 },
   };
 });
 
@@ -63,6 +65,17 @@ function renderPage(symbol: string): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function indicatorSeries(name: string): { status: number; body: unknown } {
+  return {
+    status: 200,
+    body: {
+      indicator: name,
+      series: [],
+      summary_zh: '資料準備中',
+    },
+  };
 }
 
 describe('TickerDetailPage', () => {
@@ -200,6 +213,65 @@ describe('TickerDetailPage', () => {
           },
         };
       }
+      if (url.includes('/history/signal-accuracy')) {
+        return {
+          status: 200,
+          body: {
+            symbol: 'AAPL',
+            horizon: 20,
+            total_signals: 0,
+            correct: 0,
+            accuracy_pct: 0,
+            by_action: {},
+            baseline: { total: 0, spy_up_count: 0, spy_up_pct: 0 },
+          },
+        };
+      }
+      if (url.includes('/history/ticker-signals')) {
+        return { status: 200, body: { symbol: 'AAPL', data: [] } };
+      }
+      if (url.includes('/indicator/price_vs_ma/series')) return indicatorSeries('price_vs_ma');
+      if (url.includes('/indicator/rsi/series')) return indicatorSeries('rsi');
+      if (url.includes('/indicator/macd/series')) return indicatorSeries('macd');
+      if (url.includes('/indicator/bollinger/series')) return indicatorSeries('bollinger');
+      if (url.includes('/indicator/volume_anomaly/series')) return indicatorSeries('volume_anomaly');
+      if (url.includes('/indicator/relative_strength/series')) return indicatorSeries('relative_strength');
+      if (url.includes('/market/indicator/dxy/series')) {
+        return {
+          status: 200,
+          body: {
+            indicator: 'dxy',
+            series: [],
+            summary_zh: '',
+            current: {
+              level: 100,
+              ma20: 100,
+              streak_rising: false,
+              streak_falling: false,
+              streak_days: 0,
+              ma20_change_5d: 0,
+            },
+          },
+        };
+      }
+      if (url.includes('/market/indicator/fed_rate/series')) {
+        return {
+          status: 200,
+          body: {
+            indicator: 'fed_rate',
+            series: [],
+            summary_zh: '',
+            current: {
+              current_rate: 5,
+              prior_30d_rate: 5,
+              delta_30d: 0,
+              days_since_last_change: null,
+              last_change_date: null,
+              last_change_direction: null,
+            },
+          },
+        };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
 
@@ -218,6 +290,9 @@ describe('TickerDetailPage', () => {
       // Stop loss reference (Sherry-style 200MA × 0.97) shown in header
       // with the formula on a hover tooltip.
       expect(screen.getByTestId('stop-loss-pill')).toBeInTheDocument();
+      // All 4 direction indicator cards render inline (no collapse).
+      expect(screen.getByTestId('indicator-card-rsi')).toBeInTheDocument();
+      expect(screen.getByTestId('indicator-card-price_vs_ma')).toBeInTheDocument();
     } finally {
       restore();
     }
@@ -260,6 +335,23 @@ describe('TickerDetailPage', () => {
           },
         };
       }
+      if (url.includes('/history/signal-accuracy')) {
+        return {
+          status: 200,
+          body: {
+            symbol: 'AAPL',
+            horizon: 20,
+            total_signals: 0,
+            correct: 0,
+            accuracy_pct: 0,
+            by_action: {},
+            baseline: { total: 0, spy_up_count: 0, spy_up_pct: 0 },
+          },
+        };
+      }
+      if (url.includes('/history/ticker-signals')) {
+        return { status: 200, body: { symbol: 'AAPL', data: [] } };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
 
@@ -268,9 +360,11 @@ describe('TickerDetailPage', () => {
       await waitFor(() => {
         expect(screen.getByText('分析運算中')).toBeInTheDocument();
       });
+      // Three indicator groups (方向 / 時機 / 總經) each render the
+      // pending message inline now that <details> wrappers are gone.
       expect(
-        screen.getByText('尚無指標資料，請待下一次每日運算。'),
-      ).toBeInTheDocument();
+        screen.getAllByText('尚無指標資料，請待下一次每日運算。').length,
+      ).toBeGreaterThanOrEqual(1);
     } finally {
       restore();
     }

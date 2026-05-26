@@ -118,7 +118,7 @@ export function MarketRegimeIndicatorList({
 }: MarketRegimeIndicatorListProps): JSX.Element {
   if (items.length === 0) {
     return (
-      <p role="status" className="text-sm text-slate-400">
+      <p role="status" className="text-sm text-stone-500">
         {emptyMessage}
       </p>
     );
@@ -152,7 +152,7 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
   const chartName = resolveChartName(item.indicator_name);
 
   return (
-    <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
+    <li className="overflow-hidden rounded-md border border-stone-200 bg-stone-50">
       <details
         onToggle={(event) => {
           if ((event.currentTarget as HTMLDetailsElement).open) {
@@ -162,7 +162,7 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
       >
         <summary
           data-testid="regime-row-summary"
-          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:text-white"
+          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-stone-800 hover:text-stone-900"
         >
           <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
           <span className="flex-1">
@@ -208,12 +208,12 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           </span>
           <TimeframeChip timeframe={item.timeframe} />
           {(detailEntries.length > 0 || chartName !== null) && (
-            <span aria-hidden="true" className="text-xs text-slate-500">
+            <span aria-hidden="true" className="text-xs text-stone-400">
               詳細
             </span>
           )}
         </summary>
-        <div className="border-t border-slate-800 bg-slate-950/40">
+        <div className="border-t border-stone-200 bg-stone-50">
           {chartName !== null && hasOpened && <RegimeChartSection name={chartName} />}
           {item.indicator_name === 'spx_ma' ? (
             <MaPositionEnhancedDetail detail={item.detail} />
@@ -229,11 +229,11 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
             <FedRateEnhancedDetail detail={item.detail} />
           ) : (
             detailEntries.length > 0 && (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-stone-700">
                 {detailEntries.map(([key, value]) => (
                   <div key={key} className="contents">
-                    <dt className="font-mono text-slate-500">{humanizeKey(key)}</dt>
-                    <dd className="font-mono text-slate-200">{renderValue(value)}</dd>
+                    <dt className="font-mono text-stone-400">{humanizeKey(key)}</dt>
+                    <dd className="font-mono text-stone-800">{renderValue(value)}</dd>
                   </div>
                 ))}
               </dl>
@@ -269,11 +269,11 @@ function RegimeChartSection({ name }: RegimeChartSectionProps): JSX.Element {
   return (
     <div className="flex flex-col gap-2 px-3 py-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-300">{data?.summary_zh ?? ''}</p>
+        <p className="text-xs text-stone-700">{data?.summary_zh ?? ''}</p>
         <IndicatorRangeSelector value={range} onChange={setRange} indicatorLabel={name} />
       </header>
       {isLoading && (
-        <div className="flex items-center gap-2 text-slate-400">
+        <div className="flex items-center gap-2 text-stone-500">
           <LoadingSpinner label="載入指標走勢…" />
           <span className="text-xs">載入中…</span>
         </div>

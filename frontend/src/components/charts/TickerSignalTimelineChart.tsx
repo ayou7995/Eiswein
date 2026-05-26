@@ -86,17 +86,17 @@ export function TickerSignalTimelineChart({
       width: container.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: '#020617' },
-        textColor: '#cbd5f5',
+        background: { type: ColorType.Solid, color: '#ffffff' },
+        textColor: '#44403c',
         fontSize: 11,
       },
       grid: {
-        horzLines: { color: '#1e293b' },
-        vertLines: { color: '#1e293b' },
+        horzLines: { color: 'rgba(0,0,0,0.06)' },
+        vertLines: { color: 'rgba(0,0,0,0.06)' },
       },
-      rightPriceScale: { borderColor: '#334155' },
+      rightPriceScale: { borderColor: 'rgba(0,0,0,0.12)' },
       timeScale: {
-        borderColor: '#334155',
+        borderColor: 'rgba(0,0,0,0.12)',
         timeVisible: false,
         secondsVisible: false,
       },
@@ -105,7 +105,7 @@ export function TickerSignalTimelineChart({
     chartRef.current = chart;
 
     const lineSeries = chart.addLineSeries({
-      color: '#e2e8f0',
+      color: '#1c1917',
       lineWidth: 2,
       lineStyle: LineStyle.Solid,
       priceLineVisible: false,
@@ -168,7 +168,7 @@ export function TickerSignalTimelineChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-700">
         <li className="flex items-center gap-1.5">
           <span aria-hidden="true" className="text-signal-green">▲</span>
           <span>強買 / 買</span>
@@ -181,7 +181,7 @@ export function TickerSignalTimelineChart({
           <span aria-hidden="true" className="text-signal-red">▼</span>
           <span>出場</span>
         </li>
-        <li className="flex items-center gap-1.5 text-slate-500">
+        <li className="flex items-center gap-1.5 text-stone-400">
           <span>（持有 / 觀望日不顯示 marker — 避免雜訊）</span>
         </li>
       </ul>
@@ -190,7 +190,7 @@ export function TickerSignalTimelineChart({
         data-testid="ticker-signal-timeline-chart"
         role="img"
         aria-label={ariaLabel}
-        className="w-full rounded-md border border-slate-800 bg-slate-950"
+        className="w-full rounded-md border border-stone-200 bg-stone-50"
         style={{ height }}
       />
     </div>

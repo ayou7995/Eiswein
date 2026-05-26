@@ -178,3 +178,108 @@ def test_signal_accuracy_skips_signals_without_forward_data(
     assert body["total_signals"] == 0
 
 
+
+
+# --- /history/symbol-accuracy-ranking ------------------------------------
+
+
+def test_symbol_accuracy_ranking_requires_auth(client: TestClient) -> None:
+    assert client.get("/api/v1/history/symbol-accuracy-ranking").status_code == 401
+
+
+def test_symbol_accuracy_ranking_empty_watchlist_returns_no_entries(
+    client: TestClient, test_password: str
+) -> None:
+    _login(client, test_password)
+    body = client.get("/api/v1/history/symbol-accuracy-ranking?days=90").json()
+    assert body["data"] == []
+    assert body["horizon"] == 20
+    assert body["days"] == 90
+
+
+def test_symbol_accuracy_ranking_aggregates_watchlist(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Two symbols with two signals each — one correct, one incorrect.
+
+    Both symbols should land at 50% accuracy. Sorted descending by
+    accuracy_pct, ties broken by total_signals (desc) then symbol (asc).
+    """
+    with session_factory() as session:
+        admin = session.execute(
+            __import__("sqlalchemy").select(User).where(User.username == "admin")
+        ).scalar_one()
+        session.add(Watchlist(user_id=admin.id, symbol="SPY", data_status="ready"))
+        session.add(Watchlist(user_id=admin.id, symbol="QQQ", data_status="ready"))
+        for sym in ("SPY", "QQQ"):
+            for d, close in [(1, 100), (6, 110), (10, 120), (15, 115)]:
+                session.add(
+                    DailyPrice(
+                        symbol=sym,
+                        date=date(2026, 1, d),
+                        open=Decimal(close),
+                        high=Decimal(close),
+                        low=Decimal(close),
+                        close=Decimal(close),
+                        volume=1,
+                    )
+                )
+            for d in (1, 10):
+                session.add(
+                    TickerSnapshot(
+                        symbol=sym,
+                        date=date(2026, 1, d),
+                        action="buy",
+                        direction_green_count=3,
+                        direction_red_count=0,
+                        timing_modifier="good",
+                        show_timing_modifier=True,
+                        entry_aggressive=None,
+                        entry_ideal=None,
+                        entry_conservative=None,
+                        stop_loss=None,
+                        market_posture_at_compute="normal",
+                        indicator_version="v1",
+                        computed_at=datetime(2026, 1, d, tzinfo=UTC),
+                    )
+                )
+        session.commit()
+
+    _login(client, test_password)
+    body = client.get("/api/v1/history/symbol-accuracy-ranking?days=365&horizon=5").json()
+    by_symbol = {entry["symbol"]: entry for entry in body["data"]}
+    assert set(by_symbol.keys()) == {"SPY", "QQQ"}
+    assert by_symbol["SPY"]["total_signals"] == 2
+    assert by_symbol["SPY"]["correct"] == 1
+    assert by_symbol["SPY"]["accuracy_pct"] == 50.0
+    assert by_symbol["QQQ"]["accuracy_pct"] == 50.0
+    # Tie-broken alphabetically.
+    assert [e["symbol"] for e in body["data"]] == ["QQQ", "SPY"]
+
+
+def test_symbol_accuracy_ranking_includes_symbols_with_no_signals(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Symbols on the watchlist with zero gradeable signals still appear
+    in the response (accuracy_pct=0, total_signals=0). Lets the UI
+    surface "needs more data" rather than silently dropping them."""
+    with session_factory() as session:
+        admin = session.execute(
+            __import__("sqlalchemy").select(User).where(User.username == "admin")
+        ).scalar_one()
+        session.add(Watchlist(user_id=admin.id, symbol="NEW", data_status="ready"))
+        session.commit()
+
+    _login(client, test_password)
+    body = client.get("/api/v1/history/symbol-accuracy-ranking?days=90").json()
+    assert len(body["data"]) == 1
+    assert body["data"][0] == {
+        "symbol": "NEW",
+        "total_signals": 0,
+        "correct": 0,
+        "accuracy_pct": 0.0,
+    }

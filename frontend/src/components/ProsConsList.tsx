@@ -42,7 +42,7 @@ export function ProsConsList({
 }: ProsConsListProps): JSX.Element {
   if (items.length === 0) {
     return (
-      <p role="status" className="text-sm text-slate-400">
+      <p role="status" className="text-sm text-stone-500">
         {emptyMessage}
       </p>
     );
@@ -62,20 +62,20 @@ export function ProsConsList({
           <ProsConsRow key={`${item.indicator_name}-${item.tone}`} item={item} />
         ))}
         {!collapseNeutrals && nonNeutral.length === 0 && (
-          <li className="rounded-md border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-400">
+          <li className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-500">
             {emptyMessage}
           </li>
         )}
       </ul>
       {collapseNeutrals && neutrals.length > 0 && (
-        <details className="rounded-md border border-slate-800 bg-slate-900/40">
+        <details className="rounded-md border border-stone-200 bg-stone-50">
           <summary
             data-testid="neutral-summary"
-            className="cursor-pointer px-3 py-2 text-sm text-slate-300 hover:text-slate-100"
+            className="cursor-pointer px-3 py-2 text-sm text-stone-700 hover:text-stone-900"
           >
             ⚪ 中性訊號 ({neutrals.length})
           </summary>
-          <ul className="flex flex-col gap-2 border-t border-slate-800 p-2">
+          <ul className="flex flex-col gap-2 border-t border-stone-200 p-2">
             {neutrals.map((item) => (
               <ProsConsRow key={`${item.indicator_name}-neutral`} item={item} />
             ))}
@@ -94,27 +94,27 @@ function ProsConsRow({ item }: ProsConsRowProps): JSX.Element {
   const tone = TONE_DOT[item.tone];
   const detailEntries = Object.entries(item.detail);
   return (
-    <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
+    <li className="overflow-hidden rounded-md border border-stone-200 bg-stone-50">
       <details>
         <summary
           data-testid="pros-cons-summary"
-          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:text-white"
+          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-stone-800 hover:text-stone-900"
         >
           <span aria-label={tone.ariaLabel}>{tone.emoji}</span>
           <span className="flex-1">{item.short_label}</span>
           <TimeframeChip timeframe={item.timeframe} />
           {detailEntries.length > 0 && (
-            <span aria-hidden="true" className="text-xs text-slate-500">
+            <span aria-hidden="true" className="text-xs text-stone-400">
               詳細
             </span>
           )}
         </summary>
         {detailEntries.length > 0 && (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-slate-800 bg-slate-950/40 px-3 py-2 text-xs text-slate-300">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-700">
             {detailEntries.map(([key, value]) => (
               <div key={key} className="contents">
-                <dt className="font-mono text-slate-500">{humanizeKey(key)}</dt>
-                <dd className="font-mono text-slate-200">{renderValue(value)}</dd>
+                <dt className="font-mono text-stone-400">{humanizeKey(key)}</dt>
+                <dd className="font-mono text-stone-800">{renderValue(value)}</dd>
               </div>
             ))}
           </dl>

@@ -43,8 +43,8 @@ const GAUGE_MAX = 1.2;
 // (oversold, 綠). Mirrors RSI's inverted tone palette.
 const ZONES: ReadonlyArray<PositionGaugeZone> = [
   { upTo: 0, label: '突破下軌', bg: 'bg-signal-green/30', text: 'text-signal-green' },
-  { upTo: 0.5, label: '中軌下方', bg: 'bg-slate-700/40', text: 'text-slate-300' },
-  { upTo: 1, label: '中軌上方', bg: 'bg-slate-600/40', text: 'text-slate-200' },
+  { upTo: 0.5, label: '中軌下方', bg: 'bg-stone-200', text: 'text-stone-700' },
+  { upTo: 1, label: '中軌上方', bg: 'bg-stone-300', text: 'text-stone-800' },
   { upTo: GAUGE_MAX, label: '突破上軌', bg: 'bg-signal-red/30', text: 'text-signal-red' },
 ];
 
@@ -126,15 +126,15 @@ function PositionSection({ detail: d }: { detail: BbDetail }): JSX.Element {
   return (
     <section aria-label="布林通道帶內位置" className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-slate-400">帶內位置（0 = 下軌，1 = 上軌）</h3>
-        <span className="text-slate-400">
-          <span className="text-[10px] text-slate-500">位置</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-100">
+        <h3 className="text-stone-500">帶內位置（0 = 下軌，1 = 上軌）</h3>
+        <span className="text-stone-500">
+          <span className="text-[10px] text-stone-400">位置</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-900">
             {(d.position * 100).toFixed(0)}%
           </span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span className="text-[10px] text-slate-500">帶寬</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-300">
+          <span className="mx-1 text-stone-400">·</span>
+          <span className="text-[10px] text-stone-400">帶寬</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-700">
             {d.band_width.toFixed(2)}
           </span>
         </span>
@@ -195,7 +195,7 @@ function Watchpoints({
   const points = buildWatchpoints(d, signal);
   return (
     <section aria-label="布林帶看點" className="flex flex-col gap-1.5 text-xs">
-      <h3 className="text-slate-400">
+      <h3 className="text-stone-500">
         <Explainable
           title="看點生成規則"
           explanation={
@@ -229,22 +229,22 @@ function Watchpoints({
         >
           看點
         </Explainable>
-        <span className="ml-1 text-slate-500">（觸發轉態勢的關鍵價位）</span>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵價位）</span>
       </h3>
       <ul className="flex flex-col gap-1">
         {points.map((p, idx) => (
           <li
             key={`${p.direction}-${p.level.toFixed(2)}-${idx}`}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
           >
-            <span className="text-slate-300">
+            <span className="text-stone-700">
               {p.direction === 'up' ? '價突破' : '價跌至'}{' '}
-              <span className="font-mono tabular-nums text-slate-100">
+              <span className="font-mono tabular-nums text-stone-900">
                 {p.level.toFixed(2)}
               </span>
             </span>
-            <span className="text-slate-500">→</span>
-            <span className="text-slate-300">{p.description}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.description}</span>
           </li>
         ))}
       </ul>

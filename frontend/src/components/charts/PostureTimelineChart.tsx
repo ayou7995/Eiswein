@@ -191,7 +191,7 @@ export function PostureTimelineChart({
       <div
         role="status"
         data-testid="posture-timeline-empty"
-        className="flex h-32 w-full items-center justify-center rounded-md border border-dashed border-slate-800 bg-slate-900/40 text-sm text-slate-400"
+        className="flex h-32 w-full items-center justify-center rounded-md border border-dashed border-stone-200 bg-stone-50 text-sm text-stone-500"
       >
         無市場態勢歷史
       </div>
@@ -239,7 +239,7 @@ export function PostureTimelineChart({
       onMouseLeave={() => setHover(null)}
     >
       <div
-        className="relative overflow-hidden rounded-md border border-slate-800 bg-slate-950"
+        className="relative overflow-hidden rounded-md border border-stone-200 bg-stone-50"
         style={{ height: TOTAL_HEIGHT }}
       >
         <svg
@@ -269,7 +269,7 @@ export function PostureTimelineChart({
                 x2={viewBoxWidth}
                 y1={yMaxLine}
                 y2={yMaxLine}
-                stroke="#1e293b"
+                stroke="rgba(0,0,0,0.08)"
                 strokeWidth={0.4}
                 strokeDasharray="3 3"
                 vectorEffect="non-scaling-stroke"
@@ -279,7 +279,7 @@ export function PostureTimelineChart({
                 x2={viewBoxWidth}
                 y1={yMidLine}
                 y2={yMidLine}
-                stroke="#1e293b"
+                stroke="rgba(0,0,0,0.08)"
                 strokeWidth={0.4}
                 strokeDasharray="3 3"
                 vectorEffect="non-scaling-stroke"
@@ -289,7 +289,7 @@ export function PostureTimelineChart({
                 x2={viewBoxWidth}
                 y1={yMinLine}
                 y2={yMinLine}
-                stroke="#1e293b"
+                stroke="rgba(0,0,0,0.08)"
                 strokeWidth={0.4}
                 strokeDasharray="3 3"
                 vectorEffect="non-scaling-stroke"
@@ -324,7 +324,7 @@ export function PostureTimelineChart({
             <polyline
               points={series.closePath}
               fill="none"
-              stroke="#e2e8f0"
+              stroke="#1c1917"
               strokeWidth={0.6}
               vectorEffect="non-scaling-stroke"
             />
@@ -336,7 +336,7 @@ export function PostureTimelineChart({
               x2={X_PADDING + hover.index + 0.5}
               y1={0}
               y2={PRICE_AREA_HEIGHT}
-              stroke="#94a3b8"
+              stroke="#78716c"
               strokeWidth={0.4}
               strokeDasharray="2 2"
               vectorEffect="non-scaling-stroke"
@@ -376,10 +376,10 @@ export function PostureTimelineChart({
           />
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-stone-500">
         <span>{firstDate}</span>
-        <div className="flex items-center gap-3 text-[10px] text-slate-500">
-          <LegendDot color="#e2e8f0" label="SPY" />
+        <div className="flex items-center gap-3 text-[10px] text-stone-400">
+          <LegendDot color="#1c1917" label="SPY" />
           <LegendDot color={MA50_COLOR} label="50MA" />
           <LegendDot color={MA200_COLOR} label="200MA" />
         </div>
@@ -418,7 +418,7 @@ function PriceAxisLabel({ value, y }: PriceAxisLabelProps): JSX.Element {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute left-1 rounded bg-slate-950/70 px-1 font-mono text-[10px] text-slate-400"
+      className="pointer-events-none absolute left-1 rounded bg-white/80 px-1 font-mono text-[10px] text-stone-500"
       style={{
         // The SVG y-coord maps 1:1 to pixels because the container is
         // pinned to TOTAL_HEIGHT. Subtract half the label height so the
@@ -477,11 +477,11 @@ function PostureTooltip({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute top-2 z-10 rounded-md border border-slate-700 bg-slate-950/95 p-2 text-[11px] text-slate-100 shadow-lg backdrop-blur"
+      className="pointer-events-none absolute top-2 z-10 rounded-md border border-stone-300 bg-white p-2 text-[11px] text-stone-900 shadow-lg backdrop-blur"
       style={{ left, width: TOOLTIP_WIDTH }}
     >
       <div className="mb-1 flex items-center gap-2">
-        <span className="font-mono text-slate-300">{item.date}</span>
+        <span className="font-mono text-stone-700">{item.date}</span>
         <span
           className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
           style={{
@@ -492,13 +492,13 @@ function PostureTooltip({
           {POSTURE_LABEL[item.posture]}
         </span>
         {typeof item.spy_close === 'number' && (
-          <span className="font-mono text-slate-300">
+          <span className="font-mono text-stone-700">
             SPY ${item.spy_close.toFixed(2)}
           </span>
         )}
       </div>
       {(typeof item.spy_ma50 === 'number' || typeof item.spy_ma200 === 'number') && (
-        <div className="mb-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-400">
+        <div className="mb-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-stone-500">
           {typeof item.spy_ma50 === 'number' && (
             <span className="flex items-center gap-1">
               <span
@@ -528,7 +528,7 @@ function PostureTooltip({
           return (
             <div key={name} className="flex items-center gap-1">
               <span aria-hidden="true">{dot}</span>
-              <span className="text-slate-300">{REGIME_LABEL[name] ?? name}</span>
+              <span className="text-stone-700">{REGIME_LABEL[name] ?? name}</span>
             </div>
           );
         })}
@@ -552,8 +552,8 @@ function StatRow({ label, count, pct, color }: StatRowProps): JSX.Element {
         className="inline-block h-2.5 w-2.5 rounded-sm"
         style={{ backgroundColor: color }}
       />
-      <dt className="text-slate-300">{label}</dt>
-      <dd className="font-mono text-slate-400">
+      <dt className="text-stone-700">{label}</dt>
+      <dd className="font-mono text-stone-500">
         {count} 日 ({pct}%)
       </dd>
     </div>

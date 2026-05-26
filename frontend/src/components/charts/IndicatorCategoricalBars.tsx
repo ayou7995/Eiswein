@@ -73,7 +73,7 @@ export function IndicatorCategoricalBars({
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-700">
         <LegendSwatch color={colors.accum} label={legendLabels.accum} />
         <LegendSwatch color={colors.distrib} label={legendLabels.distrib} />
         <LegendSwatch color={colors.neutral} label={legendLabels.neutral} />
@@ -84,7 +84,7 @@ export function IndicatorCategoricalBars({
             data-testid="indicator-categorical-bars-empty"
             role="img"
             aria-label={ariaLabel}
-            className="flex w-full items-center justify-center rounded-md border border-slate-800 bg-slate-950 text-xs text-slate-500"
+            className="flex w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-xs text-stone-400"
             style={{ height }}
           >
             無資料
@@ -96,7 +96,7 @@ export function IndicatorCategoricalBars({
             aria-label={ariaLabel}
             viewBox={`0 0 ${VIEWBOX_WIDTH} 100`}
             preserveAspectRatio="none"
-            className="w-full rounded-md border border-slate-800 bg-slate-950"
+            className="w-full rounded-md border border-stone-200 bg-stone-50"
             style={{ height }}
             onMouseLeave={() => setHover(null)}
           >
@@ -132,11 +132,11 @@ export function IndicatorCategoricalBars({
           <div
             role="tooltip"
             data-testid="indicator-categorical-tooltip"
-            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 shadow-lg"
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md border border-stone-300 bg-white px-2 py-1 text-xs text-stone-900 shadow-lg"
             style={{ left: hover.x, top: hover.y - 6 }}
           >
             <div className="font-mono">{hoveredRow.date}</div>
-            <div className="text-slate-300">{labelFor(hoveredRow.classification)}</div>
+            <div className="text-stone-700">{labelFor(hoveredRow.classification)}</div>
           </div>
         )}
       </div>

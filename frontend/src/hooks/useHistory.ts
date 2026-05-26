@@ -3,11 +3,13 @@ import {
   marketPostureHistory,
   postureAccuracy,
   signalAccuracy,
+  symbolAccuracyRanking,
   tickerSignalsHistory,
   type PostureAccuracyResponse,
   type PostureHistoryResponse,
   type SignalAccuracyHorizon,
   type SignalAccuracyResponse,
+  type SymbolAccuracyRankingResponse,
   type TickerSignalsResponse,
 } from '../api/history';
 
@@ -51,6 +53,20 @@ export function usePostureAccuracy(
   return useQuery({
     queryKey: ['history', 'posture-accuracy', horizon, days ?? 'all'] as const,
     queryFn: () => postureAccuracy(horizon, days),
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useSymbolAccuracyRanking(args: {
+  days: number;
+  horizon?: SignalAccuracyHorizon;
+}): ReturnType<typeof useQuery<SymbolAccuracyRankingResponse>> {
+  const horizon = args.horizon ?? 20;
+  return useQuery({
+    queryKey: ['history', 'symbol-accuracy-ranking', args.days, horizon] as const,
+    queryFn: () => symbolAccuracyRanking(args.days, horizon),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,

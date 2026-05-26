@@ -82,7 +82,7 @@ export function PositionGauge({
         className={`relative h-3 w-full overflow-hidden rounded-md border ${
           overflowAbove || overflowBelow
             ? 'border-amber-400/80 ring-1 ring-amber-400/30'
-            : 'border-slate-700/60'
+            : 'border-stone-300'
         }`}
       >
         {segments.map((seg, idx) => (
@@ -98,14 +98,14 @@ export function PositionGauge({
           // than a near-invisible 1px line clipped by overflow-hidden.
           <div
             aria-hidden="true"
-            className="absolute right-0 top-0 flex h-3 items-center pr-0.5 text-[11px] font-bold leading-none text-amber-300 drop-shadow-[0_0_2px_rgba(0,0,0,0.6)]"
+            className="absolute right-0 top-0 flex h-3 items-center pr-0.5 text-[11px] font-bold leading-none text-amber-700 drop-shadow-[0_0_2px_rgba(0,0,0,0.6)]"
           >
             ▶
           </div>
         ) : overflowBelow ? (
           <div
             aria-hidden="true"
-            className="absolute left-0 top-0 flex h-3 items-center pl-0.5 text-[11px] font-bold leading-none text-amber-300 drop-shadow-[0_0_2px_rgba(0,0,0,0.6)]"
+            className="absolute left-0 top-0 flex h-3 items-center pl-0.5 text-[11px] font-bold leading-none text-amber-700 drop-shadow-[0_0_2px_rgba(0,0,0,0.6)]"
           >
             ◀
           </div>
@@ -113,7 +113,7 @@ export function PositionGauge({
           <div
             aria-hidden="true"
             style={{ left: `${markerLeftPct}%` }}
-            className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-slate-100 shadow-[0_0_0_1px_rgba(15,23,42,0.6)]"
+            className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-stone-900 shadow-[0_0_0_1px_rgba(255,255,255,0.8)]"
           />
         )}
       </div>

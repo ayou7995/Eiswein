@@ -1,109 +1,90 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import { DISCLAIMER_TEXT, ROUTES } from '../lib/constants';
+import { useCallback, useEffect, useState } from 'react';
+import { Outlet } from 'react-router-dom';
+import { Sidebar } from './Sidebar';
+import { DISCLAIMER_TEXT } from '../lib/constants';
 
-interface NavItem {
-  to: string;
-  label: string;
-}
-
-const NAV_ITEMS: readonly NavItem[] = [
-  { to: ROUTES.DASHBOARD, label: '儀表板' },
-  { to: ROUTES.HISTORY, label: '歷史' },
-  { to: ROUTES.SETTINGS, label: '設定' },
-];
-
-function linkClass(isActive: boolean): string {
-  const base =
-    'block rounded-md px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
-  return isActive
-    ? `${base} bg-sky-600 text-white`
-    : `${base} text-slate-300 hover:bg-slate-800 hover:text-white`;
-}
-
+// AppShell — light-theme two-column composition. Sidebar on the left (340px,
+// fixed), main content on the right (max-w-[1100px], centered). Below `lg`
+// the sidebar hides and a hamburger button toggles an off-canvas drawer
+// with ESC + backdrop close. Focus management lives in the drawer block
+// rather than a separate Modal because the sidebar already needs to be
+// fully interactive when open — Modal's focus trap would conflict with
+// `<NavLink>` keyboard nav.
 export function AppShell(): JSX.Element {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const { logout, user } = useAuth();
-  const navigate = useNavigate();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
-  const handleLogout = async (): Promise<void> => {
-    await logout();
-    navigate(ROUTES.LOGIN, { replace: true });
-  };
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDrawer();
+      }
+    };
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKeydown);
+    return () => {
+      document.body.style.overflow = original;
+      document.removeEventListener('keydown', onKeydown);
+    };
+  }, [drawerOpen, closeDrawer]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="開啟主選單"
-              aria-expanded={mobileOpen}
-              aria-controls="mobile-nav"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-700 text-slate-200 sm:hidden"
-              onClick={() => setMobileOpen((v) => !v)}
-            >
-              <span aria-hidden="true">☰</span>
-            </button>
-            <span className="text-lg font-semibold">Eiswein</span>
-          </div>
+    <div className="flex min-h-screen bg-stone-50 text-stone-900">
+      <aside
+        aria-label="主要導覽側欄"
+        className="hidden border-r border-stone-200 bg-white lg:flex lg:h-screen lg:w-[340px] lg:shrink-0 lg:sticky lg:top-0"
+      >
+        <Sidebar />
+      </aside>
 
-          <nav aria-label="主要導覽" className="hidden sm:block">
-            <ul className="flex items-center gap-1">
-              {NAV_ITEMS.map((item) => (
-                <li key={item.to}>
-                  <NavLink to={item.to} className={({ isActive }) => linkClass(isActive)}>
-                    {item.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
+      <div className="flex min-h-screen flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-stone-200 bg-white/80 px-4 py-2 backdrop-blur lg:hidden">
+          <button
+            type="button"
+            aria-label="開啟側欄"
+            aria-expanded={drawerOpen}
+            aria-controls="sidebar-drawer"
+            onClick={() => setDrawerOpen(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+          <span className="text-base font-semibold tracking-tight">Eiswein</span>
+          <span className="h-9 w-9" aria-hidden="true" />
+        </header>
 
-          <div className="flex items-center gap-3">
-            {user && (
-              <span className="hidden text-xs text-slate-400 sm:inline">
-                {user.username}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-            >
-              登出
-            </button>
-          </div>
+        <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <Outlet />
+        </main>
+
+        <footer className="border-t border-stone-200 px-4 py-3 text-center text-xs text-stone-500">
+          {DISCLAIMER_TEXT}
+        </footer>
+      </div>
+
+      {drawerOpen && (
+        <div
+          data-testid="sidebar-drawer-backdrop"
+          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+          onClick={closeDrawer}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') closeDrawer();
+          }}
+          role="presentation"
+        >
+          <aside
+            id="sidebar-drawer"
+            aria-label="主要導覽側欄"
+            className="absolute inset-y-0 left-0 flex w-[320px] max-w-[85vw] flex-col bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Sidebar onItemClick={closeDrawer} />
+          </aside>
         </div>
-
-        {mobileOpen && (
-          <nav id="mobile-nav" aria-label="主要導覽（行動版）" className="border-t border-slate-800 sm:hidden">
-            <ul className="flex flex-col gap-1 px-4 py-3">
-              {NAV_ITEMS.map((item) => (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    onClick={() => setMobileOpen(false)}
-                    className={({ isActive }) => linkClass(isActive)}
-                  >
-                    {item.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
-      </header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        <Outlet />
-      </main>
-
-      <footer className="border-t border-slate-800 px-4 py-3 text-center text-xs text-slate-500">
-        {DISCLAIMER_TEXT}
-      </footer>
+      )}
     </div>
   );
 }

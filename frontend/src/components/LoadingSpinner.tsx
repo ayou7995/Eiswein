@@ -16,7 +16,7 @@ export function LoadingSpinner({
     >
       <span
         aria-hidden="true"
-        className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-sky-400"
+        className="h-4 w-4 animate-spin rounded-full border-2 border-stone-300 border-t-sky-400"
       />
       <span className="sr-only">{label}</span>
     </div>

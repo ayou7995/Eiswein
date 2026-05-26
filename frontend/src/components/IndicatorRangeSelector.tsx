@@ -23,7 +23,7 @@ export function IndicatorRangeSelector({
     <div
       role="radiogroup"
       aria-label={indicatorLabel ? `${indicatorLabel} 區間` : '指標區間'}
-      className="inline-flex rounded-md border border-slate-700 bg-slate-900/40 p-0.5"
+      className="inline-flex rounded-md border border-stone-300 bg-stone-50 p-0.5"
     >
       {MARKET_INDICATOR_RANGES.map((option) => {
         const active = option.key === value;
@@ -38,7 +38,7 @@ export function IndicatorRangeSelector({
             className={`rounded px-2 py-0.5 text-[11px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
               active
                 ? 'bg-sky-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                : 'text-stone-700 hover:bg-stone-100 hover:text-stone-900'
             }`}
           >
             {option.key}

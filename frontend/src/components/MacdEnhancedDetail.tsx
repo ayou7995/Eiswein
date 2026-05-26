@@ -32,8 +32,8 @@ const SUB_STATE_LABEL: Record<MacdSubState, string> = {
 const SUB_STATE_TONE: Record<MacdSubState, string> = {
   cross_up: 'border-signal-green/40 bg-signal-green/10 text-signal-green',
   cross_down: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
-  momentum_positive: 'border-amber-400/40 bg-amber-400/10 text-amber-400',
-  momentum_negative: 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+  momentum_positive: 'border-amber-300 bg-amber-400/10 text-amber-700',
+  momentum_negative: 'border-amber-300 bg-amber-400/10 text-amber-700',
 };
 
 export interface MacdHeadlineLabels {
@@ -191,7 +191,7 @@ function Watchpoints({ subState }: { subState: MacdSubState }): JSX.Element {
   const points = buildWatchpoints(subState);
   return (
     <section aria-label="MACD 看點" className="flex flex-col gap-1.5 text-xs">
-      <h3 className="text-slate-400">
+      <h3 className="text-stone-500">
         <Explainable
           title="看點生成規則"
           explanation={
@@ -221,17 +221,17 @@ function Watchpoints({ subState }: { subState: MacdSubState }): JSX.Element {
         >
           看點
         </Explainable>
-        <span className="ml-1 text-slate-500">（histogram 動態）</span>
+        <span className="ml-1 text-stone-400">（histogram 動態）</span>
       </h3>
       <ul className="flex flex-col gap-1">
         {points.map((p) => (
           <li
             key={p.description}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
           >
-            <span className="text-slate-300">{p.description}</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-slate-300">{p.result}</span>
+            <span className="text-stone-700">{p.description}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.result}</span>
           </li>
         ))}
       </ul>

@@ -35,7 +35,7 @@ const GAUGE_MAX = 0.1;
 
 const ZONES: ReadonlyArray<PositionGaugeZone> = [
   { upTo: -STRONG_THRESHOLD, label: '弱於', bg: 'bg-signal-red/30', text: 'text-signal-red' },
-  { upTo: STRONG_THRESHOLD, label: '接近', bg: 'bg-amber-400/20', text: 'text-amber-400' },
+  { upTo: STRONG_THRESHOLD, label: '接近', bg: 'bg-amber-400/20', text: 'text-amber-700' },
   { upTo: GAUGE_MAX, label: '強於', bg: 'bg-signal-green/30', text: 'text-signal-green' },
 ];
 
@@ -112,20 +112,20 @@ function PositionSection({ detail: d }: { detail: RsDetail }): JSX.Element {
   return (
     <section aria-label="相對強度位置條" className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-slate-400">差距位置（20 日報酬差，-10% ~ +10%）</h3>
-        <span className="text-slate-400">
-          <span className="text-[10px] text-slate-500">個股</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-100">
+        <h3 className="text-stone-500">差距位置（20 日報酬差，-10% ~ +10%）</h3>
+        <span className="text-stone-500">
+          <span className="text-[10px] text-stone-400">個股</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-900">
             {formatPct(d.ticker_20d_return)}
           </span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span className="text-[10px] text-slate-500">SPX</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-300">
+          <span className="mx-1 text-stone-400">·</span>
+          <span className="text-[10px] text-stone-400">SPX</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-700">
             {formatPct(d.spx_20d_return)}
           </span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span className="text-[10px] text-slate-500">差距</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-100">
+          <span className="mx-1 text-stone-400">·</span>
+          <span className="text-[10px] text-stone-400">差距</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-900">
             {formatPct(d.diff)}
           </span>
         </span>
@@ -171,7 +171,7 @@ function Watchpoints({ signal }: { signal: RsSignal }): JSX.Element {
   const points = buildWatchpoints(signal);
   return (
     <section aria-label="相對強度看點" className="flex flex-col gap-1.5 text-xs">
-      <h3 className="text-slate-400">
+      <h3 className="text-stone-500">
         <Explainable
           title="看點生成規則"
           explanation={
@@ -200,19 +200,19 @@ function Watchpoints({ signal }: { signal: RsSignal }): JSX.Element {
         >
           看點
         </Explainable>
-        <span className="ml-1 text-slate-500">（觸發轉態勢的關鍵差距）</span>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵差距）</span>
       </h3>
       <ul className="flex flex-col gap-1">
         {points.map((p) => (
           <li
             key={`${p.direction}-${p.threshold}`}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
           >
-            <span className="text-slate-300">
+            <span className="text-stone-700">
               {p.direction === 'up' ? '差距升至' : '差距跌至'} {formatPct(p.threshold)}
             </span>
-            <span className="text-slate-500">→</span>
-            <span className="text-slate-300">{SIGNAL_LABEL[p.nextSignal]}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{SIGNAL_LABEL[p.nextSignal]}</span>
           </li>
         ))}
       </ul>

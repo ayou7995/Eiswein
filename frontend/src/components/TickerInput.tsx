@@ -44,8 +44,8 @@ export const TickerInput = forwardRef<HTMLInputElement, TickerInputProps>(
         value={value}
         onChange={handleChange}
         aria-invalid={!isValid}
-        className={`rounded-md border bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-          isValid ? 'border-slate-600' : 'border-signal-red'
+        className={`rounded-md border bg-stone-100 px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+          isValid ? 'border-stone-300' : 'border-signal-red'
         } ${className}`}
       />
     );

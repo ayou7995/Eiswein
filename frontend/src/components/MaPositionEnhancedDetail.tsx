@@ -91,9 +91,9 @@ const STRETCH_LABEL: Record<Stretch, string> = {
 // Over-extended uses amber (warning, not loss) because being too far above
 // is a pullback risk, not a regime break.
 const STRETCH_TONE: Record<Stretch, string> = {
-  over_extended: 'text-amber-400',
+  over_extended: 'text-amber-700',
   healthy: 'text-signal-green',
-  pressing: 'text-amber-400',
+  pressing: 'text-amber-700',
   broken: 'text-signal-red',
 };
 
@@ -239,7 +239,7 @@ function DistanceGauges({
       aria-label="收盤離 MA 距離"
       className="flex flex-col gap-2 text-xs"
     >
-      <h3 className="text-slate-400">距離尺標</h3>
+      <h3 className="text-stone-500">距離尺標</h3>
       <DistanceRow label="距 50MA" pct={pct50} stretch={stretch50} />
       <DistanceRow label="距 200MA" pct={pct200} stretch={stretch200} />
     </section>
@@ -262,13 +262,13 @@ function DistanceRow({ label, pct, stretch }: DistanceRowProps): JSX.Element {
   const widthStyle = { width: `${widthFraction * 50}%` };
   return (
     <div className="grid grid-cols-[5rem_1fr_auto] items-center gap-2">
-      <span className="text-slate-400">{label}</span>
+      <span className="text-stone-500">{label}</span>
       <div
         role="img"
         aria-label={`${label} ${pct.toFixed(2)}%`}
-        className="relative h-2 w-full rounded-full bg-slate-800"
+        className="relative h-2 w-full rounded-full bg-stone-100"
       >
-        <span aria-hidden="true" className="absolute left-1/2 top-0 h-2 w-px bg-slate-600" />
+        <span aria-hidden="true" className="absolute left-1/2 top-0 h-2 w-px bg-stone-500" />
         <span
           aria-hidden="true"
           style={widthStyle}
@@ -280,7 +280,7 @@ function DistanceRow({ label, pct, stretch }: DistanceRowProps): JSX.Element {
       <span className={`tabular-nums ${STRETCH_TONE[stretch]}`}>
         {pct >= 0 ? '+' : ''}
         {pct.toFixed(2)}%
-        <span className="ml-1 text-[11px] text-slate-500">
+        <span className="ml-1 text-[11px] text-stone-400">
           (
           <Explainable
             title={`${label} 分類規則`}
@@ -329,7 +329,7 @@ function CrossStateRow({ detail }: { detail: BaseDetail }): JSX.Element {
   return (
     <section
       aria-label="均線交叉態勢"
-      className={`flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs ${cross.tone}`}
+      className={`flex items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs ${cross.tone}`}
     >
       <span aria-hidden="true">{cross.emoji}</span>
       <Explainable
@@ -379,7 +379,7 @@ function Watchpoints({
 }): JSX.Element {
   return (
     <section aria-label="未來看點" className="flex flex-col gap-2 text-xs">
-      <h3 className="text-slate-400">
+      <h3 className="text-stone-500">
         <Explainable
           title="看點生成規則"
           explanation={
@@ -414,16 +414,16 @@ function Watchpoints({
         {points.map((p) => (
           <li
             key={`${p.level}-${p.direction}`}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1.5"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
           >
-            <span className="text-slate-300">
+            <span className="text-stone-700">
               {p.direction === 'up' ? '站上' : '跌破'} {LEVEL_LABEL[p.level]}
             </span>
-            <span className="font-mono tabular-nums text-slate-100">
+            <span className="font-mono tabular-nums text-stone-900">
               ${p.price.toFixed(2)}
             </span>
-            <span className="text-slate-500">→</span>
-            <span className="text-slate-300">{SIGNAL_LABEL[p.next_signal]}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{SIGNAL_LABEL[p.next_signal]}</span>
           </li>
         ))}
       </ul>

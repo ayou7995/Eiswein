@@ -35,7 +35,7 @@ export function DataFreshnessBadge({
         role="status"
         data-testid="data-freshness-badge"
         aria-label="今日非交易日"
-        className="inline-flex items-center gap-1 rounded-full border border-slate-500/40 bg-slate-500/10 px-2 py-0.5 text-xs font-medium text-slate-400"
+        className="inline-flex items-center gap-1 rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500"
       >
         休市
       </span>
@@ -55,7 +55,7 @@ export function DataFreshnessBadge({
           role="status"
           data-testid="data-freshness-badge"
           aria-label={tooltip}
-          className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300"
+          className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
         >
           盤中即時
         </span>

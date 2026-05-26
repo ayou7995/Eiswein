@@ -7,7 +7,7 @@ interface DataStatusBadgeProps {
 const CONFIG: Record<DataStatus, { label: string; className: string; ariaLabel: string }> = {
   pending: {
     label: '載入中',
-    className: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+    className: 'border-amber-300 bg-amber-50 text-amber-700',
     ariaLabel: '資料載入中',
   },
   ready: {
@@ -22,7 +22,7 @@ const CONFIG: Record<DataStatus, { label: string; className: string; ariaLabel: 
   },
   delisted: {
     label: '已下市',
-    className: 'border-slate-500/40 bg-slate-500/10 text-slate-400',
+    className: 'border-stone-300 bg-stone-100 text-stone-500',
     ariaLabel: '已下市或無效',
   },
 };

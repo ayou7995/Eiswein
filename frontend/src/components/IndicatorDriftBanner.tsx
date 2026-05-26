@@ -162,7 +162,7 @@ export function IndicatorDriftBanner(): JSX.Element | null {
           <span className="font-semibold">
             重算中… {job.processed_days}/{job.total_days} 天
           </span>
-          <span className="text-xs text-sky-300/80">（{pct}%）</span>
+          <span className="text-xs text-sky-700/80">（{pct}%）</span>
         </div>
         <div
           role="progressbar"
@@ -170,7 +170,7 @@ export function IndicatorDriftBanner(): JSX.Element | null {
           aria-valuemin={0}
           aria-valuemax={job.total_days}
           aria-label="指標重算進度"
-          className="h-2 w-full overflow-hidden rounded-full bg-slate-800"
+          className="h-2 w-full overflow-hidden rounded-full bg-stone-100"
         >
           <div
             className="h-full bg-sky-500 transition-all"
@@ -203,7 +203,7 @@ export function IndicatorDriftBanner(): JSX.Element | null {
         <button
           type="button"
           onClick={handleDismiss}
-          className="rounded-md border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
         >
           稍後
         </button>

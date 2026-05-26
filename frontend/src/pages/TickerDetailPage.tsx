@@ -42,16 +42,21 @@ import {
   BollingerEnhancedDetail,
   BollingerHeadlineExplainable,
 } from '../components/BollingerEnhancedDetail';
+import { DxyEnhancedDetail } from '../components/DxyEnhancedDetail';
+import { FedRateEnhancedDetail } from '../components/FedRateEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
 import { useTickerIndicators } from '../hooks/useTickerIndicators';
 import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useIndicatorSeries } from '../hooks/useIndicatorSeries';
+import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
 import { IndicatorRangeSelector } from '../components/IndicatorRangeSelector';
 import { TimeframeChip } from '../components/TimeframeChip';
 import { INDICATOR_TIMEFRAMES } from '../lib/timeframes';
+import { SignalAccuracySection } from '../components/SignalAccuracySection';
 import {
   MARKET_INDICATOR_RANGES,
   type MarketIndicatorRangeKey,
+  type MarketIndicatorSeriesName,
 } from '../api/marketIndicatorSeries';
 import type { TickerSignalResponse } from '../api/tickerSignal';
 import type { IndicatorResult } from '../api/tickerIndicators';
@@ -62,12 +67,18 @@ import type {
 } from '../api/tickerIndicatorSeries';
 import { EisweinApiError } from '../api/errors';
 
-// Sorted short → mid → long: tactical (RSI, volume) first, then mid-term
-// trend (price vs MA, relative strength). Same scan order as the dashboard.
-const DIRECTION_INDICATORS = ['rsi', 'volume_anomaly', 'price_vs_ma', 'relative_strength'];
-// Both timing indicators are short-term — leaving MACD first (the more
-// commonly-cited momentum signal) before the band-position view.
+// Render order: tactical → trend → cross-check, mirroring the dashboard
+// scan order. All indicators are rendered inline (no <details> wrapper) —
+// the operator scrolls top-to-bottom through every data view in one pass.
+const DIRECTION_INDICATORS = [
+  'rsi',
+  'volume_anomaly',
+  'price_vs_ma',
+  'relative_strength',
+];
 const TIMING_INDICATORS = ['macd', 'bollinger'];
+const MACRO_INDICATORS = ['dxy', 'fed_rate'];
+
 const INDICATOR_TITLES: Record<string, string> = {
   price_vs_ma: '價格 vs 50/200 MA',
   rsi: 'RSI',
@@ -75,6 +86,8 @@ const INDICATOR_TITLES: Record<string, string> = {
   relative_strength: '相對強度',
   macd: 'MACD',
   bollinger: 'Bollinger Bands',
+  dxy: 'DXY (美元指數)',
+  fed_rate: 'Fed 利率',
 };
 
 const POSTURE_LABELS: Record<string, string> = {
@@ -92,51 +105,58 @@ const INDICATOR_SERIES_NAME: Record<string, IndicatorSeriesName> = {
   relative_strength: 'relative_strength',
 };
 
+// Macro indicators come from the market-indicator series endpoints (shared
+// across tickers) — different namespace from the per-ticker series.
+const MACRO_SERIES_NAME: Record<string, MarketIndicatorSeriesName> = {
+  dxy: 'dxy',
+  fed_rate: 'fed_rate',
+};
+
 const PRICE_VS_MA_LINES: ReadonlyArray<MultiLineDefinition> = [
-  { key: 'price', label: '收盤價', color: '#e2e8f0', width: 2 },
-  { key: 'ma50', label: '50 MA', color: '#38bdf8', style: 'dashed', width: 2 },
-  { key: 'ma200', label: '200 MA', color: '#facc15', style: 'dashed', width: 1 },
+  { key: 'price', label: '收盤價', color: '#1c1917', width: 2 },
+  { key: 'ma50', label: '50 MA', color: '#0284c7', style: 'dashed', width: 2 },
+  { key: 'ma200', label: '200 MA', color: '#d97706', style: 'dashed', width: 1 },
 ];
 
 const RSI_LINES: ReadonlyArray<BoundedLineDefinition> = [
-  { key: 'daily', label: '日 RSI', color: '#38bdf8' },
-  { key: 'weekly', label: '週 RSI', color: '#a78bfa' },
+  { key: 'daily', label: '日 RSI', color: '#0284c7' },
+  { key: 'weekly', label: '週 RSI', color: '#8b5cf6' },
 ];
 
 const RSI_THRESHOLDS: ReadonlyArray<BoundedLineThreshold> = [
-  { value: 30, label: '超賣', color: '#22c55e', fillBetween: 'below' },
-  { value: 70, label: '超買', color: '#ef4444', fillBetween: 'above' },
+  { value: 30, label: '超賣', color: '#059669', fillBetween: 'below' },
+  { value: 70, label: '超買', color: '#e11d48', fillBetween: 'above' },
 ];
 
 const MACD_LINES: ReadonlyArray<MultiLineDefinition> = [
-  { key: 'macd', label: 'MACD', color: '#38bdf8', width: 2 },
-  { key: 'signal', label: 'Signal', color: '#facc15', width: 1 },
+  { key: 'macd', label: 'MACD', color: '#0284c7', width: 2 },
+  { key: 'signal', label: 'Signal', color: '#d97706', width: 1 },
 ];
 
 const MACD_HISTOGRAM: MultiLineHistogram = {
   key: 'histogram',
-  positiveColor: '#22c55e',
-  negativeColor: '#ef4444',
+  positiveColor: '#059669',
+  negativeColor: '#e11d48',
 };
 
 const BB_LINES: ReadonlyArray<MultiLineDefinition> = [
-  { key: 'price', label: '收盤價', color: '#e2e8f0', width: 2 },
-  { key: 'middle', label: '中軌（20MA）', color: '#a78bfa', style: 'dashed', width: 1 },
+  { key: 'price', label: '收盤價', color: '#1c1917', width: 2 },
+  { key: 'middle', label: '中軌（20MA）', color: '#8b5cf6', style: 'dashed', width: 1 },
 ];
 
 const BB_SHADED_BAND: MultiLineShadedBand = {
   upperKey: 'upper',
   lowerKey: 'lower',
   opacity: 0.18,
-  color: '#38bdf8',
+  color: '#0284c7',
 };
 
 const RELATIVE_STRENGTH_LINES: ReadonlyArray<MultiLineDefinition> = [
-  { key: 'ticker_pct', label: '個股累積報酬 (%)', color: '#38bdf8', width: 2 },
+  { key: 'ticker_pct', label: '個股累積報酬 (%)', color: '#0284c7', width: 2 },
   {
     key: 'spx_pct',
     label: 'SPX 累積報酬 (%)',
-    color: '#94a3b8',
+    color: '#78716c',
     style: 'dashed',
     width: 1,
   },
@@ -160,10 +180,17 @@ export function TickerDetailPage(): JSX.Element {
         <h1 id="ticker-heading" className="text-2xl font-semibold">
           標的分析
         </h1>
-        <p className="mt-2 text-sm text-signal-red">缺少股票代碼。</p>
+        <p className="mt-2 text-sm text-rose-600">缺少股票代碼。</p>
       </section>
     );
   }
+
+  const indicators = indicatorsQuery.data?.indicators ?? null;
+  const indicatorsError =
+    indicatorsQuery.error instanceof Error ? indicatorsQuery.error : null;
+  const pendingIndicators =
+    indicatorsError instanceof EisweinApiError &&
+    indicatorsError.status === 404;
 
   return (
     <div className="flex flex-col gap-6">
@@ -184,46 +211,41 @@ export function TickerDetailPage(): JSX.Element {
         }
       />
 
-      <DirectionCard
+      <IndicatorGroup
+        title="方向指標"
+        subtitle="4 項"
+        keys={DIRECTION_INDICATORS}
         symbol={symbol}
-        indicators={indicatorsQuery.data?.indicators ?? null}
+        indicators={indicators}
         isLoading={indicatorsQuery.isLoading}
-        error={indicatorsQuery.error instanceof Error ? indicatorsQuery.error : null}
+        pending={pendingIndicators}
+        error={!pendingIndicators ? indicatorsError : null}
       />
 
-      <TimingCard
+      <IndicatorGroup
+        title="時機指標"
+        subtitle="2 項"
+        keys={TIMING_INDICATORS}
         symbol={symbol}
-        indicators={indicatorsQuery.data?.indicators ?? null}
+        indicators={indicators}
         isLoading={indicatorsQuery.isLoading}
+        pending={pendingIndicators}
+        error={null}
       />
 
-      <RoadmapNote />
+      <IndicatorGroup
+        title="總經背景"
+        subtitle="2 項"
+        keys={MACRO_INDICATORS}
+        symbol={symbol}
+        indicators={indicators}
+        isLoading={indicatorsQuery.isLoading}
+        pending={pendingIndicators}
+        error={null}
+      />
+
+      <SignalAccuracySection symbol={symbol} />
     </div>
-  );
-}
-
-// v2 backlog surfaced inline so the user (and reviewers) can see what
-// was deliberately deferred. Keep terse — this isn't a release-notes
-// dump, just a forward-looking marker.
-function RoadmapNote(): JSX.Element {
-  return (
-    <section
-      aria-labelledby="ticker-roadmap-heading"
-      className="flex flex-col gap-1 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-4 text-xs text-slate-400"
-    >
-      <h2 id="ticker-roadmap-heading" className="text-sm font-semibold text-slate-300">
-        TODO（v2 規劃）
-      </h2>
-      <ul className="ml-4 list-disc space-y-1">
-        <li>
-          <span className="text-slate-300">資金流向（OBV / VPT）</span>
-          ：目前「成交量異常」只看今日 spike，無法捕捉日常微小資金流。等
-          v2 forward-test 累積 6 個月資料後，評估是否加入 OBV（On-Balance
-          Volume）作為趨勢補充——每日累計、可看與股價的背離，比稀疏的
-          spike 計數更穩。
-        </li>
-      </ul>
-    </section>
   );
 }
 
@@ -245,7 +267,9 @@ function TickerHeader({
   return (
     <section
       aria-labelledby="ticker-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
+      // Sticky so the operator always knows which symbol they're on as
+      // they scroll through the ~5000-6000px of indicator detail below.
+      className="sticky top-0 z-10 -mx-4 flex flex-col gap-3 border-b border-stone-200 bg-stone-50/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
     >
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -264,16 +288,16 @@ function TickerHeader({
             />
           )}
           {pendingSignal && (
-            <span className="text-xs text-slate-400">分析運算中</span>
+            <span className="text-xs text-stone-500">分析運算中</span>
           )}
         </div>
         {signal && (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-stone-500">
             {signal.stop_loss && (
               <span data-testid="stop-loss-pill">
                 停損參考：
                 <Tooltip text="200MA × 0.97">
-                  <span className="cursor-help underline decoration-dotted decoration-slate-600 underline-offset-2">
+                  <span className="cursor-help underline decoration-dotted decoration-stone-400 underline-offset-2">
                     ${signal.stop_loss}
                   </span>
                 </Tooltip>
@@ -293,55 +317,76 @@ function TickerHeader({
   );
 }
 
-interface IndicatorsCardProps {
+interface IndicatorGroupProps {
+  title: string;
+  subtitle: string;
+  keys: readonly string[];
   symbol: string;
   indicators: Record<string, IndicatorResult> | null;
   isLoading: boolean;
-  error?: Error | null;
+  pending: boolean;
+  error: Error | null;
 }
 
-function IndicatorList({
+function IndicatorGroup({
+  title,
+  subtitle,
+  keys,
   symbol,
   indicators,
-  keys,
-  emptyMessage,
-}: {
-  symbol: string;
-  indicators: Record<string, IndicatorResult>;
-  keys: readonly string[];
-  emptyMessage: string;
-}): JSX.Element {
-  const rows = keys
-    .map((key) => ({ key, result: indicators[key] }))
-    .filter((row): row is { key: string; result: IndicatorResult } => !!row.result);
-
-  if (rows.length === 0) {
-    return (
-      <p role="status" className="text-sm text-slate-400">
-        {emptyMessage}
-      </p>
-    );
-  }
-
+  isLoading,
+  pending,
+  error,
+}: IndicatorGroupProps): JSX.Element {
   return (
-    <ul className="flex flex-col gap-2">
-      {rows.map(({ key, result }) => (
-        <IndicatorRow key={key} symbol={symbol} indicatorKey={key} result={result} />
-      ))}
-    </ul>
+    <section
+      aria-label={`${title}（${subtitle}）`}
+      className="flex flex-col gap-3"
+    >
+      <header className="flex items-baseline gap-2">
+        <h2 className="text-lg font-semibold text-stone-900">{title}</h2>
+        <span className="text-xs text-stone-500">{subtitle}</span>
+      </header>
+      {isLoading && (
+        <div className="rounded-2xl border border-stone-200 bg-white p-6">
+          <LoadingSpinner label="讀取指標…" />
+        </div>
+      )}
+      {pending && (
+        <div className="rounded-2xl border border-stone-200 bg-white p-6">
+          <p role="status" className="text-sm text-stone-500">
+            尚無指標資料，請待下一次每日運算。
+          </p>
+        </div>
+      )}
+      {error && !pending && (
+        <div className="rounded-2xl border border-rose-300 bg-rose-50 p-6">
+          <p role="alert" className="text-sm text-rose-700">
+            載入指標失敗。
+          </p>
+        </div>
+      )}
+      {indicators &&
+        keys.map((key) => {
+          const result = indicators[key];
+          if (!result) return null;
+          return (
+            <IndicatorCard
+              key={key}
+              symbol={symbol}
+              indicatorKey={key}
+              result={result}
+            />
+          );
+        })}
+    </section>
   );
-}
-
-interface IndicatorRowProps {
-  symbol: string;
-  indicatorKey: string;
-  result: IndicatorResult;
 }
 
 const PRICE_VS_MA_HEADLINE_LABELS = {
   ruleTitle: '價格 vs 50/200MA 規則',
   ruleNote:
-    '此燈號是個股方向 4 項中的「位階」項；展開列可看距離尺標、近期黃金/死亡交叉、與看點。',
+    '此燈號是個股方向 4 項中的「位階」項；下方包含距離尺標、近期黃金/死亡交叉、與看點。',
 };
 
 const RSI_HEADLINE_LABELS = {
@@ -374,16 +419,19 @@ const BOLLINGER_HEADLINE_LABELS = {
     '此燈號是時機指標 2 項中的「波動位置」項。通道是 mean-reversion 工具：價格突破 ±2σ 統計上會回歸，但**強趨勢可以沿著上/下軌走多日**（"riding the band"）。所以單獨看會誤判，要配合 RSI 和成交量一起判讀。',
 };
 
-function IndicatorRow({
+interface IndicatorCardProps {
+  symbol: string;
+  indicatorKey: string;
+  result: IndicatorResult;
+}
+
+function IndicatorCard({
   symbol,
   indicatorKey,
   result,
-}: IndicatorRowProps): JSX.Element {
-  const [open, setOpen] = useState(false);
+}: IndicatorCardProps): JSX.Element {
   const seriesName = INDICATOR_SERIES_NAME[indicatorKey];
-  const hasDetail = Object.keys(result.detail).length > 0;
-  const hasChart = seriesName !== undefined;
-  const expandable = hasDetail || hasChart;
+  const macroSeriesName = MACRO_SERIES_NAME[indicatorKey];
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
   const isPriceVsMa = indicatorKey === 'price_vs_ma';
   const isRsi = indicatorKey === 'rsi';
@@ -391,127 +439,109 @@ function IndicatorRow({
   const isRelativeStrength = indicatorKey === 'relative_strength';
   const isMacd = indicatorKey === 'macd';
   const isBollinger = indicatorKey === 'bollinger';
-
-  // Non-expandable rows (insufficient data, no chart, no detail) keep
-  // the simple flat row — no <details> needed.
-  if (!expandable) {
-    return (
-      <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
-          <span className="min-w-[120px] text-slate-300">{title}</span>
-          <SignalBadge
-            tone={result.signal}
-            ariaLabel={`${title}：${result.short_label}`}
-          />
-          <span className="flex-1 text-slate-400">{result.short_label}</span>
-          <TimeframeChip indicatorName={indicatorKey} />
-        </div>
-      </li>
-    );
-  }
+  const isDxy = indicatorKey === 'dxy';
+  const isFedRate = indicatorKey === 'fed_rate';
 
   return (
-    <li className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/40">
-      <details
-        onToggle={(event) =>
-          setOpen((event.currentTarget as HTMLDetailsElement).open)
-        }
-      >
-        <summary
-          data-testid={`indicator-row-${indicatorKey}-summary`}
-          className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          <span className="min-w-[120px] text-slate-300">{title}</span>
-          <SignalBadge
-            tone={result.signal}
-            ariaLabel={`${title}：${result.short_label}`}
-          />
-          <span className="flex-1 text-slate-400">
-            {isPriceVsMa ? (
-              <MaPositionHeadlineExplainable
-                shortLabel={result.short_label}
-                detail={result.detail}
-                labels={PRICE_VS_MA_HEADLINE_LABELS}
-              />
-            ) : isRsi ? (
-              <RsiHeadlineExplainable
-                shortLabel={result.short_label}
-                detail={result.detail}
-                labels={RSI_HEADLINE_LABELS}
-              />
-            ) : isVolumeAnomaly ? (
-              <VolumeAnomalyHeadlineExplainable
-                shortLabel={result.short_label}
-                detail={result.detail}
-                labels={VOLUME_ANOMALY_HEADLINE_LABELS}
-              />
-            ) : isRelativeStrength ? (
-              <RelativeStrengthHeadlineExplainable
-                shortLabel={result.short_label}
-                detail={result.detail}
-                labels={RELATIVE_STRENGTH_HEADLINE_LABELS}
-              />
-            ) : isMacd ? (
-              <MacdHeadlineExplainable
-                shortLabel={result.short_label}
-                detail={result.detail}
-                labels={MACD_HEADLINE_LABELS}
-              />
-            ) : isBollinger ? (
-              <BollingerHeadlineExplainable
-                shortLabel={result.short_label}
-                detail={result.detail}
-                labels={BOLLINGER_HEADLINE_LABELS}
-              />
-            ) : (
-              result.short_label
-            )}
-          </span>
-          <TimeframeChip indicatorName={indicatorKey} />
-          <span aria-hidden="true" className="text-xs text-slate-500">
-            {open ? '收合' : '詳細'}
-          </span>
-        </summary>
-        <div className="border-t border-slate-800 bg-slate-950/40">
-          {seriesName && (
-            <IndicatorChartSection
-              symbol={symbol}
-              indicatorKey={indicatorKey}
-              seriesName={seriesName}
-              enabled={open}
-            />
-          )}
+    <section
+      data-testid={`indicator-card-${indicatorKey}`}
+      className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6"
+    >
+      <header className="flex flex-wrap items-center gap-2">
+        <h3 className="text-base font-semibold text-stone-900">{title}</h3>
+        <SignalBadge
+          tone={result.signal}
+          ariaLabel={`${title}：${result.short_label}`}
+        />
+        <TimeframeChip indicatorName={indicatorKey} />
+        <span className="text-sm text-stone-600">
           {isPriceVsMa ? (
-            <MaPositionEnhancedDetail detail={result.detail} />
+            <MaPositionHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={PRICE_VS_MA_HEADLINE_LABELS}
+            />
           ) : isRsi ? (
-            <RsiEnhancedDetail detail={result.detail} />
+            <RsiHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={RSI_HEADLINE_LABELS}
+            />
           ) : isVolumeAnomaly ? (
-            <VolumeAnomalyEnhancedDetail detail={result.detail} />
+            <VolumeAnomalyHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={VOLUME_ANOMALY_HEADLINE_LABELS}
+            />
           ) : isRelativeStrength ? (
-            <RelativeStrengthEnhancedDetail detail={result.detail} />
+            <RelativeStrengthHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={RELATIVE_STRENGTH_HEADLINE_LABELS}
+            />
           ) : isMacd ? (
-            <MacdEnhancedDetail detail={result.detail} />
+            <MacdHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={MACD_HEADLINE_LABELS}
+            />
           ) : isBollinger ? (
-            <BollingerEnhancedDetail detail={result.detail} />
+            <BollingerHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={BOLLINGER_HEADLINE_LABELS}
+            />
           ) : (
-            hasDetail && (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 text-xs text-slate-300">
-                {Object.entries(result.detail).map(([k, v]) => (
-                  <div key={k} className="contents">
-                    <dt className="font-mono text-slate-500">
-                      {k.replace(/_/g, ' ')}
-                    </dt>
-                    <dd className="font-mono text-slate-200">
-                      {formatDetail(v)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            )
+            result.short_label
           )}
-        </div>
-      </details>
-    </li>
+        </span>
+      </header>
+
+      {seriesName && (
+        <IndicatorChartSection
+          symbol={symbol}
+          indicatorKey={indicatorKey}
+          seriesName={seriesName}
+        />
+      )}
+      {macroSeriesName && (
+        <MacroChartSection
+          indicatorKey={indicatorKey}
+          seriesName={macroSeriesName}
+        />
+      )}
+
+      {isPriceVsMa ? (
+        <MaPositionEnhancedDetail detail={result.detail} />
+      ) : isRsi ? (
+        <RsiEnhancedDetail detail={result.detail} />
+      ) : isVolumeAnomaly ? (
+        <VolumeAnomalyEnhancedDetail detail={result.detail} />
+      ) : isRelativeStrength ? (
+        <RelativeStrengthEnhancedDetail detail={result.detail} />
+      ) : isMacd ? (
+        <MacdEnhancedDetail detail={result.detail} />
+      ) : isBollinger ? (
+        <BollingerEnhancedDetail detail={result.detail} />
+      ) : isDxy ? (
+        <DxyEnhancedDetail detail={result.detail} />
+      ) : isFedRate ? (
+        <FedRateEnhancedDetail detail={result.detail} />
+      ) : (
+        Object.keys(result.detail).length > 0 && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-stone-700">
+            {Object.entries(result.detail).map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="font-mono text-stone-400">
+                  {k.replace(/_/g, ' ')}
+                </dt>
+                <dd className="font-mono text-stone-800">{formatDetail(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        )
+      )}
+    </section>
   );
 }
 
@@ -519,32 +549,28 @@ interface IndicatorChartSectionProps {
   symbol: string;
   indicatorKey: string;
   seriesName: IndicatorSeriesName;
-  enabled: boolean;
 }
 
 function IndicatorChartSection({
   symbol,
   indicatorKey,
   seriesName,
-  enabled,
 }: IndicatorChartSectionProps): JSX.Element {
-  // Per-chart range state — same UX as the market regime cards. Default
-  // matches the indicator's timeframe horizon (short → 1M, mid → 3M,
-  // long → 1Y) so the chart opens at the window that's most decision-
-  // useful for what the indicator is asking the operator to judge.
   const [range, setRange] = useState<MarketIndicatorRangeKey>(
     defaultRangeForIndicator(indicatorKey),
   );
+  // No `enabled` gate — every indicator card is rendered always-open per
+  // Change C, so we fetch as soon as the section mounts.
   const query = useIndicatorSeries(symbol, seriesName, {
-    enabled,
+    enabled: true,
     days: rangeToDays(range),
   });
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
 
   return (
-    <div className="flex flex-col gap-2 px-3 py-3">
+    <div className="flex flex-col gap-2">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-slate-200">{query.data?.summary_zh ?? ''}</p>
+        <p className="text-sm text-stone-600">{query.data?.summary_zh ?? ''}</p>
         <IndicatorRangeSelector
           value={range}
           onChange={setRange}
@@ -552,17 +578,61 @@ function IndicatorChartSection({
         />
       </header>
       {query.isLoading && (
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-stone-500">
           <LoadingSpinner label="載入中…" />
         </div>
       )}
       {query.isError && (
-        <p role="alert" className="text-xs text-signal-red">
+        <p role="alert" className="text-xs text-rose-700">
           走勢資料載入失敗
         </p>
       )}
       {query.data && (
         <IndicatorChart data={query.data} ariaLabel={`${title} 走勢圖`} />
+      )}
+    </div>
+  );
+}
+
+interface MacroChartSectionProps {
+  indicatorKey: string;
+  seriesName: MarketIndicatorSeriesName;
+}
+
+function MacroChartSection({
+  indicatorKey,
+  seriesName,
+}: MacroChartSectionProps): JSX.Element {
+  const [range, setRange] = useState<MarketIndicatorRangeKey>(
+    defaultRangeForIndicator(indicatorKey),
+  );
+  const query = useMarketIndicatorSeries(seriesName, {
+    days: rangeToDays(range),
+  });
+  const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-stone-600">{query.data?.summary_zh ?? ''}</p>
+        <IndicatorRangeSelector
+          value={range}
+          onChange={setRange}
+          indicatorLabel={`${title} 區間`}
+        />
+      </header>
+      {query.isLoading && (
+        <div className="flex items-center gap-2 text-xs text-stone-500">
+          <LoadingSpinner label="載入中…" />
+        </div>
+      )}
+      {query.isError && (
+        <p role="alert" className="text-xs text-rose-700">
+          走勢資料載入失敗
+        </p>
+      )}
+      {query.data && (
+        <MacroChart data={query.data} ariaLabel={`${title} 走勢圖`} />
       )}
     </div>
   );
@@ -627,16 +697,14 @@ function IndicatorChart({ data, ariaLabel }: IndicatorChartProps): JSX.Element {
       return (
         <IndicatorVolumeBars
           series={data.series}
-          upColor="#22c55e"
-          downColor="#ef4444"
-          flatColor="#475569"
-          averageLineColor="#facc15"
+          upColor="#059669"
+          downColor="#e11d48"
+          flatColor="#a8a29e"
+          averageLineColor="#d97706"
           ariaLabel={ariaLabel}
         />
       );
     case 'relative_strength': {
-      // Backend returns cumulative returns as decimals (0.04 = +4%); the
-      // chart renders raw numbers, so scale to percent here for legibility.
       const series: ReadonlyArray<MultiLineSeriesRow> = data.series.map(
         (row) => ({
           date: row.date,
@@ -655,6 +723,42 @@ function IndicatorChart({ data, ariaLabel }: IndicatorChartProps): JSX.Element {
   }
 }
 
+interface MacroChartProps {
+  data: import('../api/marketIndicatorSeries').MarketIndicatorSeriesResponse;
+  ariaLabel: string;
+}
+
+function MacroChart({ data, ariaLabel }: MacroChartProps): JSX.Element | null {
+  // DXY + Fed Rate ship different field shapes — DXY has level/ma20 lines,
+  // Fed Rate has a single `rate`. Reuse the multi-line primitive with the
+  // right key map per indicator so the styling stays consistent.
+  switch (data.indicator) {
+    case 'dxy':
+      return (
+        <IndicatorMultiLine
+          series={data.series}
+          lines={[
+            { key: 'level', label: 'DXY', color: '#0284c7', width: 2 },
+            { key: 'ma20', label: '20 MA', color: '#d97706', style: 'dashed', width: 1 },
+          ]}
+          ariaLabel={ariaLabel}
+        />
+      );
+    case 'fed_rate':
+      return (
+        <IndicatorMultiLine
+          series={data.series}
+          lines={[
+            { key: 'rate', label: 'Fed 利率 (%)', color: '#8b5cf6', width: 2 },
+          ]}
+          ariaLabel={ariaLabel}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
 function formatDetail(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'boolean') return value ? '是' : '否';
@@ -664,73 +768,4 @@ function formatDetail(value: unknown): string {
   }
   if (typeof value === 'string') return value;
   return JSON.stringify(value);
-}
-
-function DirectionCard({
-  symbol,
-  indicators,
-  isLoading,
-  error,
-}: IndicatorsCardProps): JSX.Element {
-  const pendingIndicators =
-    error instanceof EisweinApiError && error.status === 404;
-  return (
-    <section
-      aria-labelledby="direction-heading"
-      className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header>
-        <h2 id="direction-heading" className="text-lg font-semibold">
-          方向指標（4 項）
-        </h2>
-      </header>
-      {isLoading && <LoadingSpinner label="讀取指標…" />}
-      {pendingIndicators && (
-        <p role="status" className="text-sm text-slate-400">
-          尚無指標資料，請待下一次每日運算。
-        </p>
-      )}
-      {!isLoading && !pendingIndicators && !indicators && error && (
-        <p role="alert" className="text-sm text-signal-red">
-          載入指標失敗。
-        </p>
-      )}
-      {indicators && (
-        <IndicatorList
-          symbol={symbol}
-          indicators={indicators}
-          keys={DIRECTION_INDICATORS}
-          emptyMessage="尚無方向指標資料。"
-        />
-      )}
-    </section>
-  );
-}
-
-function TimingCard({
-  symbol,
-  indicators,
-  isLoading,
-}: Omit<IndicatorsCardProps, 'error'>): JSX.Element {
-  return (
-    <section
-      aria-labelledby="timing-heading"
-      className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
-    >
-      <header>
-        <h2 id="timing-heading" className="text-lg font-semibold">
-          時機指標（2 項）
-        </h2>
-      </header>
-      {isLoading && <LoadingSpinner label="讀取指標…" />}
-      {indicators && (
-        <IndicatorList
-          symbol={symbol}
-          indicators={indicators}
-          keys={TIMING_INDICATORS}
-          emptyMessage="尚無時機指標資料。"
-        />
-      )}
-    </section>
-  );
 }

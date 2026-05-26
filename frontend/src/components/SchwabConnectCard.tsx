@@ -53,11 +53,11 @@ export function SchwabConnectCard(): JSX.Element {
   return (
     <section
       aria-labelledby="schwab-connect-heading"
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-4"
+      className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-white p-4"
     >
       <CallbackBanner />
       {statusQuery.isLoading && (
-        <div className="flex items-center gap-2 text-slate-400">
+        <div className="flex items-center gap-2 text-stone-500">
           <LoadingSpinner label="載入 Schwab 連線狀態…" />
           <span className="text-sm">載入中…</span>
         </div>
@@ -135,7 +135,7 @@ function DismissButton({
       type="button"
       aria-label="關閉通知"
       onClick={onDismiss}
-      className={`ml-3 rounded-md px-1 text-xs text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${hover}`}
+      className={`ml-3 rounded-md px-1 text-xs text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${hover}`}
     >
       <span aria-hidden="true">✕</span>
     </button>
@@ -150,7 +150,7 @@ function DisconnectedView(): JSX.Element {
           連接 Schwab 帳戶（選用）
         </h2>
       </header>
-      <p className="text-sm leading-relaxed text-slate-400">
+      <p className="text-sm leading-relaxed text-stone-500">
         雖然你的資金目前放在別的券商，我們還是可以先驗證 Schwab API
         是否可用，未來移轉帳戶時就能立刻啟用自動對帳與即時成交推送。
       </p>
@@ -292,7 +292,7 @@ function ConnectedView({ status }: { status: SchwabStatus }): JSX.Element {
         labelledById="schwab-disconnect-heading"
       >
         <div className="flex flex-col gap-4">
-          <p className="text-sm leading-relaxed text-slate-300">
+          <p className="text-sm leading-relaxed text-stone-700">
             中斷連接會刪除 Schwab refresh token，下次需要重新授權。確定要中斷嗎？
           </p>
           {disconnectError && (
@@ -305,7 +305,7 @@ function ConnectedView({ status }: { status: SchwabStatus }): JSX.Element {
               type="button"
               onClick={() => setShowConfirm(false)}
               disabled={disconnectMutation.isPending}
-              className="rounded-md border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
             >
               取消
             </button>
@@ -344,10 +344,10 @@ interface InfoRowProps {
 
 function InfoRow({ label, value, hint }: InfoRowProps): JSX.Element {
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3">
-      <dt className="text-xs text-slate-400">{label}</dt>
-      <dd className="mt-0.5 font-mono text-sm text-slate-100">{value}</dd>
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
+      <dt className="text-xs text-stone-500">{label}</dt>
+      <dd className="mt-0.5 font-mono text-sm text-stone-900">{value}</dd>
+      {hint && <p className="mt-1 text-xs text-stone-400">{hint}</p>}
     </div>
   );
 }

@@ -82,21 +82,21 @@ export function LoginPage(): JSX.Element {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-stone-50 px-4 py-12">
       <section
         aria-labelledby="login-heading"
-        className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-900/70 p-6 shadow-xl"
+        className="w-full max-w-sm rounded-lg border border-stone-200 bg-white/70 p-6 shadow-xl"
       >
         <header className="mb-6 text-center">
-          <h1 id="login-heading" className="text-2xl font-semibold text-slate-100">
+          <h1 id="login-heading" className="text-2xl font-semibold text-stone-900">
             Eiswein
           </h1>
-          <p className="mt-1 text-sm text-slate-400">個人投資決策輔助工具</p>
+          <p className="mt-1 text-sm text-stone-500">個人投資決策輔助工具</p>
         </header>
 
         <form noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <label htmlFor="username" className="text-sm font-medium text-slate-300">
+            <label htmlFor="username" className="text-sm font-medium text-stone-700">
               使用者名稱
             </label>
             <input
@@ -107,7 +107,7 @@ export function LoginPage(): JSX.Element {
               aria-invalid={Boolean(errors.username)}
               aria-describedby={errors.username ? 'username-error' : undefined}
               {...register('username')}
-              className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              className="rounded-md border border-stone-300 bg-stone-100 px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
             />
             {errors.username && (
               <p id="username-error" role="alert" className="text-sm text-signal-red">
@@ -116,7 +116,7 @@ export function LoginPage(): JSX.Element {
             )}
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="password" className="text-sm font-medium text-slate-300">
+            <label htmlFor="password" className="text-sm font-medium text-stone-700">
               密碼
             </label>
             <div className="relative">
@@ -127,14 +127,14 @@ export function LoginPage(): JSX.Element {
                 aria-invalid={Boolean(errors.password)}
                 aria-describedby={errors.password ? 'password-error' : undefined}
                 {...register('password')}
-                className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 pr-10 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                className="w-full rounded-md border border-stone-300 bg-stone-100 px-3 py-2 pr-10 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               />
               <button
                 type="button"
                 onClick={() => setPasswordVisible((prev) => !prev)}
                 aria-label={passwordVisible ? '隱藏密碼' : '顯示密碼'}
                 aria-pressed={passwordVisible}
-                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:rounded-md"
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-stone-500 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:rounded-md"
               >
                 {passwordVisible ? (
                   <svg
@@ -197,7 +197,7 @@ export function LoginPage(): JSX.Element {
           </button>
         </form>
 
-        <footer className="mt-8 text-center text-xs text-slate-500">{DISCLAIMER_TEXT}</footer>
+        <footer className="mt-8 text-center text-xs text-stone-400">{DISCLAIMER_TEXT}</footer>
       </section>
     </main>
   );

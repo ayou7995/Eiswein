@@ -84,13 +84,13 @@ describe('AdDayCandleClassificationChart', () => {
     expect(volumeData.length).toBe(30);
     expect(volumeData[0].value).toBe(50000000);
     // Volume color tracks candle direction (close vs open), not A/D class.
-    expect(volumeData[0].color).toContain('22c55e'); // close > open here
+    expect(volumeData[0].color).toContain('059669'); // close > open here (emerald-600)
 
     const adData = mocks.setDataAdStrip.mock.calls.at(-1)?.[0];
     expect(adData.length).toBe(30);
     // Strip uses a constant value per bar — only color encodes meaning.
     expect(adData[0].value).toBe(1);
     // First row classification is 'accum' → green hex.
-    expect(adData[0].color).toBe('#22c55e');
+    expect(adData[0].color).toBe('#059669');
   });
 });

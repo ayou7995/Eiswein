@@ -211,7 +211,7 @@ function describeLastAction(action: FedActionData): {
     return {
       emoji: '⚪',
       label: '365 日窗口內無利率變動（長期持平）',
-      tone: 'border-slate-700 bg-slate-950/40 text-slate-300',
+      tone: 'border-stone-300 bg-stone-50 text-stone-700',
     };
   }
   const days = action.days_since_last_change;
@@ -223,7 +223,7 @@ function describeLastAction(action: FedActionData): {
       label: `最近一次 ${dirLabel}：${action.last_change_date}（${days} 天前${isRecent ? '，週期啟動初期' : '，已進入暫停期'}）`,
       tone: isRecent
         ? 'border-signal-green/40 bg-signal-green/10 text-signal-green'
-        : 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+        : 'border-amber-300 bg-amber-400/10 text-amber-700',
     };
   }
   return {
@@ -231,7 +231,7 @@ function describeLastAction(action: FedActionData): {
     label: `最近一次 ${dirLabel}：${action.last_change_date}（${days} 天前${isRecent ? '，週期啟動初期' : '，已進入暫停期'}）`,
     tone: isRecent
       ? 'border-signal-red/40 bg-signal-red/10 text-signal-red'
-      : 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+      : 'border-amber-300 bg-amber-400/10 text-amber-700',
   };
 }
 

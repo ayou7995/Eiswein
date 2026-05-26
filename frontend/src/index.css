@@ -9,7 +9,16 @@
     height: 100%;
   }
 
+  body {
+    /* stone-50 — warm off-white. Set explicitly so the page background
+       extends past content area on long pages. */
+    background-color: #fafaf9;
+    color: #1c1917;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   :focus-visible {
-    @apply outline-none ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-900;
+    @apply outline-none ring-2 ring-sky-500 ring-offset-2 ring-offset-stone-50;
   }
 }

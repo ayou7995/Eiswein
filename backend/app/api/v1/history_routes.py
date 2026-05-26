@@ -698,3 +698,136 @@ def ticker_signals_history(
     return TickerSignalsResponse(symbol=validated, data=points)
 
 
+# --- /history/symbol-accuracy-ranking ------------------------------------
+
+
+class SymbolAccuracyEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    total_signals: int
+    correct: int
+    accuracy_pct: float
+
+
+class SymbolAccuracyRankingResponse(BaseModel):
+    """Per-watchlist-symbol hit-rate ranking for the history page card.
+
+    Aggregates the same accuracy logic used by /history/signal-accuracy
+    across every symbol on the caller's watchlist, sorted descending by
+    accuracy. Window matches the history page's range selector
+    (30D / 90D / 365D); horizon is fixed at 20-day to keep the ranking
+    comparable across tickers without forcing the operator into a
+    second selector. Symbols with zero gradeable snapshots in the
+    window are still included (accuracy_pct=0, total_signals=0) so the
+    UI can hint "needs more data" rather than silently omitting them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    horizon: HorizonLiteral
+    days: int
+    data: list[SymbolAccuracyEntry]
+    baseline: SignalAccuracyBaseline
+
+
+@router.get(
+    "/history/symbol-accuracy-ranking",
+    response_model=SymbolAccuracyRankingResponse,
+    summary="Per-watchlist-symbol hit-rate ranking",
+)
+def symbol_accuracy_ranking(
+    days: int = Query(default=90, ge=30, le=730),
+    horizon: int = Query(default=20, ge=1, le=120),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
+    session: Session = Depends(get_db_session),
+) -> SymbolAccuracyRankingResponse:
+    if horizon not in _VALID_HORIZONS:
+        from app.security.exceptions import ValidationError as EisweinValidationError
+
+        raise EisweinValidationError(
+            details={"reason": "invalid_horizon", "allowed": sorted(_VALID_HORIZONS)}
+        )
+    horizon_literal = cast(HorizonLiteral, horizon)
+
+    rows = watchlist.list_for_user(user_id=user_id)
+    symbols = sorted({row.symbol for row in rows})
+
+    # Load SPY closes once and reuse for every symbol's baseline + the
+    # response-level baseline aggregate.
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _BASELINE_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    entries: list[SymbolAccuracyEntry] = []
+    aggregate_baseline_total = 0
+    aggregate_baseline_up = 0
+
+    for sym in symbols:
+        all_snapshots = list(snapshots.list_for_symbol(sym))
+        if all_snapshots:
+            latest = max(s.date for s in all_snapshots)
+            cutoff = latest - timedelta(days=days)
+            all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
+        if not all_snapshots:
+            entries.append(
+                SymbolAccuracyEntry(
+                    symbol=sym, total_signals=0, correct=0, accuracy_pct=0.0
+                )
+            )
+            continue
+
+        price_rows = session.execute(
+            select(DailyPrice.date, DailyPrice.close)
+            .where(DailyPrice.symbol == sym)
+            .order_by(DailyPrice.date.asc())
+        ).all()
+        price_by_date = {r.date: Decimal(str(r.close)) for r in price_rows}
+
+        overall, _ = _eval_accuracy(
+            snapshots=all_snapshots,
+            price_by_date=price_by_date,
+            horizon_days=int(horizon),
+        )
+        entries.append(
+            SymbolAccuracyEntry(
+                symbol=sym,
+                total_signals=overall.total,
+                correct=overall.correct,
+                accuracy_pct=overall.pct,
+            )
+        )
+
+        # Same-period SPY drift baseline contribution.
+        b_total, b_up = _eval_baseline(
+            signal_dates=[s.date for s in all_snapshots],
+            spy_price_by_date=spy_price_by_date,
+            horizon_days=int(horizon),
+        )
+        aggregate_baseline_total += b_total
+        aggregate_baseline_up += b_up
+
+    entries.sort(key=lambda e: (-e.accuracy_pct, -e.total_signals, e.symbol))
+
+    baseline_pct = (
+        round(100.0 * aggregate_baseline_up / aggregate_baseline_total, 2)
+        if aggregate_baseline_total
+        else 0.0
+    )
+    return SymbolAccuracyRankingResponse(
+        horizon=horizon_literal,
+        days=days,
+        data=entries,
+        baseline=SignalAccuracyBaseline(
+            total=aggregate_baseline_total,
+            spy_up_count=aggregate_baseline_up,
+            spy_up_pct=baseline_pct,
+        ),
+    )
+
+

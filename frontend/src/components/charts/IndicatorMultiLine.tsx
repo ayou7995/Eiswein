@@ -138,17 +138,17 @@ export function IndicatorMultiLine({
       width: container.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: '#020617' },
-        textColor: '#cbd5f5',
+        background: { type: ColorType.Solid, color: '#ffffff' },
+        textColor: '#44403c',
         fontSize: 11,
       },
       grid: {
-        horzLines: { color: '#1e293b' },
-        vertLines: { color: '#1e293b' },
+        horzLines: { color: 'rgba(0,0,0,0.06)' },
+        vertLines: { color: 'rgba(0,0,0,0.06)' },
       },
-      rightPriceScale: { borderColor: '#334155' },
+      rightPriceScale: { borderColor: 'rgba(0,0,0,0.12)' },
       timeScale: {
-        borderColor: '#334155',
+        borderColor: 'rgba(0,0,0,0.12)',
         timeVisible: false,
         secondsVisible: false,
       },
@@ -173,8 +173,8 @@ export function IndicatorMultiLine({
       });
       const lower = chart.addAreaSeries({
         lineColor: applyOpacity(shadedBand.color, 0.6),
-        topColor: '#02061700',
-        bottomColor: '#020617ff',
+        topColor: '#ffffff00',
+        bottomColor: '#fafaf9ff',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -262,7 +262,7 @@ export function IndicatorMultiLine({
         data-testid="indicator-multi-line"
         role="img"
         aria-label={ariaLabel}
-        className="w-full rounded-md border border-slate-800 bg-slate-950"
+        className="w-full rounded-md border border-stone-200 bg-stone-50"
         style={{ height }}
       />
     </div>
@@ -277,7 +277,7 @@ interface LegendProps {
 
 function Legend({ lines, histogram, shadedBand }: LegendProps): JSX.Element {
   return (
-    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-700">
       {lines.map((line) => (
         <li key={line.key} className="flex items-center gap-1.5">
           <span

@@ -164,7 +164,7 @@ export function AllocationPieChart({
       <div
         role="status"
         data-testid="allocation-empty"
-        className="flex h-48 w-full items-center justify-center rounded-md border border-dashed border-slate-800 bg-slate-900/40 text-sm text-slate-400"
+        className="flex h-48 w-full items-center justify-center rounded-md border border-dashed border-stone-200 bg-stone-50 text-sm text-stone-500"
       >
         尚未建立持倉
       </div>
@@ -189,7 +189,7 @@ export function AllocationPieChart({
             key={arc.label}
             d={arc.path}
             fill={arc.color}
-            stroke="#0f172a"
+            stroke="#ffffff"
             strokeWidth={1}
             fillRule="evenodd"
           />
@@ -206,9 +206,9 @@ export function AllocationPieChart({
               className="inline-block h-3 w-3 shrink-0 rounded-sm"
               style={{ backgroundColor: arc.color }}
             />
-            <span className="font-mono text-slate-100">{arc.label}</span>
-            <span className="text-slate-400">{formatPercent(arc.percent)}</span>
-            <span className="text-xs text-slate-500">({formatValue(arc.value)})</span>
+            <span className="font-mono text-stone-900">{arc.label}</span>
+            <span className="text-stone-500">{formatPercent(arc.percent)}</span>
+            <span className="text-xs text-stone-400">({formatValue(arc.value)})</span>
           </li>
         ))}
       </ul>

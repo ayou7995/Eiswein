@@ -13,7 +13,7 @@ interface TimeframeStyle {
 export const TIMEFRAME_STYLE: Record<Timeframe, TimeframeStyle> = {
   short: {
     label: '短期',
-    className: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
+    className: 'border-sky-500/40 bg-sky-500/10 text-sky-700',
     ariaLabel: '短期訊號',
   },
   mid: {

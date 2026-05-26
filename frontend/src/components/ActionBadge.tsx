@@ -28,14 +28,14 @@ const ACTION_PRESETS: Record<
     emoji: '✓',
     letter: 'H',
     label: '持有',
-    classes: 'bg-slate-500/10 text-slate-200 border-slate-500/40',
+    classes: 'bg-stone-100 text-stone-800 border-stone-300',
     ariaLabel: '建議動作：持有',
   },
   watch: {
     emoji: '👀',
     letter: 'W',
     label: '觀望',
-    classes: 'bg-slate-500/10 text-slate-300 border-slate-500/40',
+    classes: 'bg-stone-100 text-stone-700 border-stone-300',
     ariaLabel: '建議動作：觀望',
   },
   reduce: {
@@ -99,7 +99,7 @@ export function ActionBadge({
         <span
           aria-hidden="true"
           data-testid="action-badge-timing"
-          className="ml-1 rounded-full border border-slate-600 bg-slate-900/60 px-1.5 py-0.5 text-[10px] font-medium text-slate-300"
+          className="ml-1 rounded-full border border-stone-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-stone-700"
         >
           {timingBadge}
         </span>

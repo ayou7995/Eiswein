@@ -9,8 +9,10 @@ import { ROUTES } from './lib/constants';
 
 // Lazy-loaded pages per DoD rule 10 — keeps the initial bundle small and lets
 // each page fail-closed inside its own boundary.
-const DashboardPage = lazy(() =>
-  import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+const MarketOverviewPage = lazy(() =>
+  import('./pages/MarketOverviewPage').then((m) => ({
+    default: m.MarketOverviewPage,
+  })),
 );
 const TickerDetailPage = lazy(() =>
   import('./pages/TickerDetailPage').then((m) => ({ default: m.TickerDetailPage })),
@@ -54,7 +56,7 @@ export function App(): JSX.Element {
           path={ROUTES.DASHBOARD}
           element={
             <PageSuspense>
-              <DashboardPage />
+              <MarketOverviewPage />
             </PageSuspense>
           }
         />

@@ -62,7 +62,7 @@ describe('IndicatorMultiLine', () => {
       <IndicatorMultiLine
         series={series}
         lines={[
-          { key: 'price', label: '收盤價', color: '#e2e8f0' },
+          { key: 'price', label: '收盤價', color: '#1c1917' },
           { key: 'ma50', label: '50 MA', color: '#38bdf8', style: 'dashed' },
         ]}
         ariaLabel="走勢"
@@ -79,7 +79,7 @@ describe('IndicatorMultiLine', () => {
     render(
       <IndicatorMultiLine
         series={series}
-        lines={[{ key: 'price', label: '價', color: '#e2e8f0' }]}
+        lines={[{ key: 'price', label: '價', color: '#1c1917' }]}
         histogram={{
           key: 'price',
           positiveColor: '#22c55e',
@@ -117,7 +117,7 @@ describe('IndicatorMultiLine', () => {
     const { unmount } = render(
       <IndicatorMultiLine
         series={series}
-        lines={[{ key: 'price', label: '價', color: '#e2e8f0' }]}
+        lines={[{ key: 'price', label: '價', color: '#1c1917' }]}
         ariaLabel="走勢"
       />,
     );

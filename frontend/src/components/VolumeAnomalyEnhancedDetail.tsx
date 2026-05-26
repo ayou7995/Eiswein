@@ -38,9 +38,9 @@ const GAUGE_MAX = 5;
 // rather than the signal palette so they don't suggest bullish/bearish on
 // their own. The price-direction badge below carries that context.
 const ZONES: ReadonlyArray<PositionGaugeZone> = [
-  { upTo: 1, label: '量縮', bg: 'bg-slate-700/40', text: 'text-slate-400' },
-  { upTo: SPIKE_THRESHOLD, label: '正常', bg: 'bg-amber-400/20', text: 'text-amber-400' },
-  { upTo: GAUGE_MAX, label: '放量', bg: 'bg-sky-500/30', text: 'text-sky-400' },
+  { upTo: 1, label: '量縮', bg: 'bg-stone-200', text: 'text-stone-500' },
+  { upTo: SPIKE_THRESHOLD, label: '正常', bg: 'bg-amber-400/20', text: 'text-amber-700' },
+  { upTo: GAUGE_MAX, label: '放量', bg: 'bg-sky-500/30', text: 'text-sky-600' },
 ];
 
 export interface VolumeAnomalyHeadlineLabels {
@@ -120,19 +120,19 @@ function RatioSection({ detail: d }: { detail: VolumeDetail }): JSX.Element {
   return (
     <section aria-label="量比位置條" className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-slate-400">今日量比（vs 20 日均量，0–5×）</h3>
-        <span className="text-slate-400">
-          <span className="text-[10px] text-slate-500">今日</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-100">
+        <h3 className="text-stone-500">今日量比（vs 20 日均量，0–5×）</h3>
+        <span className="text-stone-500">
+          <span className="text-[10px] text-stone-400">今日</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-900">
             {formatVolume(d.today_volume)}
           </span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span className="text-[10px] text-slate-500">20 日均</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-300">
+          <span className="mx-1 text-stone-400">·</span>
+          <span className="text-[10px] text-stone-400">20 日均</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-700">
             {formatVolume(d.avg_volume_20d)}
           </span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span className="font-mono tabular-nums text-slate-100">
+          <span className="mx-1 text-stone-400">·</span>
+          <span className="font-mono tabular-nums text-stone-900">
             {d.ratio.toFixed(2)}×
           </span>
         </span>
@@ -221,27 +221,27 @@ function describeDirection(d: VolumeDetail): {
     return {
       emoji: '🟡',
       label: `今日收平（放量但方向不明）`,
-      tone: 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
     };
   }
   if (change > 0) {
     return {
       emoji: '⚪',
       label: `今日 ${formatChangePct(change)}（量能正常，無大資金訊號）`,
-      tone: 'border-slate-700 bg-slate-950/40 text-slate-300',
+      tone: 'border-stone-300 bg-stone-50 text-stone-700',
     };
   }
   if (change < 0) {
     return {
       emoji: '⚪',
       label: `今日 ${formatChangePct(change)}（量能正常，無大資金訊號）`,
-      tone: 'border-slate-700 bg-slate-950/40 text-slate-300',
+      tone: 'border-stone-300 bg-stone-50 text-stone-700',
     };
   }
   return {
     emoji: '⚪',
     label: '今日收平（量能正常）',
-    tone: 'border-slate-700 bg-slate-950/40 text-slate-300',
+    tone: 'border-stone-300 bg-stone-50 text-stone-700',
   };
 }
 

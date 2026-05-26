@@ -94,7 +94,7 @@ export function Modal({
   return createPortal(
     <div
       data-testid="modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 px-4 py-6"
       onMouseDown={(event) => {
         // Only close if the mousedown is on the backdrop itself, not a
         // descendant — so a drag-release outside doesn't accidentally
@@ -108,17 +108,17 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
-        className="max-h-[90vh] w-full max-w-md overflow-auto rounded-lg border border-slate-800 bg-slate-900 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-auto rounded-lg border border-stone-200 bg-white shadow-2xl"
       >
-        <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <h2 id={headingId} className="text-base font-semibold text-slate-100">
+        <header className="flex items-center justify-between border-b border-stone-200 px-4 py-3">
+          <h2 id={headingId} className="text-base font-semibold text-stone-900">
             {title}
           </h2>
           <button
             type="button"
             aria-label="關閉對話框"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
             <span aria-hidden="true">✕</span>
           </button>

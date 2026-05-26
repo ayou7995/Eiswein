@@ -19,13 +19,13 @@ function DefaultFallback({ error, resetErrorBoundary }: FallbackProps): JSX.Elem
     <div
       role="alert"
       aria-live="assertive"
-      className="mx-auto flex max-w-lg flex-col gap-4 rounded-lg border border-red-500/40 bg-slate-800/60 p-6 text-slate-100"
+      className="mx-auto flex max-w-lg flex-col gap-4 rounded-lg border border-red-500/40 bg-stone-100 p-6 text-stone-900"
     >
       <h2 className="text-xl font-semibold text-red-400">發生錯誤</h2>
-      <p className="text-sm text-slate-300">
+      <p className="text-sm text-stone-700">
         頁面暫時無法載入，請重新整理。若問題持續，請檢查系統日誌。
       </p>
-      <p className="text-xs text-slate-500">錯誤編號：{errorId}</p>
+      <p className="text-xs text-stone-400">錯誤編號：{errorId}</p>
       <button
         type="button"
         onClick={resetErrorBoundary}

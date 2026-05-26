@@ -16,13 +16,13 @@ export interface PriceBarProps {
 const TONE_BAR: Record<PriceBarTone, string> = {
   green: 'bg-signal-green',
   red: 'bg-signal-red',
-  neutral: 'bg-slate-400',
+  neutral: 'bg-stone-400',
 };
 
 const TONE_TEXT: Record<PriceBarTone, string> = {
   green: 'text-signal-green',
   red: 'text-signal-red',
-  neutral: 'text-slate-300',
+  neutral: 'text-stone-700',
 };
 
 function formatPrice(value: number | null): string {
@@ -71,21 +71,21 @@ export function PriceBar({
       data-testid="price-bar"
       className="flex flex-col gap-1"
     >
-      <div className="flex items-baseline justify-between text-xs text-slate-400">
-        <span className="font-medium text-slate-300">{label}</span>
+      <div className="flex items-baseline justify-between text-xs text-stone-500">
+        <span className="font-medium text-stone-700">{label}</span>
         <span className={`font-mono ${TONE_TEXT[tone]}`}>
           {formatPrice(currentPrice)}
-          <span aria-hidden="true" className="mx-1 text-slate-600">
+          <span aria-hidden="true" className="mx-1 text-stone-400">
             vs
           </span>
-          <span className="text-slate-400">{formatPrice(targetPrice)}</span>
+          <span className="text-stone-500">{formatPrice(targetPrice)}</span>
         </span>
       </div>
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-800">
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-stone-100">
         <div
           aria-hidden="true"
           data-testid="price-bar-target"
-          className="absolute top-0 bottom-0 left-1/2 w-px bg-slate-500"
+          className="absolute top-0 bottom-0 left-1/2 w-px bg-stone-500"
         />
         {hasBoth && (
           <div

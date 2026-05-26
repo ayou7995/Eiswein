@@ -44,7 +44,7 @@ const ZONES: ReadonlyArray<PositionGaugeZone> = [
   // RSI semantics are inverted relative to price: oversold (bottom) = bullish
   // (green in Eiswein's tone palette), overbought (top) = bearish (red).
   { upTo: 30, label: '超賣', bg: 'bg-signal-green/30', text: 'text-signal-green' },
-  { upTo: 70, label: '中性', bg: 'bg-amber-400/20', text: 'text-amber-400' },
+  { upTo: 70, label: '中性', bg: 'bg-amber-400/20', text: 'text-amber-700' },
   { upTo: GAUGE_MAX, label: '超買', bg: 'bg-signal-red/30', text: 'text-signal-red' },
 ];
 
@@ -139,15 +139,15 @@ function PositionSection({
   return (
     <section aria-label="RSI 日線位置條" className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-slate-400">日 RSI 位置（0–100）</h3>
-        <span className="text-slate-400">
-          <span className="text-[10px] text-slate-500">日</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-100">
+        <h3 className="text-stone-500">日 RSI 位置（0–100）</h3>
+        <span className="text-stone-500">
+          <span className="text-[10px] text-stone-400">日</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-900">
             {daily.toFixed(1)}
           </span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span className="text-[10px] text-slate-500">週</span>
-          <span className="ml-1 font-mono tabular-nums text-slate-300">
+          <span className="mx-1 text-stone-400">·</span>
+          <span className="text-[10px] text-stone-400">週</span>
+          <span className="ml-1 font-mono tabular-nums text-stone-700">
             {weekly !== null ? weekly.toFixed(1) : '—'}
           </span>
         </span>
@@ -232,7 +232,7 @@ function describeWeekly(
     return {
       emoji: '⚪',
       label: '週 RSI 資料不足，無法確認',
-      tone: 'border-slate-700 bg-slate-950/40 text-slate-300',
+      tone: 'border-stone-300 bg-stone-50 text-stone-700',
     };
   }
   if (daily > 70 && weekly > 70) {
@@ -253,20 +253,20 @@ function describeWeekly(
     return {
       emoji: '🟡',
       label: `週 RSI ${weekly.toFixed(1)} 未跟進日線超買，可能是短線雜訊`,
-      tone: 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
     };
   }
   if (daily < 30) {
     return {
       emoji: '🟡',
       label: `週 RSI ${weekly.toFixed(1)} 未跟進日線超賣，可能是短線雜訊`,
-      tone: 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
     };
   }
   return {
     emoji: '⚪',
     label: `週 RSI ${weekly.toFixed(1)}，日線在中性區無確認需求`,
-    tone: 'border-slate-700 bg-slate-950/40 text-slate-300',
+    tone: 'border-stone-300 bg-stone-50 text-stone-700',
   };
 }
 
@@ -313,7 +313,7 @@ function Watchpoints({ sub }: { sub: RsiSubState }): JSX.Element {
   const points = buildWatchpoints(sub);
   return (
     <section aria-label="RSI 看點" className="flex flex-col gap-1.5 text-xs">
-      <h3 className="text-slate-400">
+      <h3 className="text-stone-500">
         <Explainable
           title="看點生成規則"
           explanation={
@@ -342,13 +342,13 @@ function Watchpoints({ sub }: { sub: RsiSubState }): JSX.Element {
         >
           看點
         </Explainable>
-        <span className="ml-1 text-slate-500">（觸發轉態勢的關鍵 RSI 值）</span>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 RSI 值）</span>
       </h3>
       <ul className="flex flex-col gap-1">
         {points.map((p) => (
           <li
             key={`${p.direction}-${p.threshold}`}
-            className="rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1 text-slate-300"
+            className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-stone-700"
           >
             {p.label}
           </li>
