@@ -1,0 +1,9 @@
+# Minimal deps for ``python3 scripts/bootstrap.py``.
+# The runtime app has its own (much larger) backend/requirements.txt;
+# this file lets a fresh clone bootstrap without installing the full
+# backend dev environment.
+#
+# Install:
+#   python3 -m pip install -r scripts/requirements.bootstrap.txt
+bcrypt>=4.2,<5
+zxcvbn>=4.4,<5

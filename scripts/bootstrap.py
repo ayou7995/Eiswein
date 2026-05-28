@@ -1,0 +1,506 @@
+#!/usr/bin/env python3
+"""Interactive bootstrap for the distributable Eiswein image.
+
+What this script does:
+
+1. Checks the local environment (Docker, git remote, optional mkcert).
+2. Generates the always-secret values (JWT_SECRET, ENCRYPTION_KEY).
+3. Asks for the admin username + password and hashes the password
+   with bcrypt-12.
+4. Walks the operator through the optional integrations — FRED API
+   key (for macro indicators), SMTP (Gmail App Password or local
+   Mailpit), Schwab broker (with self-signed TLS via mkcert).
+5. Writes the assembled values to ``.env`` in the repo root.
+
+The script is **idempotent in spirit** — running it twice overwrites
+``.env`` from scratch. It refuses to clobber an existing ``.env``
+without explicit confirmation, so an accidental re-run can't wipe a
+working setup.
+
+Run from the repo root:
+
+    python3 -m pip install -r scripts/requirements.bootstrap.txt
+    python3 scripts/bootstrap.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import contextlib
+import getpass
+import os
+import secrets
+import shutil
+import subprocess
+import sys
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Final
+
+REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+ENV_PATH: Final[Path] = REPO_ROOT / ".env"
+CERTS_DIR: Final[Path] = REPO_ROOT / "certs"
+MIN_PASSWORD_LEN: Final[int] = 16
+MIN_ZXCVBN_SCORE: Final[int] = 3
+
+# Host port mapped to the container in docker-compose.yml. Kept here
+# as a constant so any future port change has one place to update.
+HOST_PORT: Final[int] = 8080
+
+
+def _ensure_deps() -> tuple[object, object]:
+    """Import the optional deps lazily so the script can show a clean
+    install hint instead of a Python traceback when they're missing."""
+    try:
+        import bcrypt  # type: ignore[import-untyped]
+        from zxcvbn import zxcvbn  # type: ignore[import-untyped]
+    except ImportError:
+        print(
+            "Bootstrap needs `bcrypt` and `zxcvbn`. Install with:\n"
+            "    python3 -m pip install -r scripts/requirements.bootstrap.txt\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return bcrypt, zxcvbn
+
+
+# ---------- Prompt helpers ---------------------------------------------------
+
+
+def _prompt(message: str, *, default: str | None = None) -> str:
+    """Plain text prompt with optional default."""
+    suffix = f" [{default}]" if default else ""
+    raw = input(f"{message}{suffix}: ").strip()
+    if not raw and default is not None:
+        return default
+    return raw
+
+
+def _prompt_yes_no(message: str, *, default: bool = True) -> bool:
+    suffix = " [Y/n]" if default else " [y/N]"
+    while True:
+        raw = input(f"{message}{suffix}: ").strip().lower()
+        if not raw:
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("Please answer y or n.")
+
+
+def _prompt_password(bcrypt_mod: object, zxcvbn_mod: object) -> str:
+    """Prompt twice, validate strength, return the bcrypt hash."""
+    while True:
+        first = getpass.getpass("Admin password: ")
+        second = getpass.getpass("Confirm password: ")
+        if first != second:
+            print("Passwords do not match — try again.")
+            continue
+        if len(first) < MIN_PASSWORD_LEN:
+            print(
+                f"Password must be at least {MIN_PASSWORD_LEN} characters "
+                "(or use a long passphrase)."
+            )
+            continue
+        strength = zxcvbn_mod(first)  # type: ignore[operator]
+        if int(strength.get("score", 0)) < MIN_ZXCVBN_SCORE:
+            feedback = strength.get("feedback", {}) or {}
+            warning = feedback.get("warning") or "password is too guessable"
+            print(f"Weak password — {warning}")
+            for suggestion in feedback.get("suggestions") or []:
+                print(f"  • {suggestion}")
+            continue
+        hashed = bcrypt_mod.hashpw(  # type: ignore[attr-defined]
+            first.encode("utf-8"),
+            bcrypt_mod.gensalt(rounds=12),  # type: ignore[attr-defined]
+        )
+        return hashed.decode("utf-8")
+
+
+# ---------- Environment checks ----------------------------------------------
+
+
+def _check_docker() -> None:
+    if shutil.which("docker") is None:
+        print(
+            "Docker isn't on $PATH. Install Docker Desktop "
+            "(https://www.docker.com/products/docker-desktop/) and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print("  ✓ Docker found")
+
+
+def _check_git_remote() -> None:
+    try:
+        # Fixed argv + PATH lookup is exactly what this boot wizard
+        # wants — ruff's bandit rules flag it defensively.
+        result = subprocess.run(  # noqa: S603
+            ["git", "-C", str(REPO_ROOT), "remote", "get-url", "origin"],  # noqa: S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print(
+            "  ⚠ git origin remote not set — `make update` will fail until "
+            "you `git remote add origin <url>`",
+        )
+        return
+    print(f"  ✓ git origin → {result.stdout.strip()}")
+
+
+def _check_mkcert(install_hint: bool) -> bool:
+    if shutil.which("mkcert") is not None:
+        print("  ✓ mkcert found")
+        return True
+    if install_hint:
+        print(
+            "  ⚠ mkcert not found. Install with:\n"
+            "      macOS:   brew install mkcert nss\n"
+            "      Linux:   apt install mkcert  (or build from source)\n"
+            "    Then re-run bootstrap."
+        )
+    return False
+
+
+# ---------- Secret generation ------------------------------------------------
+
+
+def _gen_jwt_secret() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def _gen_encryption_key() -> str:
+    return base64.urlsafe_b64encode(os.urandom(32)).decode("ascii")
+
+
+# ---------- Section workflows ------------------------------------------------
+
+
+def _section_admin(bcrypt_mod: object, zxcvbn_mod: object) -> dict[str, str]:
+    print("\n[Admin login]")
+    username = _prompt("Admin username", default="admin")
+    password_hash = _prompt_password(bcrypt_mod, zxcvbn_mod)
+    return {
+        "ADMIN_USERNAME": username,
+        "ADMIN_PASSWORD_HASH": password_hash,
+    }
+
+
+def _section_fred() -> dict[str, str]:
+    print("\n[FRED — macro indicators (VIX, yield curve, CPI, ...)]")
+    if not _prompt_yes_no("Enable macro indicators?", default=True):
+        return {"FRED_API_KEY": ""}
+    print(
+        "  FRED API keys are free. Sign up:\n"
+        "    https://fred.stlouisfed.org/docs/api/api_key.html\n"
+        "  (Press Enter to skip — you can paste the key into .env later.)"
+    )
+    return {"FRED_API_KEY": _prompt("FRED API key", default="")}
+
+
+def _section_smtp() -> dict[str, str]:
+    print("\n[Email reminders (optional)]")
+    if not _prompt_yes_no("Enable email reminders?", default=False):
+        return _empty_smtp_block()
+    print(
+        "  Pick a backend:\n"
+        "    g) Gmail with an App Password (delivers real mail)\n"
+        "    m) Local Mailpit container (catches mail for preview only)\n"
+        "    s) Skip — edit .env later"
+    )
+    choice = _prompt("Choice [g/m/s]", default="s").lower()
+    if choice.startswith("g"):
+        return _section_smtp_gmail()
+    if choice.startswith("m"):
+        return _section_smtp_mailpit()
+    return _empty_smtp_block()
+
+
+def _section_smtp_gmail() -> dict[str, str]:
+    print(
+        "  Generate an App Password (Gmail account needs 2FA):\n"
+        "    https://myaccount.google.com/apppasswords"
+    )
+    username = _prompt("Gmail address")
+    password = getpass.getpass("Gmail App Password (16 chars, no spaces): ").strip()
+    sender = _prompt("From address", default=username)
+    recipient = _prompt("Send digests to", default=username)
+    return {
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "587",
+        "SMTP_USERNAME": username,
+        "SMTP_PASSWORD": password,
+        "SMTP_FROM": sender,
+        "SMTP_TO": recipient,
+        "SMTP_STARTTLS": "true",
+    }
+
+
+def _section_smtp_mailpit() -> dict[str, str]:
+    print(
+        "  Mailpit captures outbound mail in a local web UI at "
+        "http://localhost:8025.\n"
+        "  IMPORTANT: start with the email profile enabled:\n"
+        "    COMPOSE_PROFILES=email make start"
+    )
+    return {
+        "SMTP_HOST": "mailpit",
+        "SMTP_PORT": "1025",
+        "SMTP_USERNAME": "",
+        "SMTP_PASSWORD": "",
+        "SMTP_FROM": "eiswein@localhost",
+        "SMTP_TO": _prompt("Recipient for previews", default="me@localhost"),
+        "SMTP_STARTTLS": "false",
+    }
+
+
+def _empty_smtp_block() -> dict[str, str]:
+    return {
+        "SMTP_HOST": "",
+        "SMTP_PORT": "587",
+        "SMTP_USERNAME": "",
+        "SMTP_PASSWORD": "",
+        "SMTP_FROM": "",
+        "SMTP_TO": "",
+        "SMTP_STARTTLS": "true",
+    }
+
+
+def _section_schwab() -> dict[str, str]:
+    print("\n[Schwab broker integration (optional)]")
+    if not _prompt_yes_no(
+        "Connect your Schwab brokerage account (read-only positions)?",
+        default=False,
+    ):
+        return _empty_schwab_block()
+
+    mkcert_ok = _check_mkcert(install_hint=True)
+    if not mkcert_ok:
+        print(
+            "  Skipping Schwab config — re-run bootstrap after installing mkcert."
+        )
+        return _empty_schwab_block()
+
+    _ensure_certs_dir()
+    _generate_local_certs()
+
+    redirect_uri = f"https://localhost:{HOST_PORT}/api/v1/broker/schwab/callback"
+    print(
+        "\n  Register a Schwab Developer app at:\n"
+        "    https://developer.schwab.com/\n"
+        f"  Set the redirect URI exactly to:\n"
+        f"    {redirect_uri}\n"
+        "  Then paste the client credentials below."
+    )
+    client_id = _prompt("Schwab Client ID")
+    client_secret = getpass.getpass("Schwab Client Secret: ").strip()
+
+    return {
+        "SCHWAB_CLIENT_ID": client_id,
+        "SCHWAB_CLIENT_SECRET": client_secret,
+        "SCHWAB_REDIRECT_URI": redirect_uri,
+    }
+
+
+def _empty_schwab_block() -> dict[str, str]:
+    return {
+        "SCHWAB_CLIENT_ID": "",
+        "SCHWAB_CLIENT_SECRET": "",
+        "SCHWAB_REDIRECT_URI": (
+            f"https://localhost:{HOST_PORT}/api/v1/broker/schwab/callback"
+        ),
+    }
+
+
+def _ensure_certs_dir() -> None:
+    CERTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _generate_local_certs() -> None:
+    """Run mkcert to write a localhost cert pair into ./certs/."""
+    key_path = CERTS_DIR / "localhost-key.pem"
+    cert_path = CERTS_DIR / "localhost.pem"
+    if key_path.exists() and cert_path.exists():
+        print(f"  ✓ Existing cert pair found at {CERTS_DIR}")
+        return
+    print(f"  Generating self-signed TLS cert in {CERTS_DIR}/ ...")
+    subprocess.run(  # noqa: S603
+        ["mkcert", "-install"],  # noqa: S607
+        check=False,
+    )
+    subprocess.run(  # noqa: S603
+        [  # noqa: S607 — PATH lookup of mkcert is intentional
+            "mkcert",
+            "-cert-file",
+            str(cert_path),
+            "-key-file",
+            str(key_path),
+            "localhost",
+            "127.0.0.1",
+        ],
+        cwd=CERTS_DIR,
+        check=True,
+    )
+    print(f"  ✓ Wrote {cert_path.name} + {key_path.name}")
+
+
+# ---------- .env writer ------------------------------------------------------
+
+
+def _write_env(values: dict[str, str]) -> None:
+    """Compose the final .env from the assembled key/value pairs."""
+    body = _render_env(values)
+    ENV_PATH.write_text(body, encoding="utf-8")
+    # Non-POSIX filesystems (some Windows mounts) ignore chmod — not
+    # worth aborting the install over.
+    with contextlib.suppress(OSError):
+        ENV_PATH.chmod(0o600)
+
+
+def _render_env(values: dict[str, str]) -> str:
+    sections: list[tuple[str, Iterable[str]]] = [
+        (
+            "Security",
+            ["JWT_SECRET", "ENCRYPTION_KEY"],
+        ),
+        (
+            "Admin",
+            ["ADMIN_USERNAME", "ADMIN_PASSWORD_HASH"],
+        ),
+        (
+            "Environment",
+            ["ENVIRONMENT", "LOG_LEVEL", "DATABASE_URL"],
+        ),
+        (
+            "Data sources",
+            ["FRED_API_KEY"],
+        ),
+        (
+            "Schwab (optional)",
+            [
+                "SCHWAB_CLIENT_ID",
+                "SCHWAB_CLIENT_SECRET",
+                "SCHWAB_REDIRECT_URI",
+            ],
+        ),
+        (
+            "SMTP (optional)",
+            [
+                "SMTP_HOST",
+                "SMTP_PORT",
+                "SMTP_USERNAME",
+                "SMTP_PASSWORD",
+                "SMTP_FROM",
+                "SMTP_TO",
+                "SMTP_STARTTLS",
+            ],
+        ),
+        (
+            "Frontend / cookies",
+            ["FRONTEND_URL", "COOKIE_SECURE"],
+        ),
+    ]
+
+    out: list[str] = [
+        "# Eiswein .env — generated by scripts/bootstrap.py",
+        "# Edit by hand to tweak; re-run `make install` to regenerate.",
+        "# DO NOT commit this file.",
+        "",
+    ]
+    for title, keys in sections:
+        out.append(f"# === {title} ===")
+        for key in keys:
+            value = values.get(key, "")
+            out.append(f"{key}={value}")
+        out.append("")
+    return "\n".join(out)
+
+
+# ---------- Main flow --------------------------------------------------------
+
+
+def _assemble_defaults() -> dict[str, str]:
+    """Static defaults that fall through unchanged for every install."""
+    return {
+        "ENVIRONMENT": "production",
+        "LOG_LEVEL": "INFO",
+        "DATABASE_URL": "sqlite:///./data/eiswein.db",
+        "FRONTEND_URL": f"http://localhost:{HOST_PORT}",
+        # Cookies must be ``Secure=true`` only over HTTPS. The
+        # entrypoint switches based on cert presence, but Cookie
+        # Secure is a runtime flag too — keep it loose here so HTTP
+        # cookies work, the Schwab branch overrides if certs were
+        # generated.
+        "COOKIE_SECURE": "false",
+    }
+
+
+def _confirm_overwrite() -> None:
+    if not ENV_PATH.exists():
+        return
+    print(
+        f"\n⚠ {ENV_PATH.name} already exists. Re-running bootstrap will "
+        "OVERWRITE it.\n"
+        "  Existing admin password, secrets, and Schwab credentials will be "
+        "replaced with the values you enter next."
+    )
+    if not _prompt_yes_no("Continue?", default=False):
+        print("Aborted — no changes made.")
+        sys.exit(0)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Bootstrap Eiswein for local use.")
+    parser.add_argument(
+        "--skip-checks",
+        action="store_true",
+        help="Skip Docker / git / mkcert presence checks (advanced use only).",
+    )
+    args = parser.parse_args()
+
+    print("┌──────────────────────────────────────────────┐")
+    print("│       Eiswein — first-time setup wizard      │")
+    print("└──────────────────────────────────────────────┘\n")
+
+    if not args.skip_checks:
+        print("[Environment checks]")
+        _check_docker()
+        _check_git_remote()
+        print()
+
+    bcrypt_mod, zxcvbn_mod = _ensure_deps()
+
+    _confirm_overwrite()
+
+    values: dict[str, str] = _assemble_defaults()
+    values["JWT_SECRET"] = _gen_jwt_secret()
+    values["ENCRYPTION_KEY"] = _gen_encryption_key()
+    values.update(_section_admin(bcrypt_mod, zxcvbn_mod))
+    values.update(_section_fred())
+    values.update(_section_smtp())
+    schwab_values = _section_schwab()
+    values.update(schwab_values)
+    # If Schwab certs were generated, switch the runtime to HTTPS-aware cookies.
+    if schwab_values["SCHWAB_CLIENT_ID"]:
+        values["COOKIE_SECURE"] = "true"
+        values["FRONTEND_URL"] = f"https://localhost:{HOST_PORT}"
+
+    _write_env(values)
+
+    print("\n┌──────────────────────────────────────────────┐")
+    print(f"│  Wrote {ENV_PATH.relative_to(REPO_ROOT)} (chmod 600)                       │")
+    print("└──────────────────────────────────────────────┘\n")
+    print("Next steps:")
+    print("  make start              # boot in the background")
+    print(f"  open http://localhost:{HOST_PORT}   # (https:// if Schwab certs)")
+    print("  make logs               # tail logs")
+    print("  make stop               # stop the stack")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
