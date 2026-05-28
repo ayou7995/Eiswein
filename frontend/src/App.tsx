@@ -23,6 +23,9 @@ const HistoryPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const CalendarPage = lazy(() =>
+  import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })),
+);
 
 function PageSuspense({ children }: { children: ReactNode }): JSX.Element {
   return (
@@ -65,6 +68,14 @@ export function App(): JSX.Element {
           element={
             <PageSuspense>
               <TickerDetailPage />
+            </PageSuspense>
+          }
+        />
+        <Route
+          path={ROUTES.CALENDAR}
+          element={
+            <PageSuspense>
+              <CalendarPage />
             </PageSuspense>
           }
         />

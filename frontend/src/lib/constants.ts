@@ -3,6 +3,7 @@ export const ROUTES = {
   // DASHBOARD path stays for URL stability; the page label is "市場總覽" in
   // the sidebar nav (renamed in Commit C).
   DASHBOARD: '/dashboard',
+  CALENDAR: '/calendar',
   TICKER: '/ticker/:symbol',
   HISTORY: '/history',
   SETTINGS: '/settings',

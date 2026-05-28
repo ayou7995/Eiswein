@@ -15,7 +15,8 @@ interface NavItem {
 
 const NAV_ITEMS: readonly NavItem[] = [
   { to: ROUTES.DASHBOARD, label: '市場總覽', icon: '📊' },
-  { to: ROUTES.HISTORY, label: '歷史', icon: '📅' },
+  { to: ROUTES.CALENDAR, label: '行事曆', icon: '📅' },
+  { to: ROUTES.HISTORY, label: '歷史', icon: '🕘' },
   { to: ROUTES.SETTINGS, label: '設定', icon: '⚙' },
 ];
 
