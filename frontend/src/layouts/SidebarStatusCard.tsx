@@ -2,21 +2,28 @@ import { useMarketPosture } from '../hooks/useMarketPosture';
 import { useSystemInfo } from '../hooks/useSettings';
 import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
 
-// Sidebar status card — compact summary of market posture (label + streak
-// days + green/yellow/red regime vote counts). Same backend data the
-// market-overview page uses; this card is the always-visible micro-version.
+// Sidebar status card — single-row summary of market posture. Pre-redesign
+// this took three rows; the slim version condenses everything onto one
+// 28-32px row so the sidebar shows more tickers without scrolling.
 //
-// Render rules:
-//   - Loading / 404 / error: collapse to a single grey strip. The
-//     market-overview page handles the loud "等待首次運算" message.
-//   - Pale-emerald background when posture is offensive, pale-amber for
-//     normal, pale-rose for defensive — same tone family as the regime
-//     SignalBadge so the operator's colour intuition transfers across views.
+// Layout:
+//   [● 進攻 · 34d · 3/1/0]                       [已收盤 16:00 ET]
+//   |---- left: posture group ----|   |--- right: freshness badge ---|
+//
+// The colored dot replaces the chunky tinted card background — same
+// posture-→-color mapping, much lower visual weight. Counts collapse to
+// "G/Y/R" tabular nums so they line up regardless of digit width.
 
-const POSTURE_TINT: Record<string, string> = {
-  offensive: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-  normal: 'bg-amber-50 border-amber-200 text-amber-900',
-  defensive: 'bg-rose-50 border-rose-200 text-rose-900',
+const POSTURE_DOT: Record<string, string> = {
+  offensive: 'bg-emerald-500',
+  normal: 'bg-amber-500',
+  defensive: 'bg-rose-500',
+};
+
+const POSTURE_TEXT: Record<string, string> = {
+  offensive: 'text-emerald-700',
+  normal: 'text-amber-700',
+  defensive: 'text-rose-700',
 };
 
 export function SidebarStatusCard(): JSX.Element {
@@ -27,9 +34,10 @@ export function SidebarStatusCard(): JSX.Element {
     return (
       <div
         data-testid="sidebar-status-card-loading"
-        className="rounded-xl border border-stone-200 bg-stone-100 px-3 py-2 text-xs text-stone-500"
+        className="flex items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs text-stone-500"
       >
-        市場態勢載入中…
+        <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-stone-300" />
+        <span>市場態勢載入中…</span>
       </div>
     );
   }
@@ -38,32 +46,41 @@ export function SidebarStatusCard(): JSX.Element {
     return (
       <div
         data-testid="sidebar-status-card-empty"
-        className="rounded-xl border border-stone-200 bg-stone-100 px-3 py-2 text-xs text-stone-500"
+        className="flex items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs text-stone-500"
       >
-        等待首次運算
+        <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-stone-300" />
+        <span>等待首次運算</span>
       </div>
     );
   }
 
-  const tint = POSTURE_TINT[posture.posture] ?? 'bg-stone-100 border-stone-200 text-stone-700';
+  const dot = POSTURE_DOT[posture.posture] ?? 'bg-stone-400';
+  const textColor = POSTURE_TEXT[posture.posture] ?? 'text-stone-700';
 
   return (
     <section
       aria-label="市場態勢摘要"
       data-testid="sidebar-status-card"
-      className={`flex flex-col gap-1 rounded-xl border px-3 py-2 ${tint}`}
+      className="flex items-center gap-2 rounded-md border border-stone-200 bg-white px-2 py-1 text-xs"
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold">{posture.posture_label}</span>
-        <span className="text-xs opacity-80">{posture.streak_days} 天</span>
-      </div>
-      <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
-        <span>買 {posture.regime_green_count}</span>
-        <span>持 {posture.regime_yellow_count}</span>
-        <span>賣 {posture.regime_red_count}</span>
-      </div>
+      <span
+        aria-hidden="true"
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${dot}`}
+      />
+      <span className={`font-semibold ${textColor}`}>{posture.posture_label}</span>
+      <span className="text-stone-400" aria-hidden="true">·</span>
+      <span className="text-stone-600" aria-label={`已持續 ${posture.streak_days} 天`}>
+        {posture.streak_days}d
+      </span>
+      <span className="text-stone-400" aria-hidden="true">·</span>
+      <span
+        className="font-mono tabular-nums text-stone-700"
+        aria-label={`綠燈 ${posture.regime_green_count}、黃燈 ${posture.regime_yellow_count}、紅燈 ${posture.regime_red_count}`}
+      >
+        {posture.regime_green_count}/{posture.regime_yellow_count}/{posture.regime_red_count}
+      </span>
       {sysInfo?.data_freshness && (
-        <div className="mt-1">
+        <div className="ml-auto shrink-0">
           <DataFreshnessBadge freshness={sysInfo.data_freshness} />
         </div>
       )}
