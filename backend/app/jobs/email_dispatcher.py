@@ -30,7 +30,8 @@ from __future__ import annotations
 
 import smtplib
 import ssl
-from datetime import datetime
+from collections.abc import Iterable, Sequence
+from datetime import date, datetime
 from decimal import Decimal
 from email.message import EmailMessage
 from pathlib import Path
@@ -40,6 +41,7 @@ import structlog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.config import Settings
+from app.db.models import CalendarEvent
 from app.ingestion.daily_ingestion import DailyUpdateResult
 from app.signals.types import ActionCategory, MarketPosture, TimingModifier
 
@@ -306,6 +308,145 @@ def _render_daily_text(ctx: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+_CATALYST_DEFAULT_HORIZON_DAYS = 3
+_CATALYST_TYPE_LABELS: dict[str, str] = {
+    "earnings": "財報",
+    "macro": "總經",
+    "industry": "產業",
+}
+_CATALYST_TYPE_COLORS: dict[str, str] = {
+    "earnings": "#10b981",  # emerald-500
+    "macro": "#0ea5e9",  # sky-500
+    "industry": "#8b5cf6",  # violet-500
+}
+_DAY_LABEL_PREFIXES: dict[int, str] = {0: "今天", 1: "明天", 2: "後天"}
+
+
+def send_catalyst_digest(
+    *,
+    events: Sequence[CalendarEvent],
+    as_of: date,
+    horizon_days: int = _CATALYST_DEFAULT_HORIZON_DAYS,
+    settings: Settings,
+) -> bool:
+    """Render + send the catalyst digest email.
+
+    ``events`` must already be filtered to the [as_of, as_of+horizon)
+    window; this function does not query the DB so it stays trivially
+    unit-testable. Returns ``True`` on successful send, ``False`` on
+    not-configured or delivery failure. Never raises.
+
+    No-op when zero events fall in the window — sending an "empty
+    digest" email adds noise without value.
+    """
+    if not events:
+        logger.info("email_skipped", reason="no_events", job="catalyst_digest")
+        return False
+    if _not_configured(settings):
+        logger.info("email_skipped", reason="not_configured", job="catalyst_digest")
+        return False
+
+    recipient = settings.smtp_to
+    sender = settings.smtp_from
+    if not recipient or not sender:
+        logger.info(
+            "email_skipped",
+            reason="missing_from_or_to",
+            job="catalyst_digest",
+        )
+        return False
+
+    ctx = _build_catalyst_context(
+        events=events,
+        as_of=as_of,
+        horizon_days=horizon_days,
+    )
+    html_body = _env.get_template("catalyst_digest.html").render(**ctx)
+    text_body = _render_catalyst_text(ctx)
+    subject = (
+        f"📅 Eiswein 催化劑摘要 · 未來 {horizon_days} 天 · "
+        f"{ctx['total_events']} 件事件"
+    )
+    return _dispatch(
+        settings=settings,
+        sender=sender,
+        recipient=recipient,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        job_name="catalyst_digest",
+    )
+
+
+def _build_catalyst_context(
+    *,
+    events: Sequence[CalendarEvent],
+    as_of: date,
+    horizon_days: int,
+) -> dict[str, Any]:
+    """Group events by date and render-friendly metadata."""
+
+    by_date: dict[date, list[CalendarEvent]] = {}
+    for evt in events:
+        by_date.setdefault(evt.event_date, []).append(evt)
+
+    days: list[dict[str, Any]] = []
+    for event_date in sorted(by_date):
+        offset = (event_date - as_of).days
+        days.append(
+            {
+                "label": _format_day_label(event_date, offset),
+                "events": [_format_event(e) for e in by_date[event_date]],
+            }
+        )
+    return {
+        "as_of": as_of.isoformat(),
+        "horizon_days": horizon_days,
+        "total_events": len(events),
+        "days": days,
+    }
+
+
+def _format_day_label(event_date: date, offset_days: int) -> str:
+    prefix = _DAY_LABEL_PREFIXES.get(offset_days, "")
+    iso = event_date.isoformat()
+    return f"{prefix} · {iso}" if prefix else iso
+
+
+def _format_event(event: CalendarEvent) -> dict[str, Any]:
+    return {
+        "type_label": _CATALYST_TYPE_LABELS.get(event.type, event.type),
+        "color": _CATALYST_TYPE_COLORS.get(event.type, "#374151"),
+        "ticker": event.ticker_symbol or "",
+        "title": event.title,
+        "event_time": event.event_time or "",
+    }
+
+
+def _render_catalyst_text(ctx: dict[str, Any]) -> str:
+    lines = [
+        f"Eiswein 催化劑摘要 · {ctx['as_of']}",
+        f"未來 {ctx['horizon_days']} 天 · {ctx['total_events']} 件事件",
+        "",
+    ]
+    for day in ctx["days"]:
+        lines.append(day["label"])
+        for evt in day["events"]:
+            ticker = f" {evt['ticker']}" if evt["ticker"] else ""
+            tail = f"  {evt['event_time']}" if evt["event_time"] else ""
+            lines.append(f"  - [{evt['type_label']}]{ticker} {evt['title']}{tail}")
+        lines.append("")
+    lines.append("Eiswein — 行事曆同步,僅供決策參考。")
+    return "\n".join(lines)
+
+
+def _flatten_events(buckets: Iterable[Sequence[CalendarEvent]]) -> list[CalendarEvent]:
+    flat: list[CalendarEvent] = []
+    for bucket in buckets:
+        flat.extend(bucket)
+    return flat
 
 
 def _dispatch(

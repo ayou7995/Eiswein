@@ -8,6 +8,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.models import CalendarEvent
 from app.db.repositories.daily_signal_repository import (
     DailySignalRepository,
     result_to_row,
@@ -164,3 +165,88 @@ def test_ticker_signal_rejects_invalid_symbol(client: TestClient, test_password:
     _login(client, test_password)
     resp = client.get("/api/v1/ticker/bad symbol/signal")
     assert resp.status_code == 422
+
+
+def test_ticker_signal_overrides_timing_badge_when_earnings_imminent(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """An earnings event within 7 days replaces the timing badge with
+    "⏳ 等財報 Xd" — the cross-layer modifier from
+    indicators-roadmap.md §4.4."""
+    _login(client, test_password)
+    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    today = datetime.now(UTC).date()
+
+    with session_factory() as session:
+        _seed_snapshot(session, symbol="AAPL", trade_date=today)
+        _seed_indicator_rows(session, symbol="AAPL", trade_date=today)
+        # Earnings in 4 days — must trigger the override.
+        session.add(
+            CalendarEvent(
+                event_date=date.fromordinal(today.toordinal() + 4),
+                event_time="AMC",
+                type="earnings",
+                ticker_symbol="AAPL",
+                title="AAPL Earnings",
+                source="yfinance",
+            )
+        )
+        session.commit()
+
+    resp = client.get("/api/v1/ticker/AAPL/signal")
+    assert resp.status_code == 200
+    body = resp.json()
+    # Action stays whatever the direction layer voted (STRONG_BUY).
+    assert body["action"] == "strong_buy"
+    # Timing badge swapped from "✓ 時機好" to the earnings override.
+    assert body["timing_badge"] == "⏳ 等財報 4d"
+
+
+def test_ticker_signal_keeps_timing_badge_when_earnings_far_out(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """When the next earnings event is > 7 days away the normal timing
+    badge stays intact."""
+    _login(client, test_password)
+    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    today = datetime.now(UTC).date()
+
+    with session_factory() as session:
+        _seed_snapshot(session, symbol="AAPL", trade_date=today)
+        _seed_indicator_rows(session, symbol="AAPL", trade_date=today)
+        session.add(
+            CalendarEvent(
+                event_date=date.fromordinal(today.toordinal() + 21),
+                type="earnings",
+                ticker_symbol="AAPL",
+                title="AAPL Earnings",
+                source="yfinance",
+            )
+        )
+        session.commit()
+
+    body = client.get("/api/v1/ticker/AAPL/signal").json()
+    assert body["timing_badge"] == "✓ 時機好"
+
+
+def test_ticker_signal_no_earnings_event_keeps_default_badge(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """No upcoming earnings → no override; the regular timing badge
+    flows through as before."""
+    _login(client, test_password)
+    client.post("/api/v1/watchlist", json={"symbol": "AAPL"})
+    today = datetime.now(UTC).date()
+    with session_factory() as session:
+        _seed_snapshot(session, symbol="AAPL", trade_date=today)
+        _seed_indicator_rows(session, symbol="AAPL", trade_date=today)
+        session.commit()
+
+    body = client.get("/api/v1/ticker/AAPL/signal").json()
+    assert body["timing_badge"] == "✓ 時機好"

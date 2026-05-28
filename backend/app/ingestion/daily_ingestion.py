@@ -336,6 +336,18 @@ async def run_daily_update(
             error=str(exc),
         )
 
+    # Catalyst digest email — best-effort. Reads from the calendar
+    # table we just synced. Same fault-isolation contract as calendar
+    # sync (a flaky relay must not roll back the day's work).
+    try:
+        _maybe_send_catalyst_digest(db=db, settings=settings, as_of=session_day)
+    except Exception as exc:
+        logger.warning(
+            "daily_update_catalyst_digest_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
     logger.info(
         "daily_update_complete",
         date=str(session_day),
@@ -707,3 +719,32 @@ def _to_date(idx: object) -> date | None:
         return pd.Timestamp(idx).date()
     except (ValueError, TypeError):
         return None
+
+
+# Window of upcoming days to summarise in the post-daily-update email.
+_CATALYST_DIGEST_HORIZON_DAYS = 3
+
+
+def _maybe_send_catalyst_digest(
+    *,
+    db: Session,
+    settings: Settings,
+    as_of: date,
+) -> None:
+    """Pull events for [as_of, as_of+horizon) and hand them to the
+    catalyst-digest mailer. The mailer no-ops on zero events and on a
+    not-configured SMTP relay, so this helper just glues data + send."""
+    from app.db.repositories.calendar_event_repository import CalendarEventRepository
+    from app.jobs.email_dispatcher import send_catalyst_digest
+
+    repo = CalendarEventRepository(db)
+    horizon_end = date.fromordinal(as_of.toordinal() + _CATALYST_DIGEST_HORIZON_DAYS - 1)
+    events = repo.list_in_range(start=as_of, end=horizon_end)
+    if not events:
+        return
+    send_catalyst_digest(
+        events=events,
+        as_of=as_of,
+        horizon_days=_CATALYST_DIGEST_HORIZON_DAYS,
+        settings=settings,
+    )

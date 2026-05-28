@@ -17,7 +17,7 @@ Authentication is required (all routes under ``/api/v1`` except
 ``/health`` and ``/login`` require a valid access cookie).
 """
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal, cast
 
@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.dependencies import (
     current_user_id,
+    get_calendar_event_repository,
     get_daily_price_repository,
     get_daily_signal_repository,
     get_ticker_snapshot_repository,
@@ -47,11 +48,13 @@ from app.api.v1._indicator_series import (
     build_volume_anomaly_payload,
 )
 from app.api.v1.watchlist_routes import validate_symbol_or_raise
+from app.db.repositories.calendar_event_repository import CalendarEventRepository
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.daily_signal_repository import DailySignalRepository
 from app.db.repositories.ticker_snapshot_repository import TickerSnapshotRepository
 from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.indicators.base import INDICATOR_VERSION, IndicatorResult, SignalToneLiteral
+from app.indicators.earnings_proximity import classify_earnings_proximity
 from app.security.exceptions import NotFoundError
 from app.signals.labels import ACTION_LABELS, TIMING_BADGES
 from app.signals.pros_cons import build_pros_cons_items
@@ -212,6 +215,7 @@ def get_ticker_signal(
     watchlist: WatchlistRepository = Depends(get_watchlist_repository),
     snapshot_repo: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
     signals_repo: DailySignalRepository = Depends(get_daily_signal_repository),
+    calendar_repo: CalendarEventRepository = Depends(get_calendar_event_repository),
 ) -> ComposedSignalResponse:
     validated = validate_symbol_or_raise(symbol)
     if watchlist.get(user_id=user_id, symbol=validated) is None:
@@ -248,6 +252,24 @@ def get_ticker_signal(
     # a historical row composed under different rules keeps its original
     # flag (audit-ability, A2-style).
     badge: str | None = TIMING_BADGES.get(timing) if snapshot.show_timing_modifier else None
+
+    # Earnings proximity overlay — when the next earnings event is < 7
+    # days out, replace the timing badge with "⏳ 等財報 Xd". The
+    # composed action is unchanged (per the cross-layer modifier
+    # design in indicators-roadmap.md §4.4); we just nudge the
+    # operator visually away from new entries.
+    today = datetime.now(UTC).date()
+    next_earnings = calendar_repo.next_for_ticker(
+        ticker_symbol=validated,
+        as_of=today,
+        types=["earnings"],
+    )
+    days_until: int | None = (
+        (next_earnings.event_date - today).days if next_earnings is not None else None
+    )
+    proximity = classify_earnings_proximity(days_until)
+    if proximity.force_override_badge is not None:
+        badge = proximity.force_override_badge
 
     return ComposedSignalResponse(
         symbol=validated,

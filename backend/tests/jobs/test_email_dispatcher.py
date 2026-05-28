@@ -266,3 +266,174 @@ def test_context_covers_every_posture(settings: Settings, posture: MarketPosture
             settings=cfg,
         )
     assert ok is True
+
+
+# ---------- catalyst digest ----------------------------------------------
+
+
+def _fake_event(
+    *,
+    event_date: date,
+    type_: str,
+    title: str,
+    ticker: str | None = None,
+    event_time: str | None = None,
+) -> object:
+    """Minimal duck-typed event stand-in so we don't depend on the DB
+    model in unit tests."""
+
+    @dataclass
+    class _Evt:
+        event_date: date
+        type: str
+        title: str
+        ticker_symbol: str | None
+        event_time: str | None
+
+    return _Evt(
+        event_date=event_date,
+        type=type_,
+        title=title,
+        ticker_symbol=ticker,
+        event_time=event_time,
+    )
+
+
+def test_catalyst_digest_skips_when_no_events(settings: Settings) -> None:
+    cfg = _configured_settings(settings)
+    with patch.object(email_dispatcher, "smtplib") as smtp_mod:
+        ok = email_dispatcher.send_catalyst_digest(
+            events=[],
+            as_of=date(2026, 5, 27),
+            settings=cfg,
+        )
+    assert ok is False
+    smtp_mod.SMTP.assert_not_called()
+
+
+def test_catalyst_digest_skips_when_not_configured(settings: Settings) -> None:
+    events = [
+        _fake_event(
+            event_date=date(2026, 5, 27),
+            type_="earnings",
+            title="AAPL Earnings",
+            ticker="AAPL",
+        )
+    ]
+    with patch.object(email_dispatcher, "smtplib") as smtp_mod:
+        ok = email_dispatcher.send_catalyst_digest(
+            events=events,  # type: ignore[arg-type]
+            as_of=date(2026, 5, 27),
+            settings=settings,
+        )
+    assert ok is False
+    smtp_mod.SMTP.assert_not_called()
+
+
+def _extract_bodies(message: object) -> tuple[str, str]:
+    """Return (text, html) bodies decoded as UTF-8.
+
+    EmailMessage's ``as_string()`` runs quoted-printable encoding which
+    mangles Chinese characters for substring assertions — pull the
+    parts directly and decode.
+    """
+    text_body = ""
+    html_body = ""
+    for part in message.iter_parts():  # type: ignore[attr-defined]
+        ctype = part.get_content_type()
+        payload = part.get_content()
+        if ctype == "text/plain":
+            text_body = payload
+        elif ctype == "text/html":
+            html_body = payload
+    return text_body, html_body
+
+
+def test_catalyst_digest_sends_when_events_present(settings: Settings) -> None:
+    cfg = _configured_settings(settings)
+    events = [
+        _fake_event(
+            event_date=date(2026, 5, 27),
+            type_="macro",
+            title="CPI Release",
+            event_time="8:30 ET",
+        ),
+        _fake_event(
+            event_date=date(2026, 5, 28),
+            type_="earnings",
+            title="AAPL Earnings",
+            ticker="AAPL",
+            event_time="AMC",
+        ),
+    ]
+
+    smtp_instance = MagicMock()
+    smtp_ctx = MagicMock()
+    smtp_ctx.__enter__.return_value = smtp_instance
+    smtp_ctx.__exit__.return_value = False
+
+    with patch.object(email_dispatcher.smtplib, "SMTP", return_value=smtp_ctx):
+        ok = email_dispatcher.send_catalyst_digest(
+            events=events,  # type: ignore[arg-type]
+            as_of=date(2026, 5, 27),
+            horizon_days=3,
+            settings=cfg,
+        )
+
+    assert ok is True
+    sent = smtp_instance.send_message.call_args.args[0]
+    text_body, html_body = _extract_bodies(sent)
+    # Both events surfaced in the rendered body.
+    assert "CPI Release" in html_body
+    assert "AAPL Earnings" in html_body
+    assert "CPI Release" in text_body
+    # Subject carries the event count + horizon.
+    assert sent["Subject"].startswith("📅 Eiswein 催化劑摘要")
+    assert "未來 3 天" in sent["Subject"]
+    assert "2 件事件" in sent["Subject"]
+
+
+def test_catalyst_digest_groups_events_by_date(settings: Settings) -> None:
+    cfg = _configured_settings(settings)
+    events = [
+        _fake_event(
+            event_date=date(2026, 5, 28),
+            type_="earnings",
+            title="MSFT Earnings",
+            ticker="MSFT",
+        ),
+        _fake_event(
+            event_date=date(2026, 5, 28),
+            type_="industry",
+            title="WWDC Keynote",
+            ticker="AAPL",
+        ),
+        _fake_event(
+            event_date=date(2026, 5, 27),
+            type_="macro",
+            title="CPI Release",
+        ),
+    ]
+
+    smtp_instance = MagicMock()
+    smtp_ctx = MagicMock()
+    smtp_ctx.__enter__.return_value = smtp_instance
+    smtp_ctx.__exit__.return_value = False
+
+    with patch.object(email_dispatcher.smtplib, "SMTP", return_value=smtp_ctx):
+        email_dispatcher.send_catalyst_digest(
+            events=events,  # type: ignore[arg-type]
+            as_of=date(2026, 5, 27),
+            settings=cfg,
+        )
+
+    sent = smtp_instance.send_message.call_args.args[0]
+    text_body, html_body = _extract_bodies(sent)
+    # 今天 (the as_of day) prefix appears for May 27.
+    assert "今天" in html_body
+    # 明天 prefix appears for May 28.
+    assert "明天" in html_body
+    # Type labels translated to Chinese.
+    assert "財報" in html_body
+    assert "總經" in html_body
+    assert "產業" in html_body
