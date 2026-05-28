@@ -18,6 +18,7 @@ from app.datasources.base import DataSource
 from app.datasources.factory import build_data_source
 from app.db.repositories.audit_repository import AuditRepository
 from app.db.repositories.broker_credential_repository import BrokerCredentialRepository
+from app.db.repositories.calendar_event_repository import CalendarEventRepository
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.daily_signal_repository import DailySignalRepository
 from app.db.repositories.macro_repository import MacroRepository
@@ -110,6 +111,12 @@ def get_daily_price_repository(
     session: Session = Depends(get_db_session),
 ) -> DailyPriceRepository:
     return DailyPriceRepository(session)
+
+
+def get_calendar_event_repository(
+    session: Session = Depends(get_db_session),
+) -> CalendarEventRepository:
+    return CalendarEventRepository(session)
 
 
 def get_macro_repository(

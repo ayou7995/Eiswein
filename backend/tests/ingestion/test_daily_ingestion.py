@@ -677,3 +677,74 @@ async def test_scheduled_run_refetches_pre_close_partial_row(
             else mon_row.updated_at.replace(tzinfo=UTC)
         )
         assert actual > pre_close_write
+
+
+@pytest.mark.asyncio
+async def test_daily_update_invokes_calendar_sync(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """daily_update must call run_calendar_sync at the end of the job
+    so the per-ticker earnings + macro release events stay fresh."""
+    from unittest.mock import AsyncMock
+
+    from app.ingestion.calendar_sync import CalendarSyncResult
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    _seed_watchlist(session_factory, {"u1": ["AAPL", "SPY"]})
+
+    expected = CalendarSyncResult(
+        earnings_count=2,
+        macro_count=5,
+        industry_count=0,
+        orphans_deleted=0,
+        total_upserted=7,
+    )
+    mock = AsyncMock(return_value=expected)
+    monkeypatch.setattr("app.ingestion.daily_ingestion.run_calendar_sync", mock)
+
+    with session_factory() as session:
+        result = await run_daily_update(
+            db=session,
+            data_source=fake_data_source,  # type: ignore[arg-type]
+            settings=settings,
+        )
+
+    assert mock.await_count == 1
+    # ``watchlist_symbols`` should exclude SPY (in SYSTEM_SYMBOLS) and
+    # carry the user-owned tickers — earnings fetch on SPY is junk.
+    kwargs = mock.await_args.kwargs
+    assert sorted(kwargs["watchlist_symbols"]) == ["AAPL", "SPY"]
+    assert result.calendar == expected
+
+
+@pytest.mark.asyncio
+async def test_daily_update_survives_calendar_sync_failure(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A yfinance / FRED outage during calendar sync must not roll back
+    the price + indicator work that already persisted."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    _seed_watchlist(session_factory, {"u1": ["AAPL"]})
+
+    boom = AsyncMock(side_effect=RuntimeError("upstream dead"))
+    monkeypatch.setattr("app.ingestion.daily_ingestion.run_calendar_sync", boom)
+
+    with session_factory() as session:
+        result = await run_daily_update(
+            db=session,
+            data_source=fake_data_source,  # type: ignore[arg-type]
+            settings=settings,
+        )
+
+    assert result.market_open is True
+    # Calendar field stays None — caller can see "sync failed" without
+    # the whole job blowing up.
+    assert result.calendar is None

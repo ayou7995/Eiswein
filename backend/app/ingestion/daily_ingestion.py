@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
@@ -40,6 +41,7 @@ from app.datasources.fred_source import DEFAULT_SERIES_IDS, FREDSource
 from app.db.repositories.daily_price_repository import DailyPriceRepository
 from app.db.repositories.macro_repository import MacroRepository, MacroRow
 from app.db.repositories.watchlist_repository import WatchlistRepository
+from app.ingestion.calendar_sync import CalendarSyncResult, run_calendar_sync
 from app.ingestion.indicators import (
     build_context,
     compute_and_persist,
@@ -118,6 +120,10 @@ class DailyUpdateResult:
     # positionally keep compiling.
     gaps_filled_rows: int = 0
     gaps_filled_symbols: int = 0
+    # Phase 7 (Catalyst Calendar): per-source counts and orphan purge
+    # from the in-job calendar sync. ``None`` means the sync was
+    # skipped or fell back silently (e.g. market closed today).
+    calendar: CalendarSyncResult | None = None
 
 
 async def run_daily_update(
@@ -305,6 +311,31 @@ async def run_daily_update(
             session_day=session_day,
         )
 
+    # Catalyst calendar sync — runs AFTER indicators so any per-ticker
+    # earnings proximity logic added in a later commit reads consistent
+    # state. Fault-isolated: failures here don't roll back the price /
+    # indicator work already persisted. See app.ingestion.calendar_sync
+    # for the per-source resilience details.
+    calendar_result: CalendarSyncResult | None = None
+    try:
+        # Sync against the *user-owned* watchlist symbols; SPY is in
+        # SYSTEM_SYMBOLS for price fetching but isn't tracked for
+        # earnings — including it would create a "SPY Earnings" event
+        # because ETFs return a degenerate yfinance calendar row.
+        user_symbols = watchlist.distinct_symbols_across_users()
+        calendar_result = await run_calendar_sync(
+            db,
+            watchlist_symbols=list(user_symbols),
+            yaml_path=settings.industry_events_yaml or Path("/dev/null"),
+            as_of=session_day,
+        )
+    except Exception as exc:
+        logger.warning(
+            "daily_update_calendar_sync_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
     logger.info(
         "daily_update_complete",
         date=str(session_day),
@@ -344,6 +375,7 @@ async def run_daily_update(
         market_posture=compute_outcome.market_posture,
         gaps_filled_rows=gaps_filled_rows,
         gaps_filled_symbols=gaps_filled_symbols,
+        calendar=calendar_result,
     )
 
 

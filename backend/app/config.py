@@ -84,6 +84,16 @@ class Settings(BaseSettings):
     # degradation per rule 14).
     fred_api_key: SecretStr | None = Field(default=None)
 
+    # Industry catalyst events live in a YAML file checked into the
+    # repo (``docs/events.yaml``). When unset or pointing at a missing
+    # file, calendar_sync skips the industry source entirely — earnings
+    # + macro feeds still run. Production deploys override this with an
+    # absolute path so the file ships beside the container image.
+    industry_events_yaml: Path | None = Field(
+        default=Path("docs/events.yaml"),
+        description="Path to operator-curated industry catalyst events.",
+    )
+
     # Phase 6 — outbound email for daily summary + token expiry alerts.
     # Fully optional: when SMTP_HOST is unset, email jobs short-circuit
     # with a "not_configured" log and return so local dev + CI don't
