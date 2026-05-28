@@ -1,0 +1,35 @@
+# Eiswein industry / catalyst events.
+#
+# Each entry shapes into a calendar_event row of type=industry. The
+# daily calendar_sync loads this file and upserts everything; entries
+# that disappear here on next sync are NOT auto-deleted — drop the line
+# AND run `make calendar-prune` (TODO) if you want to retire an event.
+#
+# Schema per entry (only `date` and `title` are required):
+#   date: YYYY-MM-DD                # ISO date
+#   title: "NVDA GTC Day 1"         # display string
+#   ticker: NVDA                    # optional — set when the event is
+#                                   # ticker-specific so it surfaces on
+#                                   # the per-ticker catalyst chip
+#   time: "9:00 PT"                 # optional display string
+#   tags: [Semis, AI]               # optional tags for future filtering
+#
+# Examples (uncomment to use; leave empty for v1 start):
+#
+# - date: 2026-06-09
+#   title: "AAPL WWDC Keynote"
+#   ticker: AAPL
+#   time: "10:00 PT"
+#   tags: [AI, Hardware]
+#
+# - date: 2026-03-17
+#   title: "NVDA GTC Day 1"
+#   ticker: NVDA
+#   time: "9:00 PT"
+#   tags: [Semis, AI]
+#
+# - date: 2026-05-01
+#   title: "SpaceX IPO filing window opens"
+#   tags: [Aerospace]
+
+[]

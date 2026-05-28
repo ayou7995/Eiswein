@@ -48,6 +48,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -620,4 +621,65 @@ class BackfillJob(Base):
     created_by_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     cancel_requested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
+    )
+
+
+class CalendarEvent(Base):
+    """Catalyst calendar entry — earnings, macro release, or industry event.
+
+    Single discriminated table keyed by ``type``:
+
+    * ``earnings`` — per-ticker quarterly release; ``ticker_symbol`` set,
+      ``payload_json`` may carry ``time_marker`` (BMO/AMC) and
+      consensus EPS.
+    * ``macro`` — US economic release (CPI, PCE, PPI, NFP, FOMC, PMI);
+      ``ticker_symbol`` NULL, ``payload_json`` may carry prior reading.
+    * ``industry`` — sector / conference / IPO catalysts (WWDC, GTC);
+      ``ticker_symbol`` only when the event ties to a single ticker.
+
+    Dedup is enforced by the functional UNIQUE index in migration 0019
+    (``(event_date, type, COALESCE(ticker_symbol, ''), title)``) so the
+    daily sync job can re-run idempotently — no transactional upsert
+    juggling required at the repository layer.
+    """
+
+    __tablename__ = "calendar_event"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('earnings', 'macro', 'industry')",
+            name="ck_calendar_event_type",
+        ),
+        Index("ix_calendar_event_date_type", "event_date", "type"),
+        Index("ix_calendar_event_ticker", "ticker_symbol", "event_date"),
+        # Functional UNIQUE on (event_date, type, COALESCE(ticker_symbol, ''),
+        # title) — coalescing NULL to '' so two macro events with the same
+        # (date, type, title) collide rather than both inserting (SQLite
+        # otherwise treats every NULL as distinct in UNIQUE indexes). The
+        # ON CONFLICT clause in :class:`CalendarEventRepository.upsert_many`
+        # targets exactly this expression, so the index must live in
+        # metadata (not just the migration) for ``Base.metadata.create_all``
+        # in tests to create it.
+        Index(
+            "uq_calendar_event_dedup",
+            "event_date",
+            "type",
+            text("COALESCE(ticker_symbol, '')"),
+            "title",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Wall-clock string ("8:30 ET") or BMO/AMC marker. Storing TIME would
+    # lose the BMO/AMC distinction which is the most operationally
+    # important detail on earnings days.
+    event_time: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    type: Mapped[str] = mapped_column(String(16), nullable=False)
+    ticker_symbol: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    payload_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    source: Mapped[str] = mapped_column(String(24), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
     )

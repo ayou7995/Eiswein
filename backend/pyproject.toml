@@ -104,6 +104,7 @@ module = [
     "tenacity.*",
     "dateutil.*",
     "apscheduler.*",
+    "yaml.*",
 ]
 ignore_missing_imports = true
 
