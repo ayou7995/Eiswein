@@ -16,6 +16,7 @@ import {
 import { IndicatorVolumeBars } from '../components/charts/IndicatorVolumeBars';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ActionBadge } from '../components/ActionBadge';
+import { NextCatalystChip } from '../components/NextCatalystChip';
 import { SignalBadge } from '../components/SignalBadge';
 import { Tooltip } from '../components/Tooltip';
 import {
@@ -287,6 +288,7 @@ function TickerHeader({
               }}
             />
           )}
+          <NextCatalystChip symbol={symbol} />
           {pendingSignal && (
             <span className="text-xs text-stone-500">分析運算中</span>
           )}

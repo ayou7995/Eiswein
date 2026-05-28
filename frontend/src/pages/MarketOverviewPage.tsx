@@ -8,6 +8,7 @@ import {
 } from '../components/MarketRegimeIndicatorList';
 import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
 import { IndicatorDriftBanner } from '../components/IndicatorDriftBanner';
+import { UpcomingMacroBanner } from '../components/UpcomingMacroBanner';
 import { Explainable, RuleTable } from '../components/Explainable';
 import { useMarketPosture } from '../hooks/useMarketPosture';
 import { useSystemInfo } from '../hooks/useSettings';
@@ -52,6 +53,7 @@ export function MarketOverviewPage(): JSX.Element {
     <div className="flex flex-col gap-6">
       <IndicatorDriftBanner />
       <PageHeader />
+      <UpcomingMacroBanner />
       <HeroCard />
       <RegimeIndicatorsGrid />
       <MacroBackdropCard />
