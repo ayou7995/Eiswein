@@ -61,7 +61,11 @@ export function MarketOverviewPage(): JSX.Element {
 }
 
 function PageHeader(): JSX.Element {
-  const { data: sysInfo } = useSystemInfo();
+  // Freshness chip used to live here in the top-right; it was the same
+  // information the sidebar pill (now suppressed on this route) and the
+  // hero subtitle already convey, surfacing the same close-time three
+  // places at once. Moved into the hero subtitle next to 最近交易日, which
+  // is the natural place for "this is when the data is from".
   return (
     <header
       aria-labelledby="market-overview-heading"
@@ -78,15 +82,13 @@ function PageHeader(): JSX.Element {
           所有數據基於最近交易日收盤後重算。市場態勢為全體共享狀態。
         </p>
       </div>
-      {sysInfo?.data_freshness && (
-        <DataFreshnessBadge freshness={sysInfo.data_freshness} />
-      )}
     </header>
   );
 }
 
 function HeroCard(): JSX.Element {
   const { data, isLoading, isError, error, refetch } = useMarketPosture();
+  const { data: sysInfo } = useSystemInfo();
   if (isLoading) {
     return (
       <section
@@ -167,16 +169,19 @@ function HeroCard(): JSX.Element {
               </span>
             </Explainable>
           </h2>
-          <p className="text-sm text-stone-600">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-stone-600">
             {data.streak_badge ? (
-              <span>{data.streak_badge} · </span>
+              <span>{data.streak_badge} ·</span>
             ) : (
-              <span>連續 {data.streak_days} 天 · </span>
+              <span>連續 {data.streak_days} 天 ·</span>
             )}
             <span>全體共享</span>
-            <span className="ml-2 text-xs text-stone-500">
+            <span className="text-xs text-stone-500">
               最近交易日：{data.date}
             </span>
+            {sysInfo?.data_freshness && (
+              <DataFreshnessBadge freshness={sysInfo.data_freshness} />
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
