@@ -1,0 +1,75 @@
+# Eiswein — distributable single-container compose file.
+#
+# Production-like dev experience for friends/family running the tool
+# on their own laptop. The bootstrap script (`make install`) generates
+# the .env file referenced below; `make start` brings the stack up in
+# the background.
+#
+# Quickstart:
+#   make install   # interactive bootstrap → writes .env + certs/
+#   make start     # docker compose up -d
+#   make logs      # docker compose logs -f eiswein
+#   make stop      # docker compose down
+#
+# Mailpit (email-capture inbox for testing reminder templates) ships
+# under the `email` profile so it stays opt-in. To enable, either:
+#   COMPOSE_PROFILES=email make start
+# or set ``COMPOSE_PROFILES=email`` in your shell init.
+
+services:
+  eiswein:
+    container_name: eiswein
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      # Host 8080 → container 8000. 8080 is the conventional alt-HTTP
+      # slot, picked specifically to avoid colliding with a foreground
+      # ``make dev`` (uvicorn on 8000) running on the same machine.
+      - "8080:8000"
+    env_file:
+      - .env
+    volumes:
+      # SQLite + parquet caches survive container rebuilds.
+      - ./data:/app/data
+      # Optional self-signed certs from `mkcert localhost`. The
+      # entrypoint detects them and starts uvicorn with TLS; absent →
+      # plain HTTP, which is fine for personal use without Schwab.
+      - ./certs:/app/certs:ro
+    restart: unless-stopped
+    # When the email profile is enabled, Mailpit needs to exist before
+    # FastAPI tries to dispatch reminders.
+    depends_on:
+      mailpit:
+        condition: service_started
+        required: false
+    # Same healthcheck spec as the Dockerfile — repeated here so the
+    # operator sees it on ``docker compose config`` and can override
+    # if needed without rebuilding the image.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  mailpit:
+    container_name: eiswein-mailpit
+    # Mailpit (MailHog successor) catches outbound SMTP and exposes a
+    # web inbox at http://localhost:8025 — useful for previewing the
+    # catalyst digest template without delivering real email.
+    image: axllent/mailpit:latest
+    profiles:
+      - email
+    ports:
+      - "8025:8025"  # web UI
+      - "1025:1025"  # SMTP receiver
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_DATABASE: "/data/mailpit.db"
+    volumes:
+      - mailpit-data:/data
+
+volumes:
+  mailpit-data:

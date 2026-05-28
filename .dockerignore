@@ -1,0 +1,60 @@
+# Keep the build context small and reproducible.
+
+# VCS
+.git
+.gitattributes
+.github
+.gitignore
+.gitleaks.toml
+
+# Node / Vite — built inside the frontend-builder stage from scratch.
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Python — runtime stage installs requirements fresh.
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/.mypy_cache
+backend/.pytest_cache
+backend/.ruff_cache
+**/*.pyc
+**/*.pyo
+
+# Local data / secrets — never enter the image.
+.env
+.env.*
+!.env.example
+data/
+certs/
+*.pem
+*.key
+*.crt
+*.csr
+
+# DB files
+**/*.db
+**/*.db-journal
+**/*.sqlite
+**/*.sqlite3
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+
+# Tests + dev tooling — backend tests aren't shipped to runtime.
+backend/tests
+backend/htmlcov
+backend/.coverage*
+
+# Bulky local-only docs
+statement/
+docs/heaton-operating-manual.md
+docs/indicators-roadmap.md
+docs/sherry-gap-analysis.md
+scripts/heaton-fetch/
+
+# Plans / Claude scratch
+.claude

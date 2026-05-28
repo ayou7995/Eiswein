@@ -25,9 +25,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -276,4 +278,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(build_v1_router())
+
+    # Serve the built React bundle when present (production /
+    # distributable Docker image). The Dockerfile copies the Vite
+    # output to /app/frontend_dist; ``StaticFiles(html=True)`` falls
+    # back to index.html for any path that isn't a real file, so the
+    # client-side router handles deep links like /ticker/SPY. Mount
+    # order matters: API routes registered above take precedence,
+    # this catch-all only fires on non-API paths.
+    _mount_frontend_if_present(app)
     return app
+
+
+def _mount_frontend_if_present(app: FastAPI) -> None:
+    """Look for the Vite build output in the standard locations and
+    mount it at ``/``. No-op when the directory is missing — the same
+    factory powers ``make dev`` (Vite serves the frontend separately
+    on :5173 in that case)."""
+    candidates = (
+        Path("/app/frontend_dist"),
+        Path(__file__).resolve().parents[2] / "frontend" / "dist",
+    )
+    for path in candidates:
+        if path.is_dir() and (path / "index.html").is_file():
+            app.mount("/", StaticFiles(directory=str(path), html=True), name="frontend")
+            return
