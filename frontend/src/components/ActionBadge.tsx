@@ -54,12 +54,58 @@ const ACTION_PRESETS: Record<
   },
 };
 
+// Compact preset — used in the sidebar grouped watchlist where row height
+// matters more than redundancy. Single emoji + shortened 2-char label, no
+// letter. STRONG_BUY uses ⏫ (semantically "more up than 🟢") so it stays
+// distinguishable from BUY at a glance even after the visual weight is
+// flattened. Color-blind redundancy: the bg saturation gradient (200 → 50
+// → 100 → stone) plus position in the rule table still differentiates
+// conviction levels.
+const ACTION_COMPACT_PRESETS: Record<
+  ActionCategoryCode,
+  { emoji: string; label: string; classes: string }
+> = {
+  strong_buy: {
+    emoji: '⏫',
+    label: '強買',
+    classes: 'bg-emerald-200 text-emerald-800 font-semibold',
+  },
+  buy: {
+    emoji: '🟢',
+    label: '買入',
+    classes: 'bg-emerald-100 text-emerald-700',
+  },
+  hold: {
+    emoji: '✓',
+    label: '持有',
+    classes: 'bg-stone-100 text-stone-700',
+  },
+  watch: {
+    emoji: '👀',
+    label: '觀望',
+    classes: 'bg-stone-100 text-stone-500',
+  },
+  reduce: {
+    emoji: '⚠',
+    label: '減倉',
+    classes: 'bg-amber-100 text-amber-700',
+  },
+  exit: {
+    emoji: '🔴',
+    label: '出場',
+    classes: 'bg-rose-200 text-rose-800 font-semibold',
+  },
+};
+
 export interface ActionBadgeProps {
   action: ActionCategoryCode;
   // Optional timing badge suffix (e.g. "✓ 時機好" / "⏳ 等回調"). Backend emits
   // null when suppressed (per show_timing_modifier rule); we never fabricate.
   timingBadge?: string | null;
   className?: string;
+  // When true, renders the slim sidebar variant: single emoji + 2-char label,
+  // no letter, no border, smaller padding. Same aria-label as default for a11y.
+  compact?: boolean;
   // When provided, wraps the badge in an Explainable popover that surfaces
   // the 6-row direction decision table with the user's current
   // green/red vote counts highlighted. Without this prop the badge
@@ -75,6 +121,7 @@ export function ActionBadge({
   action,
   timingBadge = null,
   className = '',
+  compact = false,
   explainContext,
 }: ActionBadgeProps): JSX.Element {
   const preset = ACTION_PRESETS[action];
@@ -82,7 +129,31 @@ export function ActionBadge({
     ? `${preset.ariaLabel}，時機提示：${timingBadge}`
     : preset.ariaLabel;
 
-  const badge = (
+  const badge = compact ? (() => {
+    const c = ACTION_COMPACT_PRESETS[action];
+    return (
+      <span
+        role="status"
+        aria-label={ariaLabel}
+        data-testid="action-badge"
+        data-action={action}
+        data-compact="true"
+        className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs leading-none ${c.classes} ${className}`}
+      >
+        <span aria-hidden="true" className="text-[11px]">{c.emoji}</span>
+        <span aria-hidden="true">{c.label}</span>
+        {timingBadge && (
+          <span
+            aria-hidden="true"
+            data-testid="action-badge-timing"
+            className="ml-0.5 rounded-full bg-white/60 px-1 py-px text-[9px] font-medium text-stone-700"
+          >
+            {timingBadge}
+          </span>
+        )}
+      </span>
+    );
+  })() : (
     <span
       role="status"
       aria-label={ariaLabel}

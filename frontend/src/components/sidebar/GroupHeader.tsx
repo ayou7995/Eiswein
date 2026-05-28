@@ -10,7 +10,11 @@ interface GroupHeaderProps {
   group: WatchlistGroup | null;
   // When the header is for the synthetic "未分類" bucket, `group` is null —
   // the rename / reorder / delete menu is suppressed (nothing to mutate).
-  count: number;
+  // Formatted count label — "8" when the filter is idle, "2/8" while the
+  // user is searching/tag-filtering so they can see at a glance "2 of my 8
+  // tickers in this group match". Formatting decided upstream by
+  // SidebarWatchlist to keep this component oblivious to filter state.
+  countLabel: string;
   collapsed: boolean;
   onToggle: () => void;
   // Order helpers — pass the current full list of group IDs in display order
@@ -28,7 +32,7 @@ interface GroupHeaderProps {
 //   - 刪除群組 → window.confirm; orphan symbols go to group_id=NULL.
 export function GroupHeader({
   group,
-  count,
+  countLabel,
   collapsed,
   onToggle,
   siblingIdsInOrder,
@@ -117,10 +121,10 @@ export function GroupHeader({
         </span>
       )}
       <span
-        aria-label={`${count} 項`}
+        aria-label={`${countLabel} 項`}
         className="rounded-full bg-stone-100 px-1.5 py-px text-[10px] text-stone-500"
       >
-        {count}
+        {countLabel}
       </span>
       {group && !renaming && (
         <div className="relative">

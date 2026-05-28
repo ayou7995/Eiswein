@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDashboardWatchlistSignals } from '../../hooks/useDashboardWatchlistSignals';
 import { useWatchlistGroups } from '../../hooks/useWatchlistGroups';
 import type { SidebarFilterState } from '../../hooks/useSidebarFilter';
@@ -38,12 +38,10 @@ function saveCollapsed(ids: ReadonlySet<number>): void {
   }
 }
 
-// Groups + filtered rows. Filter behaviour:
+// Filter behaviour:
 //   - search: substring match against symbol (case-insensitive)
 //   - activeTagIds: row must have ALL selected tags (AND semantics, intersection)
-// The "未分類" bucket appears at the bottom only when it has at least one
-// (filtered) row.
-function filterRow(
+function rowMatches(
   row: WatchlistSignalRow,
   filter: SidebarFilterState,
 ): boolean {
@@ -58,44 +56,106 @@ function filterRow(
   return true;
 }
 
+// SidebarWatchlist — grouped, filterable, collapsible.
+//
+// Collapse-state machine has two sources of truth:
+//
+//   1. `userCollapsed` (persisted) — the user's standing intent. Updated on
+//      every click; survives reloads via localStorage.
+//   2. `clickedDuringFilter` (transient) — groups the user *clicked* during
+//      the current filter session. Reset whenever the filter becomes
+//      inactive. While the filter is active, groups in this set honor
+//      `userCollapsed`; groups NOT in this set are auto-expanded whenever
+//      they contain a match.
+//
+// This way: starting a search expands matching groups without losing the
+// user's pre-search collapse layout, but if the user *manually* collapses a
+// group during search, that intent persists when the filter clears (matches
+// "honor 那個動作"). Conversely, when the filter goes idle the auto-expanded
+// groups that the user never touched fall back to their original collapsed
+// state ("沒在搜尋就恢復原本的樣子").
 export function SidebarWatchlist({ filter }: SidebarWatchlistProps): JSX.Element {
   const { rows, watchlistLoading } = useDashboardWatchlistSignals();
   const groupsQuery = useWatchlistGroups();
-  const [collapsed, setCollapsed] = useState<Set<number>>(() => loadCollapsed());
+  const [userCollapsed, setUserCollapsed] = useState<Set<number>>(() => loadCollapsed());
+  const [clickedDuringFilter, setClickedDuringFilter] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const prevFilterActive = useRef<boolean>(filter.isFilterActive);
 
   useEffect(() => {
-    saveCollapsed(collapsed);
-  }, [collapsed]);
+    saveCollapsed(userCollapsed);
+  }, [userCollapsed]);
 
-  // Bucket the filtered rows by group_id (null → UNGROUPED_ID). Symbols
-  // within a group remain in watchlist order (alphabetical by default on
-  // the backend); we don't add another sort here.
-  const { buckets, orderedGroupIds } = useMemo(() => {
-    const groups = groupsQuery.data?.data ?? [];
-    const byId = new Map<number, WatchlistSignalRow[]>();
-    // Seed every group so empty groups still render with count 0 — gives
-    // the user a visible reorder/delete target.
-    for (const g of groups) byId.set(g.id, []);
-    byId.set(UNGROUPED_ID, []);
-    for (const row of rows) {
-      if (!filterRow(row, filter)) continue;
-      const gid = row.item.groupId ?? UNGROUPED_ID;
-      const list = byId.get(gid);
-      if (list) list.push(row);
-      else byId.set(gid, [row]);
+  // Reset the transient "clicked during filter" set whenever the filter
+  // becomes inactive. We don't reset when the filter merely *changes* (e.g.
+  // user typing more characters) — the same filter session continues.
+  useEffect(() => {
+    const wasActive = prevFilterActive.current;
+    const isActive = filter.isFilterActive;
+    if (wasActive && !isActive) {
+      setClickedDuringFilter(new Set());
     }
+    prevFilterActive.current = isActive;
+  }, [filter.isFilterActive]);
+
+  // Bucket rows by group, computing both filtered-matches and total per
+  // group. Total drives the "2/8" badge denominator; matches drive the
+  // body + auto-expand decision.
+  const { matchedByGroup, totalByGroup, orderedGroupIds } = useMemo(() => {
+    const groups = groupsQuery.data?.data ?? [];
+    const matched = new Map<number, WatchlistSignalRow[]>();
+    const total = new Map<number, number>();
+    for (const g of groups) {
+      matched.set(g.id, []);
+      total.set(g.id, 0);
+    }
+    matched.set(UNGROUPED_ID, []);
+    total.set(UNGROUPED_ID, 0);
+    for (const row of rows) {
+      const gid = row.item.groupId ?? UNGROUPED_ID;
+      total.set(gid, (total.get(gid) ?? 0) + 1);
+      if (!rowMatches(row, filter)) continue;
+      const list = matched.get(gid);
+      if (list) list.push(row);
+      else matched.set(gid, [row]);
+    }
+    // Group display order: backend-defined position order, plus the
+    // synthetic 未分類 bucket at the end IFF it has any rows at all
+    // (filtered or otherwise). Matches today's behaviour.
     const ordered: number[] = groups.map((g) => g.id);
-    if ((byId.get(UNGROUPED_ID) ?? []).length > 0) ordered.push(UNGROUPED_ID);
-    return { buckets: byId, orderedGroupIds: ordered };
+    if ((total.get(UNGROUPED_ID) ?? 0) > 0) ordered.push(UNGROUPED_ID);
+    return { matchedByGroup: matched, totalByGroup: total, orderedGroupIds: ordered };
   }, [groupsQuery.data, rows, filter]);
 
-  const toggleGroup = (groupId: number): void => {
-    setCollapsed((prev) => {
+  // Effective collapse decision per group. See state-machine comment above.
+  const isCollapsed = (groupId: number, hasMatches: boolean): boolean => {
+    if (!filter.isFilterActive) {
+      return userCollapsed.has(groupId);
+    }
+    if (clickedDuringFilter.has(groupId)) {
+      return userCollapsed.has(groupId);
+    }
+    if (hasMatches) return false;
+    return userCollapsed.has(groupId);
+  };
+
+  const toggleGroup = (groupId: number, currentlyCollapsed: boolean): void => {
+    const nextCollapsed = !currentlyCollapsed;
+    setUserCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
+      if (nextCollapsed) next.add(groupId);
+      else next.delete(groupId);
       return next;
     });
+    if (filter.isFilterActive) {
+      setClickedDuringFilter((prev) => {
+        if (prev.has(groupId)) return prev;
+        const next = new Set(prev);
+        next.add(groupId);
+        return next;
+      });
+    }
   };
 
   if (watchlistLoading && rows.length === 0) {
@@ -110,27 +170,60 @@ export function SidebarWatchlist({ filter }: SidebarWatchlistProps): JSX.Element
     );
   }
 
+  // Whole-watchlist no-match state (filter active, every group has 0
+  // matches). Centered to avoid the "blank panel" feeling on a tall
+  // sidebar; offers a one-click clear that wipes both search + chips.
+  const totalMatches = Array.from(matchedByGroup.values()).reduce(
+    (sum, list) => sum + list.length,
+    0,
+  );
+  if (filter.isFilterActive && totalMatches === 0) {
+    return (
+      <div
+        data-testid="sidebar-no-matches"
+        className="flex flex-col items-center gap-2 px-2 py-6 text-center"
+      >
+        <p className="text-xs text-stone-500">沒有符合條件的代碼</p>
+        <button
+          type="button"
+          onClick={filter.clearAllFilters}
+          className="rounded-md border border-stone-300 px-2 py-1 text-xs text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+        >
+          清除搜尋與標籤
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {orderedGroupIds.map((groupId) => {
-        const bucket = buckets.get(groupId) ?? [];
+        const bucket = matchedByGroup.get(groupId) ?? [];
+        const total = totalByGroup.get(groupId) ?? 0;
+        // While filtering, suppress the entire group (header included)
+        // when nothing in it matches. Without a filter, empty groups are
+        // still rendered so the user has a reorder/delete target.
+        if (filter.isFilterActive && bucket.length === 0) return null;
         const group =
           groupId === UNGROUPED_ID
             ? null
             : groupsQuery.data?.data.find((g) => g.id === groupId) ?? null;
-        const isCollapsed = collapsed.has(groupId);
+        const collapsed = isCollapsed(groupId, bucket.length > 0);
+        const countLabel = filter.isFilterActive
+          ? `${bucket.length}/${total}`
+          : `${total}`;
         return (
           <div key={groupId}>
             <GroupHeader
               group={group}
-              count={bucket.length}
-              collapsed={isCollapsed}
-              onToggle={() => toggleGroup(groupId)}
+              countLabel={countLabel}
+              collapsed={collapsed}
+              onToggle={() => toggleGroup(groupId, collapsed)}
               siblingIdsInOrder={(groupsQuery.data?.data ?? []).map((g) => g.id)}
             />
-            {!isCollapsed && (
+            {!collapsed && (
               <ul className="flex flex-col">
-                {bucket.length === 0 && (
+                {bucket.length === 0 && !filter.isFilterActive && (
                   <li className="px-3 py-1 text-[11px] text-stone-400">
                     （目前沒有符合條件的標的）
                   </li>

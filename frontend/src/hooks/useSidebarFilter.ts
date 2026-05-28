@@ -51,8 +51,15 @@ function saveFilter(state: PersistedFilter): void {
 export interface SidebarFilterState {
   activeTagIds: ReadonlySet<number>;
   search: string;
+  // True when either a tag chip is active OR the search input has
+  // non-whitespace content. Drives the sidebar's "hide empty groups +
+  // auto-expand matches" mode.
+  isFilterActive: boolean;
   toggleTag: (tagId: number) => void;
   clearAll: () => void;
+  // Clears both tag chips AND the search input — used by the empty-state
+  // "clear filter" button so the user doesn't have to clear two places.
+  clearAllFilters: () => void;
   setSearch: (value: string) => void;
 }
 
@@ -83,9 +90,24 @@ export function useSidebarFilter(): SidebarFilterState {
     setActiveTagIds(new Set());
   }, []);
 
+  const clearAllFilters = useCallback((): void => {
+    setActiveTagIds(new Set());
+    setSearchValue('');
+  }, []);
+
   const setSearch = useCallback((value: string): void => {
     setSearchValue(value);
   }, []);
 
-  return { activeTagIds, search, toggleTag, clearAll, setSearch };
+  const isFilterActive = search.trim().length > 0 || activeTagIds.size > 0;
+
+  return {
+    activeTagIds,
+    search,
+    isFilterActive,
+    toggleTag,
+    clearAll,
+    clearAllFilters,
+    setSearch,
+  };
 }

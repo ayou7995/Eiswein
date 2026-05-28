@@ -14,9 +14,10 @@ interface WatchlistRowProps {
   row: WatchlistSignalRow;
 }
 
-// One ticker row in the sidebar's grouped watchlist. Shows: tone dot, symbol,
-// action chip (if signal ready), and tag chips on a second line if any. A
-// "..." menu on hover opens the move-to-group / edit-tags / jump actions.
+// One ticker row in the sidebar's grouped watchlist. Shows: symbol, compact
+// action chip (if signal ready), and tag chips on a second line if any. The
+// chip's color already encodes tone — a separate dot would just duplicate
+// that signal. A "..." menu on hover opens move-to-group / edit-tags / jump.
 //
 // Click on the row anywhere (except the "..." menu) navigates to the
 // ticker-detail page.
@@ -31,19 +32,6 @@ export function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
   const groupsQuery = useWatchlistGroups();
 
   const symbol = row.item.symbol;
-  const tone = (() => {
-    if (row.status !== 'ready' || !row.signal) return 'neutral';
-    const greenSig = row.signal.direction_green_count;
-    const redSig = row.signal.direction_red_count;
-    if (greenSig >= 3 && redSig === 0) return 'green';
-    if (redSig >= 2) return 'red';
-    return 'neutral';
-  })();
-  const dotClass: Record<string, string> = {
-    green: 'bg-emerald-500',
-    red: 'bg-rose-500',
-    neutral: 'bg-stone-300',
-  };
 
   const handleRowClick = (event: MouseEvent<HTMLDivElement>): void => {
     // Ignore clicks that originated inside the dot-menu region.
@@ -75,13 +63,9 @@ export function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
         }}
         aria-label={`查看 ${symbol} 詳細`}
         data-testid={`sidebar-row-${symbol}`}
-        className="group flex w-full cursor-pointer flex-col gap-1 rounded-lg px-2 py-1.5 hover:bg-stone-100"
+        className="group flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1 hover:bg-stone-100"
       >
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className={`inline-block h-2 w-2 shrink-0 rounded-full ${dotClass[tone]}`}
-          />
           <span className="font-mono text-sm font-semibold text-stone-900">
             {symbol}
           </span>
@@ -90,6 +74,7 @@ export function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
               <ActionBadge
                 action={row.signal.action}
                 timingBadge={row.signal.timing_badge}
+                compact
               />
             )}
             <div data-row-menu-region className="relative">
@@ -103,7 +88,7 @@ export function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
                   e.stopPropagation();
                   setMenuOpen((v) => !v);
                 }}
-                className="rounded-md p-1 text-stone-400 opacity-0 hover:bg-stone-200 hover:text-stone-700 focus-visible:opacity-100 group-hover:opacity-100"
+                className="rounded-md px-1 text-stone-400 opacity-0 hover:bg-stone-200 hover:text-stone-700 focus-visible:opacity-100 group-hover:opacity-100"
               >
                 <span aria-hidden="true">⋯</span>
               </button>
@@ -198,11 +183,11 @@ export function WatchlistRow({ row }: WatchlistRowProps): JSX.Element {
           </div>
         </div>
         {row.item.tags.length > 0 && (
-          <ul className="flex flex-wrap gap-1 pl-4">
+          <ul className="flex flex-wrap gap-1">
             {row.item.tags.map((tag) => (
               <li
                 key={tag.id}
-                className="rounded-full border px-1.5 py-px text-[10px]"
+                className="rounded-full border px-1.5 py-px text-[10px] leading-tight"
                 style={{
                   borderColor: tag.color,
                   color: tag.color,
