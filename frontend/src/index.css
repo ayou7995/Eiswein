@@ -21,4 +21,23 @@
   :focus-visible {
     @apply outline-none ring-2 ring-sky-500 ring-offset-2 ring-offset-stone-50;
   }
+
+  /* Kill Chrome / Safari's lavender-yellow autofill background.
+     The browser applies a non-removable ``background-color`` to filled
+     inputs that ignores Tailwind classes; the trick is a giant inset
+     box-shadow that paints the field white, plus an explicit
+     ``-webkit-text-fill-color`` because the autofill state overrides
+     the normal ``color`` rule too. ``transition`` extends the fade
+     duration high enough that the browser never visibly applies its
+     own colors. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+    box-shadow: 0 0 0 1000px #ffffff inset;
+    -webkit-text-fill-color: #1c1917;
+    caret-color: #1c1917;
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }
