@@ -22,6 +22,7 @@ Shutdown
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -33,9 +34,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1 import build_v1_router
 from app.config import Settings, get_settings
+from app.datasources.base import DataSource
 from app.datasources.factory import build_data_source
 from app.db.database import build_session_factory, create_db_engine
 from app.db.repositories.user_repository import UserRepository
+from app.ingestion.daily_ingestion import run_daily_update
 from app.jobs.scheduler import SchedulerHandle, start_scheduler
 from app.security.error_handlers import register_error_handlers
 from app.security.exceptions import EisweinError
@@ -57,6 +60,51 @@ def _seed_admin_if_needed(settings: Settings, users: UserRepository) -> None:
         password_hash=settings.admin_password_hash.get_secret_value(),
         is_admin=True,
     )
+
+
+async def _startup_catchup_daily_update(
+    *,
+    session_factory: sessionmaker[Session],
+    data_source: DataSource,
+    settings: Settings,
+) -> None:
+    """Fire one daily_update fire-and-forget after the app starts.
+
+    Handles the laptop-sleep scenario: APScheduler's cron trigger fires
+    at 06:30 ET, but if the host was asleep at that moment the misfire
+    grace period (1 hour) closes long before the user comes back. On
+    next process boot we kick off a single ``run_daily_update`` to fill
+    whatever gaps accumulated. ``run_daily_update`` already short-
+    circuits when the watchlist has no gaps for the session day, so
+    this is a no-op on a fresh same-day restart.
+
+    Runs as a background task so the HTTP server starts accepting
+    requests immediately. Errors are logged but never propagated —
+    catch-up is a convenience, not a startup precondition.
+    """
+    logger = structlog.get_logger("eiswein.startup_catchup")
+    try:
+        with session_factory() as session:
+            result = await run_daily_update(
+                db=session,
+                data_source=data_source,
+                settings=settings,
+                trigger="scheduled",
+            )
+            session.commit()
+        logger.info(
+            "startup_catchup_complete",
+            market_open=result.market_open,
+            gaps_filled_symbols=result.gaps_filled_symbols,
+            gaps_filled_rows=result.gaps_filled_rows,
+            price_rows_upserted=result.price_rows_upserted,
+        )
+    except Exception as exc:
+        logger.warning(
+            "startup_catchup_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 @asynccontextmanager
@@ -124,17 +172,59 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             scheduler_handle = None
     app.state.scheduler_handle = scheduler_handle
 
+    # Fire-and-forget catch-up on every startup IF the scheduler is
+    # running (production + dev). The same ``scheduler_disabled`` gate
+    # that disables APScheduler also implicitly disables the catch-up
+    # — tests run hundreds of lifespan cycles and each fire would
+    # churn cache + DB locks for no benefit. Suppressible via the new
+    # ``startup_catchup_disabled`` flag for the rare test that needs
+    # scheduler but not catch-up.
+    catchup_task: asyncio.Task[None] | None = None
+    if scheduler_handle is not None and not getattr(
+        app.state, "startup_catchup_disabled", False
+    ):
+        data_source_for_catchup = getattr(app.state, "data_source", None)
+        if data_source_for_catchup is not None:
+            catchup_task = asyncio.create_task(
+                _startup_catchup_daily_update(
+                    session_factory=session_factory,
+                    data_source=data_source_for_catchup,
+                    settings=settings,
+                )
+            )
+    app.state.startup_catchup_task = catchup_task
+
     logger.info(
         "app_started",
         environment=settings.environment,
         db=str(engine.url).split("@")[-1],
         scheduler="running" if scheduler_handle is not None else "not_started",
+        startup_catchup="scheduled" if catchup_task is not None else "skipped",
     )
 
     try:
         yield
     finally:
         logger.info("app_stopping")
+        # Cancel the startup catch-up task if it hasn't finished —
+        # better to abort a half-finished fetch than to block uvicorn
+        # shutdown waiting for a multi-minute job.
+        active_catchup: asyncio.Task[None] | None = getattr(
+            app.state, "startup_catchup_task", None
+        )
+        if active_catchup is not None and not active_catchup.done():
+            active_catchup.cancel()
+            try:
+                await active_catchup
+            except asyncio.CancelledError:
+                # Expected — we just cancelled it. Swallow so cleanup continues.
+                pass
+            except Exception as exc:
+                logger.warning(
+                    "startup_catchup_cancel_failed",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
         handle: SchedulerHandle | None = app.state.scheduler_handle
         if handle is not None:
             try:
