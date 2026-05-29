@@ -473,9 +473,7 @@ def _stub_prices(rows: list[tuple[str, date, datetime]]) -> object:
 
 def test_find_partial_session_dates_empty_when_no_symbols() -> None:
     repo = _stub_prices([])
-    out = _find_partial_session_dates(
-        prices=repo, symbols=[], lookback_days=60, buffer_minutes=30
-    )
+    out = _find_partial_session_dates(prices=repo, symbols=[], lookback_days=60, buffer_minutes=30)
     assert out == {}
 
 
@@ -619,9 +617,7 @@ async def test_scheduled_run_refetches_pre_close_partial_row(
     pre_close_write = datetime(2026, 4, 13, 18, 0, tzinfo=UTC)  # 14:00 ET Mon
 
     _seed_watchlist(session_factory, {"u1": ["SPY"]})
-    _seed_partial_row(
-        session_factory, symbol="SPY", day=monday, written_at=pre_close_write
-    )
+    _seed_partial_row(session_factory, symbol="SPY", day=monday, written_at=pre_close_write)
 
     # Hand-build a frame covering Mon + Tue. The persistence layer will
     # UPSERT both. Mon's stamp must advance because the close moved
@@ -655,9 +651,9 @@ async def test_scheduled_run_refetches_pre_close_partial_row(
 
     # The bulk fetch must have been invoked (partial detection bypassed
     # the no-gaps short-circuit).
-    assert any(call[0] == "bulk" for call in ds.calls), (
-        "Scheduled run did not fetch despite a partial Monday row"
-    )
+    assert any(
+        call[0] == "bulk" for call in ds.calls
+    ), "Scheduled run did not fetch despite a partial Monday row"
 
     # Monday's row was overwritten — close advanced from 100.50 to 100.80,
     # updated_at advanced past Mon's market_close + buffer (16:30 ET =
@@ -748,3 +744,182 @@ async def test_daily_update_survives_calendar_sync_failure(
     # Calendar field stays None — caller can see "sync failed" without
     # the whole job blowing up.
     assert result.calendar is None
+
+
+# ---------------------------------------------------------------------------
+# Catalyst digest email gating — guard against the "every restart spams the
+# user" regression. The bug we're locking down: in early Catalyst Calendar
+# v1 the email fired at the end of every run_daily_update path, including
+# the startup catch-up that triggers on every make-dev reload. Now: only
+# trigger=="scheduled" can dispatch, and even then we de-dupe by day via
+# SystemMetadata.
+# ---------------------------------------------------------------------------
+
+
+def _seed_test_event(session_factory: sessionmaker[Session]) -> None:
+    """Drop a single calendar event for today so the digest has
+    something to send (the dispatcher no-ops on an empty event list)."""
+    from app.db.models import CalendarEvent
+
+    with session_factory() as session:
+        session.add(
+            CalendarEvent(
+                event_date=date(2026, 5, 29),
+                event_time="8:30 ET",
+                type="macro",
+                ticker_symbol=None,
+                title="Test Event",
+                payload_json=None,
+                source="hardcoded",
+            )
+        )
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_daily_update_scheduled_run_sends_catalyst_digest(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The APScheduler cron path is the only one allowed to email —
+    confirm it still does."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    monkeypatch.setattr(
+        "app.ingestion.daily_ingestion.last_trading_day_et",
+        lambda: date(2026, 5, 29),
+    )
+    _seed_watchlist(session_factory, {"u1": ["SPY"]})
+    _seed_test_event(session_factory)
+
+    sender = MagicMock(return_value=True)
+    monkeypatch.setattr("app.jobs.email_dispatcher.send_catalyst_digest", sender)
+
+    with session_factory() as session:
+        await run_daily_update(
+            db=session,
+            data_source=fake_data_source,  # type: ignore[arg-type]
+            settings=settings,
+            trigger="scheduled",
+        )
+    assert sender.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["startup", "manual"])
+async def test_daily_update_non_scheduled_triggers_suppress_catalyst_digest(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    trigger: str,
+) -> None:
+    """``startup`` and ``manual`` triggers MUST NOT send the digest —
+    that's what caused the email flood when every backend restart
+    fired one (see the 2026-05-29 incident)."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    monkeypatch.setattr(
+        "app.ingestion.daily_ingestion.last_trading_day_et",
+        lambda: date(2026, 5, 29),
+    )
+    _seed_watchlist(session_factory, {"u1": ["SPY"]})
+    _seed_test_event(session_factory)
+
+    sender = MagicMock(return_value=True)
+    monkeypatch.setattr("app.jobs.email_dispatcher.send_catalyst_digest", sender)
+
+    with session_factory() as session:
+        await run_daily_update(
+            db=session,
+            data_source=fake_data_source,  # type: ignore[arg-type]
+            settings=settings,
+            trigger=trigger,  # type: ignore[arg-type]
+        )
+    assert sender.call_count == 0, f"trigger={trigger!r} sent email but shouldn't"
+
+
+@pytest.mark.asyncio
+async def test_daily_update_catalyst_digest_idempotent_same_day(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two scheduled runs on the same trading day → max one email.
+
+    Belt-and-suspenders: even if APScheduler misfire compensation
+    fires daily_update twice in one morning, SystemMetadata records
+    the last-sent date and the second call short-circuits."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    monkeypatch.setattr(
+        "app.ingestion.daily_ingestion.last_trading_day_et",
+        lambda: date(2026, 5, 29),
+    )
+    _seed_watchlist(session_factory, {"u1": ["SPY"]})
+    _seed_test_event(session_factory)
+
+    sender = MagicMock(return_value=True)
+    monkeypatch.setattr("app.jobs.email_dispatcher.send_catalyst_digest", sender)
+
+    for _ in range(3):
+        with session_factory() as session:
+            await run_daily_update(
+                db=session,
+                data_source=fake_data_source,  # type: ignore[arg-type]
+                settings=settings,
+                trigger="scheduled",
+            )
+            # Production APScheduler wrapper commits at the end of
+            # each job (see jobs/scheduler._daily_update_wrapper). The
+            # idempotency check reads from system_metadata, so we must
+            # commit between iterations or the second pass sees an
+            # uncommitted "last sent" row from the first.
+            session.commit()
+    assert sender.call_count == 1, (
+        f"Idempotency broken: send_catalyst_digest fired {sender.call_count} "
+        "times across 3 same-day runs."
+    )
+
+
+@pytest.mark.asyncio
+async def test_daily_update_catalyst_digest_send_failure_does_not_burn_day(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed first send (SMTP down) must allow a retry later in the
+    same day. Otherwise a transient relay outage would suppress the
+    entire day's digest."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: True)
+    monkeypatch.setattr(
+        "app.ingestion.daily_ingestion.last_trading_day_et",
+        lambda: date(2026, 5, 29),
+    )
+    _seed_watchlist(session_factory, {"u1": ["SPY"]})
+    _seed_test_event(session_factory)
+
+    sender = MagicMock(side_effect=[False, True])
+    monkeypatch.setattr("app.jobs.email_dispatcher.send_catalyst_digest", sender)
+
+    for _ in range(2):
+        with session_factory() as session:
+            await run_daily_update(
+                db=session,
+                data_source=fake_data_source,  # type: ignore[arg-type]
+                settings=settings,
+                trigger="scheduled",
+            )
+            session.commit()
+    # Two attempts because the first returned False (didn't stamp the
+    # "last sent" key, so the second retry was allowed).
+    assert sender.call_count == 2

@@ -100,9 +100,11 @@ def test_market_posture_returns_latest_snapshot(
     # Zod schema parses without failing the whole posture card.
     assert spx_item["timeframe"] == "mid"
     for entry in body["pros_cons"]:
-        assert entry["timeframe"] in {"short", "mid", "long"}, (
-            f"missing/invalid timeframe on {entry['indicator_name']}"
-        )
+        assert entry["timeframe"] in {
+            "short",
+            "mid",
+            "long",
+        }, f"missing/invalid timeframe on {entry['indicator_name']}"
 
 
 def test_market_posture_streak_badge_emitted_at_3_days(

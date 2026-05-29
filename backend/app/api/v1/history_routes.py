@@ -8,10 +8,11 @@
   TickerDetail page.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import structlog
 from fastapi import APIRouter, Depends, Query
@@ -177,7 +178,7 @@ def market_posture_history(
 
 
 def _spy_moving_averages(
-    spy_rows: list,  # list of Row(date, close), date-ascending
+    spy_rows: Sequence[Any],  # rows shaped (date, close), date-ascending
 ) -> tuple[dict[date, float], dict[date, float]]:
     """Compute SMA50 and SMA200 per date from a date-ascending close list.
 
@@ -691,9 +692,7 @@ def ticker_signals_history(
             # holiday that produced a snapshot via fallback). Better to
             # drop the point than to plot a misaligned price.
             continue
-        points.append(
-            TickerSignalPoint(date=snap.date, action=snap.action, close=close)
-        )
+        points.append(TickerSignalPoint(date=snap.date, action=snap.action, close=close))
 
     return TickerSignalsResponse(symbol=validated, data=points)
 
@@ -776,9 +775,7 @@ def symbol_accuracy_ranking(
             all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
         if not all_snapshots:
             entries.append(
-                SymbolAccuracyEntry(
-                    symbol=sym, total_signals=0, correct=0, accuracy_pct=0.0
-                )
+                SymbolAccuracyEntry(symbol=sym, total_signals=0, correct=0, accuracy_pct=0.0)
             )
             continue
 
@@ -829,5 +826,3 @@ def symbol_accuracy_ranking(
             spy_up_pct=baseline_pct,
         ),
     )
-
-

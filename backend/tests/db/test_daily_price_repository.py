@@ -105,9 +105,7 @@ def test_upsert_many_updated_at_is_unique_per_row(db_session: Session) -> None:
     so a shared timestamp inside one call is fine.
     """
     repo = DailyPriceRepository(db_session)
-    repo.upsert_many(
-        [_row(date(2026, 4, 1), "100"), _row(date(2026, 4, 2), "101")]
-    )
+    repo.upsert_many([_row(date(2026, 4, 1), "100"), _row(date(2026, 4, 2), "101")])
     rows = (
         db_session.query(DailyPrice)
         .filter(DailyPrice.symbol == "SPY")

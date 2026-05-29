@@ -101,10 +101,7 @@ def test_pros_cons_emits_timeframe_for_every_known_indicator() -> None:
     """
     from app.indicators.timeframes import INDICATOR_TIMEFRAMES
 
-    results = {
-        name: _make_result(name, SignalTone.GREEN)
-        for name in INDICATOR_TIMEFRAMES
-    }
+    results = {name: _make_result(name, SignalTone.GREEN) for name in INDICATOR_TIMEFRAMES}
     items = build_pros_cons_items(results)
 
     by_name = {item.indicator_name: item for item in items}
@@ -113,8 +110,7 @@ def test_pros_cons_emits_timeframe_for_every_known_indicator() -> None:
     # Each item carries the expected timeframe value.
     for name, expected_tf in INDICATOR_TIMEFRAMES.items():
         assert by_name[name].timeframe == expected_tf, (
-            f"{name} timeframe drift: expected {expected_tf}, "
-            f"got {by_name[name].timeframe}"
+            f"{name} timeframe drift: expected {expected_tf}, " f"got {by_name[name].timeframe}"
         )
     # Sanity: only the three allowed values appear.
     assert {item.timeframe for item in items} <= {"short", "mid", "long"}

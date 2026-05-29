@@ -178,8 +178,6 @@ def test_signal_accuracy_skips_signals_without_forward_data(
     assert body["total_signals"] == 0
 
 
-
-
 # --- /history/symbol-accuracy-ranking ------------------------------------
 
 

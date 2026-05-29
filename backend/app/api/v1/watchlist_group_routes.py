@@ -141,9 +141,7 @@ async def create_group(
 ) -> GroupOut:
     row = repo.create(user_id=user_id, name=payload.name)
     counts = repo.count_symbols_per_group(user_id)
-    return _group_to_out(
-        group_id=row.id, name=row.name, position=row.position, counts=counts
-    )
+    return _group_to_out(group_id=row.id, name=row.name, position=row.position, counts=counts)
 
 
 @router.patch(
@@ -186,9 +184,7 @@ async def rename_group(
     else:
         row = repo.rename(user_id=user_id, group_id=group_id, new_name=payload.name)
     counts = repo.count_symbols_per_group(user_id)
-    return _group_to_out(
-        group_id=row.id, name=row.name, position=row.position, counts=counts
-    )
+    return _group_to_out(group_id=row.id, name=row.name, position=row.position, counts=counts)
 
 
 @router.delete(

@@ -365,10 +365,7 @@ def send_catalyst_digest(
     )
     html_body = _env.get_template("catalyst_digest.html").render(**ctx)
     text_body = _render_catalyst_text(ctx)
-    subject = (
-        f"📅 Eiswein 催化劑摘要 · 未來 {horizon_days} 天 · "
-        f"{ctx['total_events']} 件事件"
-    )
+    subject = f"📅 Eiswein 催化劑摘要 · 未來 {horizon_days} 天 · " f"{ctx['total_events']} 件事件"
     return _dispatch(
         settings=settings,
         sender=sender,

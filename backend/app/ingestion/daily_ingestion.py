@@ -69,7 +69,14 @@ if TYPE_CHECKING:
 logger = structlog.get_logger("eiswein.ingestion.daily")
 
 
-TriggerMode = Literal["scheduled", "manual"]
+TriggerMode = Literal["scheduled", "manual", "startup"]
+
+# Triggers that may dispatch the catalyst digest email. Manual button
+# clicks suppress the email (the user is already in the app and
+# doesn't need an email to themselves). Startup catch-up suppresses
+# too — without that gate every container restart, every `make dev`
+# auto-reload, every redeploy would send another digest.
+_EMAIL_SENDING_TRIGGERS: frozenset[TriggerMode] = frozenset({"scheduled"})
 
 # Trading-day lookback cap for gap detection. 60 ≈ 3 months of
 # sessions — deep enough to catch a week-long VM outage but shallow
@@ -207,8 +214,7 @@ async def run_daily_update(
             # last trading day. Manual runs with nothing to do collapse
             # to just session_day.
             combined_dates: dict[str, set[date]] = {
-                sym.upper(): set(gaps.get(sym.upper(), []))
-                | partials.get(sym.upper(), set())
+                sym.upper(): set(gaps.get(sym.upper(), [])) | partials.get(sym.upper(), set())
                 for sym in symbols
             }
             if any_work_needed:
@@ -232,11 +238,7 @@ async def run_daily_update(
             # as needing just ``session_day`` so we persist the latest
             # close but stay idempotent on re-click.
             effective_gaps: dict[str, set[date]] = {
-                sym.upper(): (
-                    combined_dates[sym.upper()]
-                    if any_work_needed
-                    else {session_day}
-                )
+                sym.upper(): (combined_dates[sym.upper()] if any_work_needed else {session_day})
                 for sym in symbols
             }
 
@@ -339,13 +341,25 @@ async def run_daily_update(
     # Catalyst digest email — best-effort. Reads from the calendar
     # table we just synced. Same fault-isolation contract as calendar
     # sync (a flaky relay must not roll back the day's work).
-    try:
-        _maybe_send_catalyst_digest(db=db, settings=settings, as_of=session_day)
-    except Exception as exc:
-        logger.warning(
-            "daily_update_catalyst_digest_failed",
-            error_type=type(exc).__name__,
-            error=str(exc),
+    #
+    # ONLY fire from the scheduled APScheduler cron — every other
+    # invocation path (manual refresh button, startup catch-up after
+    # a `make dev` reload or container restart) suppresses the email.
+    # Without this gate the user would receive a fresh digest every
+    # time the backend bounces, which in dev is dozens of times a day.
+    if trigger in _EMAIL_SENDING_TRIGGERS:
+        try:
+            _maybe_send_catalyst_digest(db=db, settings=settings, as_of=session_day)
+        except Exception as exc:
+            logger.warning(
+                "daily_update_catalyst_digest_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+    else:
+        logger.debug(
+            "catalyst_digest_skipped_trigger",
+            trigger=trigger,
         )
 
     logger.info(
@@ -725,6 +739,9 @@ def _to_date(idx: object) -> date | None:
 _CATALYST_DIGEST_HORIZON_DAYS = 3
 
 
+_LAST_DIGEST_SENT_KEY = "catalyst_digest_last_sent_date"
+
+
 def _maybe_send_catalyst_digest(
     *,
     db: Session,
@@ -732,19 +749,43 @@ def _maybe_send_catalyst_digest(
     as_of: date,
 ) -> None:
     """Pull events for [as_of, as_of+horizon) and hand them to the
-    catalyst-digest mailer. The mailer no-ops on zero events and on a
-    not-configured SMTP relay, so this helper just glues data + send."""
+    catalyst-digest mailer.
+
+    Idempotency: the date of the last successful send is persisted in
+    ``system_metadata``. A second invocation on the same day (e.g.
+    APScheduler misfire compensation, or two scheduler instances on
+    the same DB) sees the metadata row and short-circuits before
+    rendering / sending. Belt to the trigger-gating suspenders above.
+
+    The mailer itself no-ops on zero events and on a not-configured
+    SMTP relay, so this helper just glues data + send.
+    """
     from app.db.repositories.calendar_event_repository import CalendarEventRepository
+    from app.db.repositories.system_metadata_repository import SystemMetadataRepository
     from app.jobs.email_dispatcher import send_catalyst_digest
+
+    metadata = SystemMetadataRepository(db)
+    last_sent_raw = metadata.get(_LAST_DIGEST_SENT_KEY)
+    if last_sent_raw == as_of.isoformat():
+        logger.info(
+            "catalyst_digest_already_sent_today",
+            as_of=str(as_of),
+        )
+        return
 
     repo = CalendarEventRepository(db)
     horizon_end = date.fromordinal(as_of.toordinal() + _CATALYST_DIGEST_HORIZON_DAYS - 1)
     events = repo.list_in_range(start=as_of, end=horizon_end)
     if not events:
         return
-    send_catalyst_digest(
+
+    sent = send_catalyst_digest(
         events=events,
         as_of=as_of,
         horizon_days=_CATALYST_DIGEST_HORIZON_DAYS,
         settings=settings,
     )
+    # Only stamp the "last sent" key on a successful dispatch — a
+    # failure (SMTP down, bad creds) shouldn't burn the day's slot.
+    if sent:
+        metadata.set(_LAST_DIGEST_SENT_KEY, as_of.isoformat())

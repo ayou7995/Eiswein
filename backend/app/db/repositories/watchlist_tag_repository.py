@@ -123,9 +123,7 @@ class WatchlistTagRepository:
         either is missing or owned by another user. Re-attaching the
         same tag is a no-op.
         """
-        self._assert_ownership(
-            user_id=user_id, watchlist_id=watchlist_id, tag_id=tag_id
-        )
+        self._assert_ownership(user_id=user_id, watchlist_id=watchlist_id, tag_id=tag_id)
 
         existing = self._session.execute(
             select(WatchlistSymbolTag).where(
@@ -137,9 +135,7 @@ class WatchlistTagRepository:
             return
 
         try:
-            self._session.add(
-                WatchlistSymbolTag(watchlist_id=watchlist_id, tag_id=tag_id)
-            )
+            self._session.add(WatchlistSymbolTag(watchlist_id=watchlist_id, tag_id=tag_id))
             self._session.flush()
         except IntegrityError:
             # Concurrent attach raced us between SELECT and INSERT — the
@@ -152,9 +148,7 @@ class WatchlistTagRepository:
         Ownership is enforced so a user can't detach a tag from another
         user's watchlist row.
         """
-        self._assert_ownership(
-            user_id=user_id, watchlist_id=watchlist_id, tag_id=tag_id
-        )
+        self._assert_ownership(user_id=user_id, watchlist_id=watchlist_id, tag_id=tag_id)
         self._session.execute(
             delete(WatchlistSymbolTag).where(
                 WatchlistSymbolTag.watchlist_id == watchlist_id,
@@ -163,9 +157,7 @@ class WatchlistTagRepository:
         )
         self._session.flush()
 
-    def list_attachments_for_watchlist(
-        self, watchlist_id: int
-    ) -> Sequence[WatchlistTag]:
+    def list_attachments_for_watchlist(self, watchlist_id: int) -> Sequence[WatchlistTag]:
         stmt = (
             select(WatchlistTag)
             .join(
@@ -177,9 +169,7 @@ class WatchlistTagRepository:
         )
         return self._session.execute(stmt).scalars().all()
 
-    def popular_for_user(
-        self, user_id: int, limit: int = 8
-    ) -> Sequence[WatchlistTag]:
+    def popular_for_user(self, user_id: int, limit: int = 8) -> Sequence[WatchlistTag]:
         """Top-N tags by attachment count.
 
         Ties broken by ``name`` so the chip row is stable between
@@ -204,9 +194,7 @@ class WatchlistTagRepository:
     # ---------------- internal ---------------- #
 
     def _count_for_user(self, user_id: int) -> int:
-        stmt = select(func.count(WatchlistTag.id)).where(
-            WatchlistTag.user_id == user_id
-        )
+        stmt = select(func.count(WatchlistTag.id)).where(WatchlistTag.user_id == user_id)
         return int(self._session.execute(stmt).scalar_one())
 
     def _find_by_name(self, *, user_id: int, name: str) -> WatchlistTag | None:
@@ -216,9 +204,7 @@ class WatchlistTagRepository:
         )
         return self._session.execute(stmt).scalar_one_or_none()
 
-    def _assert_ownership(
-        self, *, user_id: int, watchlist_id: int, tag_id: int
-    ) -> None:
+    def _assert_ownership(self, *, user_id: int, watchlist_id: int, tag_id: int) -> None:
         wl_owner = self._session.execute(
             select(Watchlist.user_id).where(Watchlist.id == watchlist_id)
         ).scalar_one_or_none()

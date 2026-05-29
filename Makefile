@@ -10,7 +10,7 @@
 
 .PHONY: help \
         install start stop logs update uninstall \
-        dev lint format type test migrate \
+        dev lint format format-check type test migrate verify \
         deps-update deps-sync
 
 # ---------- User targets (distributable Docker stack) ----------------------
@@ -25,14 +25,16 @@ help:
 	@echo "  make uninstall   Destructive: stop, remove containers, delete .env + data/"
 	@echo ""
 	@echo "Eiswein — dev commands"
-	@echo "  make dev         Foreground dev (Vite 5173 + uvicorn 8000)"
-	@echo "  make test        pytest -v backend/tests"
-	@echo "  make lint        ruff check"
-	@echo "  make format      ruff format"
-	@echo "  make type        mypy --strict app"
-	@echo "  make migrate     alembic upgrade head"
-	@echo "  make deps-update Regenerate backend/requirements.txt"
-	@echo "  make deps-sync   pip-sync to backend/requirements.txt"
+	@echo "  make dev          Foreground dev (Vite 5173 + uvicorn 8000)"
+	@echo "  make test         pytest -v backend/tests"
+	@echo "  make lint         ruff check (backend + scripts)"
+	@echo "  make format       ruff format (rewrites files)"
+	@echo "  make format-check ruff format --check (CI-equivalent, read-only)"
+	@echo "  make type         mypy --strict app"
+	@echo "  make migrate      alembic upgrade head"
+	@echo "  make verify       MANDATORY before git push — runs the full CI gate locally"
+	@echo "  make deps-update  Regenerate backend/requirements.txt"
+	@echo "  make deps-sync    pip-sync to backend/requirements.txt"
 
 install:
 	@python3 scripts/bootstrap.py
@@ -78,6 +80,11 @@ format:
 	cd backend && ruff format .
 	cd backend && ruff format ../scripts
 
+# Read-only sibling of ``format`` — exits non-zero if anything would be
+# reformatted. Mirrors the ``ruff format --check .`` step CI runs.
+format-check:
+	cd backend && ruff format --check .
+
 type:
 	cd backend && mypy --strict app
 
@@ -86,6 +93,28 @@ test:
 
 migrate:
 	cd backend && alembic upgrade head
+
+# Pre-push gate — runs every check GitHub Actions runs, in the same
+# order, so a green ``make verify`` means CI will go green too.
+# AGENTS.md treats this as MANDATORY before any push to origin/main.
+verify:
+	@echo "==> [1/6] Backend lint (ruff check .)"
+	@cd backend && ruff check .
+	@echo "==> [2/6] Backend format (ruff format --check .)"
+	@cd backend && ruff format --check .
+	@echo "==> [3/6] Backend types (mypy --strict app)"
+	@cd backend && mypy --strict app
+	@echo "==> [4/6] Backend tests (pytest)"
+	@cd backend && pytest -q --tb=short tests
+	@echo "==> [5/6] Frontend lint + types + tests + build"
+	@cd frontend && npm run lint && npx tsc --noEmit && npx vitest run && npm run build
+	@echo "==> [6/6] Alembic migration smoke test (round-trip on a temp DB)"
+	@cd backend && DATABASE_URL=sqlite:///./data/verify_smoke.db alembic upgrade head \
+		&& DATABASE_URL=sqlite:///./data/verify_smoke.db alembic downgrade -1 \
+		&& DATABASE_URL=sqlite:///./data/verify_smoke.db alembic upgrade head \
+		&& rm -f ./data/verify_smoke.db
+	@echo ""
+	@echo "All checks passed. Safe to push."
 
 dev:
 	cd backend && uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000 \

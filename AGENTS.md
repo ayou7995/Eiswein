@@ -13,6 +13,38 @@ in their head.
 
 ---
 
+## ⚠️ MANDATORY pre-push gate
+
+**Before EVERY `git push origin main` (and before opening any PR),
+run `make verify` from the repo root and confirm it exits 0.**
+
+```sh
+make verify
+```
+
+`make verify` runs the exact same six checks that GitHub Actions
+runs in CI, in the same order:
+
+1. `ruff check .`            (backend lint)
+2. `ruff format --check .`   (backend formatting — **this is what
+   tripped us in commit a580177**; lint alone does not catch it)
+3. `mypy --strict app`       (backend types)
+4. `pytest tests`            (backend test suite)
+5. `npm run lint && npx tsc --noEmit && npx vitest run && npm run build`
+   (frontend lint + types + tests + production build)
+6. `alembic upgrade head && downgrade -1 && upgrade head`
+   (migration round-trip on a throwaway DB)
+
+If any step fails locally, **fix it before pushing** — don't push
+"and let CI tell me." CI failures on `main` show up in the
+collaborator list and block the next person's pull.
+
+Skipping `make verify` is allowed only when the change touches
+*nothing* CI runs (e.g. editing this file's prose, adding a doc-
+only `.md`). Even then, when in doubt: run it.
+
+---
+
 ## Principles
 
 1. **English is the canonical doc source.** Every user-facing
@@ -85,6 +117,10 @@ Before pushing to `origin/main` after a change that touches anything
 in the trigger table or the file-pair sync map, walk this list on
 your own laptop:
 
+0. **`make verify` first.** All six CI steps must pass locally
+   before you touch any of the manual steps below. If `make verify`
+   fails, stop and fix — none of the rest matters until CI would
+   pass.
 1. **Stash personal state** so it doesn't influence the run:
    ```sh
    mv .env .env.bak 2>/dev/null

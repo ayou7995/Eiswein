@@ -178,6 +178,13 @@ def test_schwab_enabled_defaults_false_without_secrets() -> None:
         encryption_key=enc_key,  # type: ignore[arg-type]
         admin_username="admin",
         admin_password_hash=pw_hash,  # type: ignore[arg-type]
+        # Explicitly clear Schwab fields so a dev's local ``.env``
+        # populated with real credentials (after `make install`) does
+        # not leak into the constructor's pydantic-settings fallback.
+        # See conftest::settings for the same isolation rule on the
+        # shared fixture.
+        schwab_client_id=None,
+        schwab_client_secret=None,
     )
     assert s.schwab_enabled is False
     assert s.schwab_client_id is None

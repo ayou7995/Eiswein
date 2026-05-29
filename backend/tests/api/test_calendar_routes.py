@@ -30,13 +30,9 @@ def test_calendar_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_calendar_empty_range_returns_zero(
-    client: TestClient, test_password: str
-) -> None:
+def test_calendar_empty_range_returns_zero(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
-    body = client.get(
-        "/api/v1/calendar/events?start=2026-06-01&end=2026-06-30"
-    ).json()
+    body = client.get("/api/v1/calendar/events?start=2026-06-01&end=2026-06-30").json()
     assert body["total"] == 0
     assert body["data"] == []
     assert body["range_start"] == "2026-06-01"
@@ -78,9 +74,7 @@ def test_calendar_returns_events_in_range(
         ],
     )
     _login(client, test_password)
-    body = client.get(
-        "/api/v1/calendar/events?start=2026-06-01&end=2026-06-30"
-    ).json()
+    body = client.get("/api/v1/calendar/events?start=2026-06-01&end=2026-06-30").json()
     assert body["total"] == 2
     titles = sorted(item["title"] for item in body["data"])
     assert titles == ["CPI Release", "NVDA Earnings"]
@@ -111,9 +105,7 @@ def test_calendar_filters_by_type(
         ],
     )
     _login(client, test_password)
-    body = client.get(
-        "/api/v1/calendar/events?start=2026-06-01&end=2026-06-30&types=macro"
-    ).json()
+    body = client.get("/api/v1/calendar/events?start=2026-06-01&end=2026-06-30&types=macro").json()
     assert body["total"] == 1
     assert body["data"][0]["title"] == "CPI Release"
 
@@ -152,33 +144,23 @@ def test_calendar_ticker_filter_keeps_macro(
         ],
     )
     _login(client, test_password)
-    body = client.get(
-        "/api/v1/calendar/events?start=2026-06-01&end=2026-06-30&tickers=NVDA"
-    ).json()
+    body = client.get("/api/v1/calendar/events?start=2026-06-01&end=2026-06-30&tickers=NVDA").json()
     titles = {item["title"] for item in body["data"]}
     assert "NVDA Earnings" in titles
     assert "CPI Release" in titles
     assert "AAPL Earnings" not in titles
 
 
-def test_calendar_rejects_inverted_range(
-    client: TestClient, test_password: str
-) -> None:
+def test_calendar_rejects_inverted_range(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
-    resp = client.get(
-        "/api/v1/calendar/events?start=2026-07-01&end=2026-06-01"
-    )
+    resp = client.get("/api/v1/calendar/events?start=2026-07-01&end=2026-06-01")
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "invalid_range"
 
 
-def test_calendar_rejects_overly_wide_range(
-    client: TestClient, test_password: str
-) -> None:
+def test_calendar_rejects_overly_wide_range(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
-    resp = client.get(
-        "/api/v1/calendar/events?start=2024-01-01&end=2026-12-31"
-    )
+    resp = client.get("/api/v1/calendar/events?start=2024-01-01&end=2026-12-31")
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "range_too_wide"
 
@@ -205,9 +187,7 @@ def test_calendar_response_carries_payload(
         ],
     )
     _login(client, test_password)
-    body = client.get(
-        "/api/v1/calendar/events?start=2026-06-01&end=2026-06-30"
-    ).json()
+    body = client.get("/api/v1/calendar/events?start=2026-06-01&end=2026-06-30").json()
     item = body["data"][0]
     assert item["event_time"] == "AMC"
     assert item["payload"] == {"time_marker": "AMC", "consensus_eps": 0.78}

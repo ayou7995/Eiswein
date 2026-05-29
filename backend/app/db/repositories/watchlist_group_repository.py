@@ -141,9 +141,7 @@ class WatchlistGroupRepository:
         # repository (raw SQL, future migrations); the explicit UPDATE
         # is the documented contract.
         self._session.execute(
-            update(Watchlist)
-            .where(Watchlist.group_id == group_id)
-            .values(group_id=None)
+            update(Watchlist).where(Watchlist.group_id == group_id).values(group_id=None)
         )
         self._session.delete(row)
         self._session.flush()
@@ -172,18 +170,14 @@ class WatchlistGroupRepository:
     def _count_for_user(self, user_id: int) -> int:
         from sqlalchemy import func
 
-        stmt = select(func.count(WatchlistGroup.id)).where(
-            WatchlistGroup.user_id == user_id
-        )
+        stmt = select(func.count(WatchlistGroup.id)).where(WatchlistGroup.user_id == user_id)
         result = self._session.execute(stmt).scalar_one()
         return int(result)
 
     def _next_position(self, user_id: int) -> int:
         from sqlalchemy import func
 
-        stmt = select(func.max(WatchlistGroup.position)).where(
-            WatchlistGroup.user_id == user_id
-        )
+        stmt = select(func.max(WatchlistGroup.position)).where(WatchlistGroup.user_id == user_id)
         result = self._session.execute(stmt).scalar_one()
         return 0 if result is None else int(result) + 1
 

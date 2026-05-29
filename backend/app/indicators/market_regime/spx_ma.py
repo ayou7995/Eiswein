@@ -82,5 +82,3 @@ def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLit
     if price >= ma200:
         return SignalTone.YELLOW, "SPX 中期多頭、短期偏弱"
     return SignalTone.RED, "SPX 空頭趨勢"
-
-

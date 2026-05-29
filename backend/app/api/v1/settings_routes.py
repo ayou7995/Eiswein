@@ -266,15 +266,9 @@ def _compute_data_freshness(session: Session) -> DataFreshness:
     ).scalar_one_or_none()
 
     is_partial = False
-    if (
-        session_day == today
-        and close_at is not None
-        and latest_at is not None
-    ):
+    if session_day == today and close_at is not None and latest_at is not None:
         # Normalize naive timestamps from SQLite as UTC.
-        latest_aware = (
-            latest_at if latest_at.tzinfo is not None else latest_at.replace(tzinfo=UTC)
-        )
+        latest_aware = latest_at if latest_at.tzinfo is not None else latest_at.replace(tzinfo=UTC)
         cutoff = close_at + timedelta(minutes=_DATA_FRESHNESS_BUFFER_MINUTES)
         is_partial = latest_aware < cutoff
 

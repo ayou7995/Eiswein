@@ -281,18 +281,14 @@ class WatchlistGroup(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(32), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
-    watchlists: Mapped[list[Watchlist]] = relationship(
-        "Watchlist", back_populates="group"
-    )
+    watchlists: Mapped[list[Watchlist]] = relationship("Watchlist", back_populates="group")
 
 
 class WatchlistTag(Base):
@@ -311,17 +307,14 @@ class WatchlistTag(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_watchlist_tag_user_name"),
         CheckConstraint(
-            "color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]"
-            "[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'",
+            "color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]" "[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'",
             name="ck_watchlist_tag_color_hex",
         ),
         Index("ix_watchlist_tag_user", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(32), nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

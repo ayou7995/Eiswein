@@ -63,6 +63,20 @@ def settings(
         login_lockout_minutes=15,
         cache_dir=tmp_path / "cache",
         watchlist_max_size=5,  # small so B3 cap test is fast
+        # Explicitly clear SMTP / broker values so a developer's local
+        # ``.env`` (which may contain real Gmail App Passwords + Schwab
+        # creds) cannot leak into test fixtures. Pydantic-settings reads
+        # .env when a field isn't passed to the constructor; passing
+        # None / "" here blocks that fallback. CI runs without .env so
+        # it was unaffected; this fixture closes the local-only gap.
+        smtp_host=None,
+        smtp_username=None,
+        smtp_password=None,
+        smtp_from=None,
+        smtp_to=None,
+        fred_api_key=None,
+        schwab_client_id=None,
+        schwab_client_secret=None,
     )
 
 

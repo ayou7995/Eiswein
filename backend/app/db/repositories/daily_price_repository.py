@@ -61,9 +61,7 @@ class DailyPriceRepository:
         # ``DailyPriceRow`` (the TypedDict caller passes) has no
         # updated_at field — we inject it here so callers don't need to
         # think about freshness bookkeeping.
-        values_with_timestamps = [
-            {**row, "updated_at": now} for row in materialized
-        ]
+        values_with_timestamps = [{**row, "updated_at": now} for row in materialized]
         stmt = sqlite_insert(DailyPrice).values(values_with_timestamps)
         stmt = stmt.on_conflict_do_update(
             index_elements=["symbol", "date"],
@@ -213,9 +211,7 @@ class DailyPriceRepository:
         if not uppers:
             return []
 
-        stmt = select(
-            DailyPrice.symbol, DailyPrice.date, DailyPrice.updated_at
-        ).where(
+        stmt = select(DailyPrice.symbol, DailyPrice.date, DailyPrice.updated_at).where(
             DailyPrice.symbol.in_(uppers),
             DailyPrice.date >= window_start,
             DailyPrice.date <= window_end,

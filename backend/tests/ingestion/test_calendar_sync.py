@@ -37,9 +37,7 @@ def yaml_path(tmp_path: Path) -> Path:
     return p
 
 
-async def test_run_calendar_sync_unions_three_sources(
-    db_session: Session, yaml_path: Path
-) -> None:
+async def test_run_calendar_sync_unions_three_sources(db_session: Session, yaml_path: Path) -> None:
     earnings = [_row(ticker_symbol="AAPL", title="AAPL Earnings")]
     macro = [
         _row(
@@ -59,15 +57,19 @@ async def test_run_calendar_sync_unions_three_sources(
             source="yaml",
         )
     ]
-    with patch(
-        "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
-        return_value=earnings,
-    ), patch(
-        "app.ingestion.calendar_sync.generate_macro_release_schedule",
-        return_value=macro,
-    ), patch(
-        "app.ingestion.calendar_sync.load_industry_events_from_yaml",
-        return_value=industry,
+    with (
+        patch(
+            "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
+            return_value=earnings,
+        ),
+        patch(
+            "app.ingestion.calendar_sync.generate_macro_release_schedule",
+            return_value=macro,
+        ),
+        patch(
+            "app.ingestion.calendar_sync.load_industry_events_from_yaml",
+            return_value=industry,
+        ),
     ):
         result = await run_calendar_sync(
             db_session,
@@ -101,15 +103,19 @@ async def test_run_calendar_sync_fault_isolated_earnings(
             source="hardcoded",
         )
     ]
-    with patch(
-        "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
-        side_effect=RuntimeError("upstream dead"),
-    ), patch(
-        "app.ingestion.calendar_sync.generate_macro_release_schedule",
-        return_value=macro,
-    ), patch(
-        "app.ingestion.calendar_sync.load_industry_events_from_yaml",
-        return_value=[],
+    with (
+        patch(
+            "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
+            side_effect=RuntimeError("upstream dead"),
+        ),
+        patch(
+            "app.ingestion.calendar_sync.generate_macro_release_schedule",
+            return_value=macro,
+        ),
+        patch(
+            "app.ingestion.calendar_sync.load_industry_events_from_yaml",
+            return_value=[],
+        ),
     ):
         result = await run_calendar_sync(
             db_session,
@@ -121,9 +127,7 @@ async def test_run_calendar_sync_fault_isolated_earnings(
     assert result.total_upserted == 1
 
 
-async def test_run_calendar_sync_is_idempotent(
-    db_session: Session, yaml_path: Path
-) -> None:
+async def test_run_calendar_sync_is_idempotent(db_session: Session, yaml_path: Path) -> None:
     """Re-running the sync produces no duplicate rows."""
     rows_in = [
         _row(),
@@ -135,22 +139,22 @@ async def test_run_calendar_sync_is_idempotent(
             source="hardcoded",
         ),
     ]
-    with patch(
-        "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
-        return_value=[rows_in[0]],
-    ), patch(
-        "app.ingestion.calendar_sync.generate_macro_release_schedule",
-        return_value=[rows_in[1]],
-    ), patch(
-        "app.ingestion.calendar_sync.load_industry_events_from_yaml",
-        return_value=[],
+    with (
+        patch(
+            "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
+            return_value=[rows_in[0]],
+        ),
+        patch(
+            "app.ingestion.calendar_sync.generate_macro_release_schedule",
+            return_value=[rows_in[1]],
+        ),
+        patch(
+            "app.ingestion.calendar_sync.load_industry_events_from_yaml",
+            return_value=[],
+        ),
     ):
-        await run_calendar_sync(
-            db_session, watchlist_symbols=["AAPL"], yaml_path=yaml_path
-        )
-        await run_calendar_sync(
-            db_session, watchlist_symbols=["AAPL"], yaml_path=yaml_path
-        )
+        await run_calendar_sync(db_session, watchlist_symbols=["AAPL"], yaml_path=yaml_path)
+        await run_calendar_sync(db_session, watchlist_symbols=["AAPL"], yaml_path=yaml_path)
 
     rows = CalendarEventRepository(db_session).list_in_range(
         start=date(2026, 6, 1), end=date(2026, 6, 30)
@@ -164,41 +168,47 @@ async def test_run_calendar_sync_purges_orphans_for_removed_tickers(
     """A symbol that left the watchlist gets its earnings events
     purged on the next sync (macro events untouched)."""
     # First run: AAPL + MSFT in watchlist.
-    with patch(
-        "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
-        return_value=[
-            _row(ticker_symbol="AAPL", title="AAPL Earnings"),
-            _row(ticker_symbol="MSFT", title="MSFT Earnings"),
-        ],
-    ), patch(
-        "app.ingestion.calendar_sync.generate_macro_release_schedule",
-        return_value=[
-            _row(
-                event_date=date(2026, 6, 12),
-                type="macro",
-                ticker_symbol=None,
-                title="CPI Release",
-                source="hardcoded",
-            )
-        ],
-    ), patch(
-        "app.ingestion.calendar_sync.load_industry_events_from_yaml",
-        return_value=[],
+    with (
+        patch(
+            "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
+            return_value=[
+                _row(ticker_symbol="AAPL", title="AAPL Earnings"),
+                _row(ticker_symbol="MSFT", title="MSFT Earnings"),
+            ],
+        ),
+        patch(
+            "app.ingestion.calendar_sync.generate_macro_release_schedule",
+            return_value=[
+                _row(
+                    event_date=date(2026, 6, 12),
+                    type="macro",
+                    ticker_symbol=None,
+                    title="CPI Release",
+                    source="hardcoded",
+                )
+            ],
+        ),
+        patch(
+            "app.ingestion.calendar_sync.load_industry_events_from_yaml",
+            return_value=[],
+        ),
     ):
-        await run_calendar_sync(
-            db_session, watchlist_symbols=["AAPL", "MSFT"], yaml_path=yaml_path
-        )
+        await run_calendar_sync(db_session, watchlist_symbols=["AAPL", "MSFT"], yaml_path=yaml_path)
 
     # Second run: MSFT dropped from watchlist; fetch only returns AAPL.
-    with patch(
-        "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
-        return_value=[_row(ticker_symbol="AAPL", title="AAPL Earnings")],
-    ), patch(
-        "app.ingestion.calendar_sync.generate_macro_release_schedule",
-        return_value=[],
-    ), patch(
-        "app.ingestion.calendar_sync.load_industry_events_from_yaml",
-        return_value=[],
+    with (
+        patch(
+            "app.ingestion.calendar_sync.fetch_earnings_for_symbols",
+            return_value=[_row(ticker_symbol="AAPL", title="AAPL Earnings")],
+        ),
+        patch(
+            "app.ingestion.calendar_sync.generate_macro_release_schedule",
+            return_value=[],
+        ),
+        patch(
+            "app.ingestion.calendar_sync.load_industry_events_from_yaml",
+            return_value=[],
+        ),
     ):
         result = await run_calendar_sync(
             db_session, watchlist_symbols=["AAPL"], yaml_path=yaml_path

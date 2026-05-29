@@ -144,9 +144,7 @@ def test_assign_watchlist_to_unknown_group_returns_404(
     assert resp.status_code == 404
 
 
-def test_assign_unassigns_with_null_group_id(
-    client: TestClient, test_password: str
-) -> None:
+def test_assign_unassigns_with_null_group_id(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "NVDA"})
     gid = client.post("/api/v1/watchlist/groups", json={"name": "Watching"}).json()["id"]
@@ -160,9 +158,7 @@ def test_assign_unassigns_with_null_group_id(
     assert item["group_name"] is None
 
 
-def test_delete_group_orphans_member_rows(
-    client: TestClient, test_password: str
-) -> None:
+def test_delete_group_orphans_member_rows(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "NVDA"})
     gid = client.post("/api/v1/watchlist/groups", json={"name": "Watching"}).json()["id"]
@@ -176,9 +172,7 @@ def test_delete_group_orphans_member_rows(
     assert item["group_id"] is None
 
 
-def test_list_groups_includes_symbol_count(
-    client: TestClient, test_password: str
-) -> None:
+def test_list_groups_includes_symbol_count(client: TestClient, test_password: str) -> None:
     _login(client, test_password)
     client.post("/api/v1/watchlist", json={"symbol": "NVDA"})
     client.post("/api/v1/watchlist", json={"symbol": "QQQ"})

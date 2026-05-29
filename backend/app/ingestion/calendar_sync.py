@@ -162,9 +162,7 @@ def _purge_orphans(
         .where(CalendarEvent.ticker_symbol.is_not(None))
         .distinct()
     )
-    stored_symbols = {
-        row for row in repo._session.execute(stmt).scalars().all() if row
-    }
+    stored_symbols = {row for row in repo._session.execute(stmt).scalars().all() if row}
     keep = {s.upper() for s in current_symbols if s and s.strip()}
     to_remove = stored_symbols - keep
     if not to_remove:

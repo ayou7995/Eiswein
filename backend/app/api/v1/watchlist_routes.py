@@ -171,9 +171,7 @@ class WatchlistItem(BaseModel):
         active_onboarding_job_id: int | None = None,
     ) -> "WatchlistItem":
         group_name = row.group.name if row.group is not None else None
-        tag_items = [
-            WatchlistTagOut(id=t.id, name=t.name, color=t.color) for t in row.tags
-        ]
+        tag_items = [WatchlistTagOut(id=t.id, name=t.name, color=t.color) for t in row.tags]
         return cls(
             symbol=row.symbol,
             data_status=_coerce_status(row.data_status),

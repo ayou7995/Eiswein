@@ -91,7 +91,11 @@ async def _startup_catchup_daily_update(
                 db=session,
                 data_source=data_source,
                 settings=settings,
-                trigger="scheduled",
+                # ``startup`` (vs ``scheduled``) tells daily_update this
+                # is a boot-time catch-up — the catalyst-digest email
+                # is suppressed. Without this gate, every container
+                # restart / make-dev reload would send another email.
+                trigger="startup",
             )
             session.commit()
         logger.info(
@@ -182,9 +186,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ``startup_catchup_disabled`` flag for the rare test that needs
     # scheduler but not catch-up.
     catchup_task: asyncio.Task[None] | None = None
-    if scheduler_handle is not None and not getattr(
-        app.state, "startup_catchup_disabled", False
-    ):
+    if scheduler_handle is not None and not getattr(app.state, "startup_catchup_disabled", False):
         data_source_for_catchup = getattr(app.state, "data_source", None)
         if data_source_for_catchup is not None:
             catchup_task = asyncio.create_task(
@@ -211,9 +213,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Cancel the startup catch-up task if it hasn't finished —
         # better to abort a half-finished fetch than to block uvicorn
         # shutdown waiting for a multi-minute job.
-        active_catchup: asyncio.Task[None] | None = getattr(
-            app.state, "startup_catchup_task", None
-        )
+        active_catchup: asyncio.Task[None] | None = getattr(app.state, "startup_catchup_task", None)
         if active_catchup is not None and not active_catchup.done():
             active_catchup.cancel()
             try:
