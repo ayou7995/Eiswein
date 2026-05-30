@@ -109,6 +109,7 @@ async def test_daily_update_skips_on_non_trading_day(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The scheduled 06:30 ET cron skips on weekends / holidays."""
     monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: False)
     _seed_watchlist(session_factory, {"u1": ["SPY"]})
 
@@ -117,11 +118,45 @@ async def test_daily_update_skips_on_non_trading_day(
             db=session,
             data_source=fake_data_source,  # type: ignore[arg-type]
             settings=settings,
+            # Default trigger="scheduled" — exercises the skip gate.
         )
 
     assert result.market_open is False
     assert result.symbols_requested == 0
     assert fake_data_source.calls == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["startup", "manual"])
+async def test_daily_update_bypasses_trading_day_gate_for_non_scheduled_triggers(
+    session_factory: sessionmaker[Session],
+    fake_data_source: object,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    trigger: str,
+) -> None:
+    """A fresh install on a Saturday must still pull the previous
+    Friday's data. The startup catch-up and "立即更新" button both
+    skip the trading-day gate so gap detection can do its job
+    regardless of today's NYSE status.
+    """
+    monkeypatch.setattr("app.ingestion.daily_ingestion.is_trading_day_et", lambda: False)
+    _seed_watchlist(session_factory, {"u1": ["SPY"]})
+
+    with session_factory() as session:
+        result = await run_daily_update(
+            db=session,
+            data_source=fake_data_source,  # type: ignore[arg-type]
+            settings=settings,
+            trigger=trigger,  # type: ignore[arg-type]
+        )
+
+    # Not "skipped" — the job entered its real path. With the
+    # FakeDataSource it succeeds against the seeded SPY symbol.
+    assert result.market_open is True, f"trigger={trigger!r} should bypass the non-trading-day gate"
+    assert result.symbols_requested == 1
+    # Bulk fetch actually fired.
+    assert len(fake_data_source.calls) == 1  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

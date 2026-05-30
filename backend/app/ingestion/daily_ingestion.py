@@ -151,7 +151,16 @@ async def run_daily_update(
     the user never gets a silent no-op).
     """
     session_day = last_trading_day_et()
-    if not is_trading_day_et():
+    # The "is today a trading day" gate exists so the 06:30 ET cron
+    # doesn't burn cycles on Saturdays / Memorial Day / etc. — there's
+    # no new data to fetch, the previous scheduled run already covered
+    # the last completed session. But manual refreshes and the startup
+    # catch-up have the OPPOSITE intent: fill whatever gaps the operator
+    # has accumulated, regardless of what today's calendar says. A
+    # fresh install on a Saturday must still pull Friday's data — gap
+    # detection downstream handles the "nothing to do" branch when
+    # everything is already up to date.
+    if trigger == "scheduled" and not is_trading_day_et():
         logger.info("daily_update_skipped_market_closed", date=str(session_day))
         return _empty_result(session_day, market_open=False)
 
