@@ -78,18 +78,12 @@ TriggerMode = Literal["scheduled", "manual", "startup"]
 # auto-reload, every redeploy would send another digest.
 _EMAIL_SENDING_TRIGGERS: frozenset[TriggerMode] = frozenset({"scheduled"})
 
-# Trading-day lookback cap for gap detection. 300 ≈ 14 months of
-# sessions — deep enough to seed all 12 indicators on a fresh install
-# (longest lookback is 52-week RSI ≈ 260 trading days; SPX 200-MA
-# needs 200). On steady-state runs, gap detection short-circuits per
-# symbol so this cap doesn't add cost — only the first daily_update
-# after a fresh install actually pulls the full window.
-#
-# Increased from 60 (2026-05-30): the previous value left SPX MA at
-# "資料不足" forever on day-1 installs and a friend's first dashboard
-# stayed sparse for ~10 months until enough daily increments
-# accumulated. 300 lets the first run prime the indicator math
-# straight away.
+# Fallback trading-day lookback when no Settings instance is in scope
+# (e.g. older test fixtures that call helpers directly). Production +
+# every real run sources the actual value from
+# ``settings.backfill_window_trading_days`` — see ``run_daily_update``.
+# The cap is here so gap detection's behaviour is well-defined even
+# when called outside the lifespan-managed Settings object.
 _GAP_LOOKBACK_TRADING_DAYS = 300
 
 # Buffer past NYSE close before a row is considered "settled". Yahoo
@@ -198,8 +192,12 @@ async def run_daily_update(
 
     if symbols:
         # Compute per-symbol gaps up front. Bounded lookback prevents a
-        # corrupt/empty DB from triggering an unbounded backfill.
-        gaps = prices.find_gaps_for_symbols(symbols, lookback_days=_GAP_LOOKBACK_TRADING_DAYS)
+        # corrupt/empty DB from triggering an unbounded backfill. The
+        # window is operator-configurable via the bootstrap-time
+        # backfill-window prompt; default 300 covers the longest
+        # indicator (52-week RSI ≈ 260 trading days).
+        lookback = settings.backfill_window_trading_days
+        gaps = prices.find_gaps_for_symbols(symbols, lookback_days=lookback)
         any_gaps = any(dates for dates in gaps.values())
 
         # Detect partial intra-day rows whose session has already
@@ -210,7 +208,7 @@ async def run_daily_update(
         partials = _find_partial_session_dates(
             prices=prices,
             symbols=symbols,
-            lookback_days=_GAP_LOOKBACK_TRADING_DAYS,
+            lookback_days=lookback,
             buffer_minutes=_POST_CLOSE_BUFFER_MINUTES,
         )
         any_partials = any(dates for dates in partials.values())

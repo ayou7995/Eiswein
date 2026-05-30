@@ -400,6 +400,41 @@ def _section_admin(bcrypt_mod: object, zxcvbn_mod: object) -> dict[str, str]:
     }
 
 
+# Trading-day presets for the backfill-window prompt. Keys are the
+# UI labels; values are the literal integer the operator picks.
+# ``300`` is the default (covers all 12 indicators with safety margin);
+# the deeper options unlock longer history charts and back-testing-style
+# context on the History page.
+_BACKFILL_PRESETS: Final[dict[str, int]] = {
+    "1": 300,   # ~14 months (default, fast install)
+    "2": 504,   # ~2 years
+    "3": 1260,  # ~5 years
+    "4": 2520,  # ~10 years
+}
+
+
+def _section_backfill() -> dict[str, str]:
+    print("\n[Historical data depth]")
+    print(
+        "  On first start, Eiswein backfills trading-day history per\n"
+        "  symbol so all 12 indicators have enough data to compute.\n"
+        "  Steady-state daily updates only fetch new bars after that —\n"
+        "  this is a one-time choice you can change later by re-running\n"
+        "  `make install` or editing BACKFILL_WINDOW_TRADING_DAYS in .env.\n"
+        "\n"
+        "    1)  ~14 months  (default, fast install — covers every indicator)\n"
+        "    2)   ~2 years   (a bit more History-page context)\n"
+        "    3)   ~5 years   (recommended for back-testing-style analysis)\n"
+        "    4)  ~10 years   (deepest — slowest first install)"
+    )
+    choice = _prompt("Choice [1-4]", default="1").strip()
+    days = _BACKFILL_PRESETS.get(choice, _BACKFILL_PRESETS["1"])
+    if choice not in _BACKFILL_PRESETS:
+        print(f"  ⚠ unrecognised choice {choice!r} — defaulting to 14 months")
+    print(f"  ✓ backfill window set to {days} trading days")
+    return {"BACKFILL_WINDOW_TRADING_DAYS": str(days)}
+
+
 def _section_fred() -> dict[str, str]:
     print("\n[FRED — macro indicators (VIX, yield curve, CPI, ...)]")
     if not _prompt_yes_no("Enable macro indicators?", default=True):
@@ -586,6 +621,10 @@ def _render_env(values: dict[str, str]) -> str:
             ["ENVIRONMENT", "LOG_LEVEL", "DATABASE_URL"],
         ),
         (
+            "Historical backfill",
+            ["BACKFILL_WINDOW_TRADING_DAYS"],
+        ),
+        (
             "Data sources",
             ["FRED_API_KEY"],
         ),
@@ -732,6 +771,7 @@ def main() -> int:
     values["JWT_SECRET"] = _gen_jwt_secret()
     values["ENCRYPTION_KEY"] = _gen_encryption_key()
     values.update(_section_admin(bcrypt_mod, zxcvbn_mod))
+    values.update(_section_backfill())
     values.update(_section_fred())
     values.update(_section_smtp())
     schwab_values = _section_schwab()

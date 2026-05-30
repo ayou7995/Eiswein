@@ -9,7 +9,7 @@
 #     with hot reload.
 
 .PHONY: help \
-        install start stop logs update uninstall \
+        install start stop logs update uninstall backfill \
         dev lint format format-check type test migrate verify \
         deps-update deps-sync
 
@@ -17,12 +17,13 @@
 
 help:
 	@echo "Eiswein — user commands"
-	@echo "  make install     First-time interactive setup (writes .env + certs/)"
-	@echo "  make start       Boot the stack in the background (rebuilds if source changed)"
-	@echo "  make stop        Shut the stack down"
-	@echo "  make logs        Tail backend logs (Ctrl+C to leave)"
-	@echo "  make update      git pull + rebuild + restart"
-	@echo "  make uninstall   Destructive: stop, remove containers, delete .env + data/"
+	@echo "  make install              First-time interactive setup (writes .env + certs/)"
+	@echo "  make start                Boot the stack in the background (rebuilds if source changed)"
+	@echo "  make stop                 Shut the stack down"
+	@echo "  make logs                 Tail backend logs (Ctrl+C to leave)"
+	@echo "  make update               git pull + rebuild + restart"
+	@echo "  make backfill DAYS=1260   Extend historical backfill (e.g. 1260=5y, 2520=10y), restart picks up new window"
+	@echo "  make uninstall            Destructive: stop, remove containers, delete .env + data/"
 	@echo ""
 	@echo "Eiswein — dev commands"
 	@echo "  make dev          Foreground dev (Vite 5173 + uvicorn 8000)"
@@ -90,6 +91,31 @@ update:
 
 uninstall:
 	@bash scripts/uninstall.sh
+
+# Extend the historical-data window after the fact. Updates the
+# BACKFILL_WINDOW_TRADING_DAYS line in .env, then restarts the stack
+# so the startup catch-up re-runs gap detection against the wider
+# window and pulls everything missing.
+#
+# Usage: make backfill DAYS=1260   # 5 years
+#        make backfill DAYS=2520   # 10 years
+#
+# Defaults to 1260 (5 years) when DAYS is omitted — the most common
+# "I want more history now" request from operators who picked the
+# fast install at first-time setup.
+backfill:
+	@if [ -z "$$(grep BACKFILL_WINDOW_TRADING_DAYS .env 2>/dev/null)" ]; then \
+		echo "ERR: BACKFILL_WINDOW_TRADING_DAYS not found in .env. Re-run \`make install\` first."; \
+		exit 1; \
+	fi
+	@TARGET=$${DAYS:-1260}; \
+		echo "==> Setting BACKFILL_WINDOW_TRADING_DAYS=$$TARGET in .env"; \
+		sed -i.bak "s/^BACKFILL_WINDOW_TRADING_DAYS=.*/BACKFILL_WINDOW_TRADING_DAYS=$$TARGET/" .env && rm -f .env.bak; \
+		echo "==> Restarting so the new window takes effect"; \
+		$(COMPOSE) up -d --build; \
+		echo ""; \
+		echo "Backfill window is now $$TARGET trading days."; \
+		echo "Watch \`make logs\` for daily_update_complete with non-zero gaps_filled_rows."
 
 # ---------- Dev targets ----------------------------------------------------
 

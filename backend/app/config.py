@@ -78,6 +78,17 @@ class Settings(BaseSettings):
     # Watchlist hard cap per B3 — configurable but default 100 to match
     # the yfinance bulk-download ceiling.
     watchlist_max_size: int = Field(default=100, ge=1, le=500)
+
+    # How many trading days back gap detection scans for missing
+    # DailyPrice rows. The default 300 covers all 12 indicators' lookback
+    # windows (longest is 52-week RSI ≈ 260 days; SPX 200-MA needs 200).
+    # Operators who want deeper historical context for the History page
+    # or for back-testing-style analysis can bump this via .env (the
+    # bootstrap wizard offers 5-year and 10-year presets). Daily-update
+    # gap detection is per-symbol, so a wider window only costs extra
+    # fetch time on the FIRST run after the increase — steady-state
+    # daily increments stay cheap regardless.
+    backfill_window_trading_days: int = Field(default=300, ge=60, le=2520)
     # FRED_API_KEY is not required when running without macro ingestion
     # (e.g. a single-ticker cold-start backfill). daily_update logs and
     # continues if it's missing or the FRED call fails (graceful
