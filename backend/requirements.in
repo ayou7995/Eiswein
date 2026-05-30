@@ -35,6 +35,9 @@ python-multipart==0.0.12
 # which _split_bulk_frame already handles.
 yfinance==1.3.0
 fredapi==0.5.2
+# Gemini-backed industry catalyst sync (Google AI Studio free tier).
+# Used by app/datasources/gemini_industry_source.py for the weekly sync.
+google-genai==0.7.0
 pandas==2.2.3
 numpy==2.1.2
 pyarrow==17.0.0
@@ -51,4 +54,4 @@ freezegun==1.5.1
 # Dev tooling
 mypy==1.11.2
 ruff==0.6.9
-pip-tools==7.4.1
+pip-tools==7.5.3
