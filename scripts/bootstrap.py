@@ -408,8 +408,7 @@ def _section_admin(bcrypt_mod: object, zxcvbn_mod: object) -> dict[str, str]:
 _BACKFILL_PRESETS: Final[dict[str, int]] = {
     "1": 300,   # ~14 months (default, fast install)
     "2": 504,   # ~2 years
-    "3": 1260,  # ~5 years
-    "4": 2520,  # ~10 years
+    "3": 1260,  # ~5 years (deepest — matches the chart 'ALL' button)
 }
 
 
@@ -424,10 +423,9 @@ def _section_backfill() -> dict[str, str]:
         "\n"
         "    1)  ~14 months  (default, fast install — covers every indicator)\n"
         "    2)   ~2 years   (a bit more History-page context)\n"
-        "    3)   ~5 years   (recommended for back-testing-style analysis)\n"
-        "    4)  ~10 years   (deepest — slowest first install)"
+        "    3)   ~5 years   (deepest — matches the chart 'ALL' button)"
     )
-    choice = _prompt("Choice [1-4]", default="1").strip()
+    choice = _prompt("Choice [1-3]", default="1").strip()
     days = _BACKFILL_PRESETS.get(choice, _BACKFILL_PRESETS["1"])
     if choice not in _BACKFILL_PRESETS:
         print(f"  ⚠ unrecognised choice {choice!r} — defaulting to 14 months")

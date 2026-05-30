@@ -22,7 +22,7 @@ help:
 	@echo "  make stop                 Shut the stack down"
 	@echo "  make logs                 Tail backend logs (Ctrl+C to leave)"
 	@echo "  make update               git pull + rebuild + restart"
-	@echo "  make backfill DAYS=1260   Extend historical backfill (e.g. 1260=5y, 2520=10y), restart picks up new window"
+	@echo "  make backfill DAYS=1260   Extend historical backfill (max 1260 = 5y), restart picks up new window"
 	@echo "  make uninstall            Destructive: stop, remove containers, delete .env + data/"
 	@echo ""
 	@echo "Eiswein — dev commands"
@@ -97,12 +97,12 @@ uninstall:
 # so the startup catch-up re-runs gap detection against the wider
 # window and pulls everything missing.
 #
-# Usage: make backfill DAYS=1260   # 5 years
-#        make backfill DAYS=2520   # 10 years
+# Usage: make backfill DAYS=1260   # 5 years (max)
+#        make backfill DAYS=504    # 2 years
 #
 # Defaults to 1260 (5 years) when DAYS is omitted — the most common
 # "I want more history now" request from operators who picked the
-# fast install at first-time setup.
+# fast install at first-time setup. Backend caps the field at 1260.
 backfill:
 	@if [ -z "$$(grep BACKFILL_WINDOW_TRADING_DAYS .env 2>/dev/null)" ]; then \
 		echo "ERR: BACKFILL_WINDOW_TRADING_DAYS not found in .env. Re-run \`make install\` first."; \

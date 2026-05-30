@@ -168,8 +168,8 @@ export type FedFundsSeriesResponse = z.infer<typeof fedFundsResponseSchema>;
 
 // Range options mapped to trading days. Server validates 21 ≤ days ≤ 1260
 // for the ``days`` param; the ``ALL`` button instead sends ``?range=all``
-// which the server treats as 10y so operators who picked a deep backfill
-// can see all of it.
+// which the server treats as the deepest backfill the bootstrap wizard
+// offers (5y today).
 export const MARKET_INDICATOR_RANGES = [
   { key: '1M' as const, days: 21, label: '1 月' },
   { key: '3M' as const, days: 60, label: '3 月' },

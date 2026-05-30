@@ -87,10 +87,9 @@ def _spy_lookback_for(window: int) -> int:
 _DAYS_MIN = 21
 _DAYS_MAX = 1260
 
-# When ``?range=all`` is set, we bypass _DAYS_MAX and walk back this
-# many trading days — enough to expose the full 10-year backfill option
-# the bootstrap wizard offers. 2520 ~= 10 years * 252 sessions/yr.
-_ALL_RANGE_DAYS = 2520
+# ``?range=all`` walks back this many trading days — the deepest
+# backfill the bootstrap wizard offers. 1260 ~= 5 years * 252 sessions/yr.
+_ALL_RANGE_DAYS = 1260
 _DEFAULT_DAYS: dict[str, int] = {
     "spx_ma": SERIES_DAYS,
     "vix": SERIES_DAYS,

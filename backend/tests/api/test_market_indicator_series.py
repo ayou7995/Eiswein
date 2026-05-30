@@ -841,27 +841,26 @@ def test_fed_rate_summary_active_cut_within_30d(
 # --- range=all -----------------------------------------------------------
 
 
-def test_range_all_returns_wider_window_than_days_max(
+def test_range_all_returns_full_five_year_window(
     client: TestClient,
     test_password: str,
     session_factory: sessionmaker[Session],
 ) -> None:
-    """``?range=all`` bypasses the 1260-trading-day cap on ``days`` so an
-    operator with a deep backfill can see the full history."""
+    """``?range=all`` is a URL-shape alias for the deepest backfill the
+    bootstrap wizard offers (5y today). With 1500 days of data on hand
+    the response should saturate to the 1260-trading-day server cap."""
     _login(client, test_password)
     end = date.today()
-    days = 2200  # > _DAYS_MAX (1260) but < _ALL_RANGE_DAYS (2520)
+    days = 1500
     rng = np.random.default_rng(11)
     values = (18.0 + rng.normal(0, 0.5, size=days)).tolist()
     with session_factory() as session:
         _seed_macro_series(session, series_id="VIXCLS", end=end, days=days, values=values)
         session.commit()
 
-    resp_max = client.get("/api/v1/market/indicator/vix/series?days=1260")
-    resp_all = client.get("/api/v1/market/indicator/vix/series?range=all")
-    assert resp_max.status_code == 200
-    assert resp_all.status_code == 200
-    assert len(resp_all.json()["series"]) > len(resp_max.json()["series"])
+    resp = client.get("/api/v1/market/indicator/vix/series?range=all")
+    assert resp.status_code == 200
+    assert len(resp.json()["series"]) == 1260
 
 
 def test_range_all_rejects_unknown_value(

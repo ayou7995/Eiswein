@@ -349,10 +349,8 @@ def _to_wire_pros_cons(item: ProsConsItem) -> ProsConsItemResponse:
 PriceRangeLiteral = Literal["1M", "3M", "6M", "1Y", "ALL"]
 
 # ``ALL`` is capped server-side (TradingView perf + JSON payload budget).
-# 10y matches the deepest backfill the bootstrap wizard offers and stays
-# well inside both TradingView's bar budget and the JSON payload size
-# (10y * ~252 bars/yr * ~100 bytes ~= 250 KB).
-_ALL_MAX_YEARS = 10
+# The cap matches the deepest backfill the bootstrap wizard offers.
+_ALL_MAX_YEARS = 5
 
 # (years, months) offsets per range. Months + years cover the selector;
 # relativedelta() below does the leap-year-safe arithmetic at call
@@ -449,12 +447,11 @@ def get_ticker_prices(
 _SERIES_LOOKBACK_DAYS = 1100
 
 # Per-ticker indicator series accepts the same range bounds as market
-# regime ones: 21 (1M) to 1260 (5Y). ``?range=all`` bypasses _DAYS_MAX
-# and walks back _ALL_RANGE_DAYS so the chart can expose the full 10-year
-# backfill the bootstrap wizard offers.
+# regime ones: 21 (1M) to 1260 (5Y). ``?range=all`` is a URL-shape alias
+# for "the deepest window we have", which equals _DAYS_MAX today.
 _DAYS_MIN = 21
 _DAYS_MAX = 1260
-_ALL_RANGE_DAYS = 2520
+_ALL_RANGE_DAYS = 1260
 
 
 def _series_lookback_for(window: int) -> int:
