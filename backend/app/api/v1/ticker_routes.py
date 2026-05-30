@@ -349,9 +349,10 @@ def _to_wire_pros_cons(item: ProsConsItem) -> ProsConsItemResponse:
 PriceRangeLiteral = Literal["1M", "3M", "6M", "1Y", "ALL"]
 
 # ``ALL`` is capped server-side (TradingView perf + JSON payload budget).
-# The cap lives here alongside the other range offsets so the policy is
-# reviewable in one place.
-_ALL_MAX_YEARS = 5
+# 10y matches the deepest backfill the bootstrap wizard offers and stays
+# well inside both TradingView's bar budget and the JSON payload size
+# (10y * ~252 bars/yr * ~100 bytes ~= 250 KB).
+_ALL_MAX_YEARS = 10
 
 # (years, months) offsets per range. Months + years cover the selector;
 # relativedelta() below does the leap-year-safe arithmetic at call

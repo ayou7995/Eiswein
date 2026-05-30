@@ -201,20 +201,24 @@ def test_prices_range_1m_excludes_older_rows(
     assert len(bars) >= 27
 
 
-def test_prices_all_capped_to_five_years(
+def test_prices_all_capped_to_ten_years(
     client: TestClient,
     test_password: str,
     app: FastAPI,
     session_factory: sessionmaker[Session],
 ) -> None:
-    """``ALL`` is bounded server-side so a user with 8 years of stored
-    history can't blow up the chart renderer or JSON payload."""
+    """``ALL`` is bounded server-side so a user with 12 years of stored
+    history can't blow up the chart renderer or JSON payload. The cap
+    matches the deepest bootstrap backfill (10y)."""
     _login(client, test_password)
     _seed_watchlist_row(session_factory, symbol="AAPL")
     today = date.today()
     with session_factory() as session:
-        # 8 full years of daily rows (calendar-day spacing).
-        _seed_prices(session, symbol="AAPL", end=today, days=365 * 8)
+        # 11 full years of daily rows (calendar-day spacing) — beyond
+        # the 10y cap so the slicing logic is exercised. Capped at 11y
+        # (not larger) because the bulk INSERT helper bumps into SQLite's
+        # 32 766-variable limit past ~11.2 years (8 columns per row).
+        _seed_prices(session, symbol="AAPL", end=today, days=365 * 11)
         session.commit()
 
     resp = client.get("/api/v1/ticker/AAPL/prices?range=ALL")
@@ -223,13 +227,13 @@ def test_prices_all_capped_to_five_years(
     assert body["range"] == "ALL"
     bars = body["bars"]
     oldest = date.fromisoformat(bars[0]["date"])
-    # relativedelta(years=5) lands on the same month/day five years ago;
+    # relativedelta(years=10) lands on the same month/day ten years ago;
     # allow a small tolerance for leap-year / month-end snapping.
-    five_years_ago = today - timedelta(days=365 * 5 + 2)
-    assert oldest >= five_years_ago
-    # Six-year-old rows must NOT be present.
-    six_years_ago = today - timedelta(days=365 * 6)
-    assert oldest > six_years_ago
+    ten_years_ago = today - timedelta(days=365 * 10 + 3)
+    assert oldest >= ten_years_ago
+    # Sanity check: ALL should actually return MORE than 5Y now.
+    five_years_ago = today - timedelta(days=365 * 5)
+    assert oldest < five_years_ago
 
 
 def test_prices_scoped_to_requesting_user(
