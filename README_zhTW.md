@@ -20,7 +20,7 @@ Eiswein 是一個個人股市決策輔助工具。它幫你追蹤一份美股 wa
 |---|---|
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 用一個 container 跑整個 app |
 | `git` | 用來 `git clone`，之後也用 `make update` 更新 |
-| Python ≥ 3.10 | 只在安裝時用一次 —— 跑 `scripts/bootstrap.py` |
+| Python ≥ 3.10 + `venv` | 只在安裝時用一次 —— `make install` 會自己建一個 `.venv-bootstrap/`，**不會碰你系統 Python** |
 
 | 選用（安裝時會問你） | 為什麼 |
 |---|---|
@@ -40,11 +40,9 @@ Eiswein 是一個個人股市決策輔助工具。它幫你追蹤一份美股 wa
 git clone <這個 repo 的 url> eiswein
 cd eiswein
 
-# 一次性：裝 bootstrap 需要的小工具
-python3 -m pip install -r scripts/requirements.bootstrap.txt
-
-# 互動式 wizard —— 自動產 secrets、問你 admin 帳密、
-# 走完 FRED / SMTP / Schwab 三段（每段都可以跳過）
+# 互動式 wizard。第一次跑會在 .venv-bootstrap/ 裡裝 bcrypt + zxcvbn，
+# 再帶你走完 admin 帳密 + FRED / SMTP / Schwab 三段（都可跳過）。
+# 你的系統 Python 完全不會被動到。
 make install
 
 # 在背景啟動

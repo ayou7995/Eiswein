@@ -22,7 +22,7 @@ Heaton or his Patreon.
 |---|---|
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Runs the app in a single container |
 | `git` | To `git clone` and later `make update` |
-| Python ≥ 3.10 | One-shot use during install — to run `scripts/bootstrap.py` |
+| Python ≥ 3.10 with `venv` | One-shot use during install — `make install` builds its own `.venv-bootstrap/` so nothing pollutes your system Python |
 
 | Optional (asked during install) | Why |
 |---|---|
@@ -42,11 +42,9 @@ decision-support mode using free Yahoo Finance data.
 git clone <this-repo-url> eiswein
 cd eiswein
 
-# One-time: install the tiny bootstrap deps
-python3 -m pip install -r scripts/requirements.bootstrap.txt
-
-# Interactive wizard — generates secrets, asks for admin login,
-# walks through FRED / SMTP / Schwab (each is skippable)
+# Interactive wizard. First run creates a private .venv-bootstrap/
+# with bcrypt + zxcvbn, then walks you through admin login + FRED /
+# SMTP / Schwab (each is skippable). Your system Python is not touched.
 make install
 
 # Boot in the background

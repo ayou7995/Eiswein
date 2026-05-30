@@ -13,9 +13,10 @@ cat <<'BANNER'
 This will permanently delete:
   - The Eiswein Docker container + image
   - The mailpit Docker volume (if it exists)
-  - .env             (your secrets — JWT, encryption key, Schwab tokens)
-  - data/            (your SQLite database, watchlist, signal history)
-  - certs/           (your self-signed TLS keys if you generated any)
+  - .env              (your secrets — JWT, encryption key, Schwab tokens)
+  - data/             (your SQLite database, watchlist, signal history)
+  - certs/            (your self-signed TLS keys if you generated any)
+  - .venv-bootstrap/  (the install-time Python venv)
 
 Source code stays. You can re-run `make install` to set up again.
 
@@ -37,7 +38,7 @@ docker rmi -f "$(docker images -q 'eiswein-eiswein' 2>/dev/null)" 2>/dev/null ||
 
 echo "Deleting local state..."
 rm -f .env
-rm -rf data certs
+rm -rf data certs .venv-bootstrap
 
 echo ""
 echo "Done. Source code is untouched."

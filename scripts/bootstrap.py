@@ -17,10 +17,10 @@ The script is **idempotent in spirit** — running it twice overwrites
 without explicit confirmation, so an accidental re-run can't wipe a
 working setup.
 
-Run from the repo root:
-
-    python3 -m pip install -r scripts/requirements.bootstrap.txt
-    python3 scripts/bootstrap.py
+Normally invoked via ``make install`` (which manages a private
+``.venv-bootstrap/`` so bcrypt + zxcvbn never touch the operator's
+system Python). Calling this script directly assumes those deps are
+already importable.
 """
 
 from __future__ import annotations
@@ -57,8 +57,10 @@ def _ensure_deps() -> tuple[object, object]:
         from zxcvbn import zxcvbn  # type: ignore[import-untyped]
     except ImportError:
         print(
-            "Bootstrap needs `bcrypt` and `zxcvbn`. Install with:\n"
-            "    python3 -m pip install -r scripts/requirements.bootstrap.txt\n",
+            "Bootstrap needs `bcrypt` and `zxcvbn`. The supported install\n"
+            "path is via `make install`, which sets up a private venv\n"
+            "(.venv-bootstrap/) for you. To recover from a manual run:\n"
+            "    make install\n",
             file=sys.stderr,
         )
         sys.exit(1)

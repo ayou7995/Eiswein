@@ -235,6 +235,9 @@ eiswein/
 ├── .env                # Your secrets — bootstrap writes this. chmod 600.
 ├── data/               # SQLite DB + parquet cache + backups
 ├── certs/              # mkcert TLS pair (only if Schwab is enabled)
+├── .venv-bootstrap/    # Private venv with bcrypt + zxcvbn for make install.
+│                       # `make uninstall` deletes it. Your system Python
+│                       # is never touched.
 ├── docker-compose.yml  # Stack definition
 ├── README.md / README_zhTW.md
 ├── docs/

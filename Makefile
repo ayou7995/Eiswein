@@ -36,8 +36,25 @@ help:
 	@echo "  make deps-update  Regenerate backend/requirements.txt"
 	@echo "  make deps-sync    pip-sync to backend/requirements.txt"
 
-install:
-	@python3 scripts/bootstrap.py
+# Bootstrap venv lives in the repo (gitignored). Keeps bcrypt + zxcvbn
+# out of the operator's system Python so a fresh-clone install doesn't
+# leave packages behind. `make uninstall` deletes it.
+BOOTSTRAP_VENV := .venv-bootstrap
+BOOTSTRAP_PY   := $(BOOTSTRAP_VENV)/bin/python
+
+install: $(BOOTSTRAP_VENV)/.installed
+	@$(BOOTSTRAP_PY) scripts/bootstrap.py
+
+# Idempotent venv setup. ``.installed`` is a sentinel so re-running
+# ``make install`` doesn't re-install bootstrap deps every time.
+# The recipe depends on the bootstrap requirements file so a future
+# version bump invalidates the sentinel and triggers a re-install.
+$(BOOTSTRAP_VENV)/.installed: scripts/requirements.bootstrap.txt
+	@echo "==> Setting up bootstrap venv ($(BOOTSTRAP_VENV))..."
+	@test -d $(BOOTSTRAP_VENV) || python3 -m venv $(BOOTSTRAP_VENV)
+	@$(BOOTSTRAP_PY) -m pip install --quiet --upgrade pip
+	@$(BOOTSTRAP_PY) -m pip install --quiet -r scripts/requirements.bootstrap.txt
+	@touch $(BOOTSTRAP_VENV)/.installed
 
 start:
 	@docker compose up -d

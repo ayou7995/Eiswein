@@ -216,6 +216,9 @@ eiswein/
 ├── .env                # 你的 secrets —— bootstrap 寫的，chmod 600。
 ├── data/               # SQLite DB + parquet cache + backups
 ├── certs/              # mkcert 證書對（只有 Schwab 啟用才有）
+├── .venv-bootstrap/    # `make install` 用的私有 venv（bcrypt + zxcvbn）。
+│                       # `make uninstall` 會刪掉它。
+│                       # 你的系統 Python 完全不會被動到。
 ├── docker-compose.yml  # stack 定義
 ├── README.md / README_zhTW.md
 ├── docs/

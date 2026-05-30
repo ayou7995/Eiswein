@@ -75,6 +75,7 @@ only `.md`). Even then, when in doubt: run it.
 | Add an optional env var | `.env.example` + `scripts/bootstrap.py` (skip-default branch) + `docs/SETUP_GUIDE.md` |
 | Add an auto-generated secret | `scripts/bootstrap.py` only |
 | Rename / remove an env var | Same as above + add a note to `README.md` § Update so existing users know to re-run bootstrap |
+| Add / bump a bootstrap-time Python dep | `scripts/requirements.bootstrap.txt` — the Makefile's `.venv-bootstrap/.installed` sentinel depends on this file so it auto-rebuilds on next `make install`. Re-run `make uninstall && make install` once locally to confirm the venv rebuild path still works |
 | Bump Python version | `Dockerfile` (`FROM python:`) + `pyproject.toml` `target-version` |
 | Bump Node version | `Dockerfile` (`FROM node:`) + `frontend/package.json` `engines` if set |
 | Add an APScheduler job | `README.md` § Automatic scheduling + zh-TW twin |
@@ -177,5 +178,5 @@ target), update README and re-run from step 1.
 - Distributable port: **8080** (host) → 8000 (container)
 - Friend access mode: invited GitHub read-only collaborator on
   private repo
-- Bootstrap deps: `pip install -r scripts/requirements.bootstrap.txt`
+- Bootstrap deps: auto-installed by `make install` into `.venv-bootstrap/` (per `scripts/requirements.bootstrap.txt`); system Python is never touched
 - Mailpit profile: `COMPOSE_PROFILES=email make start`
