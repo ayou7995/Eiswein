@@ -9,6 +9,8 @@ import {
   useAuditLog,
   useChangePassword,
   useDataRefresh,
+  useIndustrySyncRun,
+  useIndustrySyncStatus,
   useSystemInfo,
 } from '../hooks/useSettings';
 import { EisweinApiError } from '../api/errors';
@@ -49,6 +51,7 @@ export function SettingsPage(): JSX.Element {
 
       <SystemInfoCards />
       <DataRefreshCard />
+      <IndustrySyncCard />
       <SchwabConnectCard />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <PasswordChangeCard />
@@ -502,5 +505,120 @@ function AuditRow({ entry }: { entry: AuditEntry }): JSX.Element {
         {summaryFields.length > 0 ? summaryFields.join(' · ') : ''}
       </td>
     </tr>
+  );
+}
+
+function IndustrySyncCard(): JSX.Element {
+  const status = useIndustrySyncStatus();
+  const mutation = useIndustrySyncRun();
+  const [message, setMessage] = useState<{
+    tone: 'success' | 'info' | 'error';
+    text: string;
+  } | null>(null);
+
+  const onClick = async (): Promise<void> => {
+    setMessage(null);
+    try {
+      const result = await mutation.mutateAsync();
+      if (result.skippedReason) {
+        const reasonText =
+          result.skippedReason === 'no_api_key'
+            ? '未啟用 — 在 .env 加上 GEMINI_API_KEY 後重啟容器。'
+            : `本次跳過(${result.skippedReason})。`;
+        setMessage({ tone: 'info', text: reasonText });
+        return;
+      }
+      setMessage({
+        tone: 'success',
+        text: `已同步 ${result.eventsReturned} 件事件 · 寫入 ${result.rowsUpserted} 列。`,
+      });
+    } catch (err) {
+      if (err instanceof EisweinApiError && err.code === 'rate_limited') {
+        setMessage({ tone: 'error', text: '已達同步頻率上限,請稍後再試。' });
+        return;
+      }
+      setMessage({ tone: 'error', text: '同步失敗,請稍後再試或檢查後端 log。' });
+    }
+  };
+
+  return (
+    <section
+      aria-labelledby="industry-sync-heading"
+      data-testid="industry-sync-card"
+      className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6"
+    >
+      <header>
+        <h2 id="industry-sync-heading" className="text-lg font-semibold">
+          產業事件自動同步 (Gemini)
+        </h2>
+        <p className="mt-1 text-xs text-stone-500">
+          每週日 10:00 ET 由 Gemini Flash + Google Search 抓取 ~25 場大型科技
+          會議的下次確認日期。免費 tier 額度遠超我們用量,不會超支。
+        </p>
+      </header>
+
+      <IndustrySyncStatusLine
+        isLoading={status.isLoading}
+        enabled={status.data?.enabled ?? false}
+        lastSyncAt={status.data?.lastSyncAt ?? null}
+      />
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button
+          type="button"
+          onClick={() => void onClick()}
+          disabled={mutation.isPending || !(status.data?.enabled ?? false)}
+          data-testid="industry-sync-run-button"
+          className="inline-flex items-center gap-2 self-start rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+        >
+          {mutation.isPending && <LoadingSpinner label="同步中…" />}
+          <span>{mutation.isPending ? '同步中…' : '立即同步'}</span>
+        </button>
+        {message && (
+          <span
+            role={message.tone === 'error' ? 'alert' : 'status'}
+            data-testid="industry-sync-message"
+            className={`text-sm ${
+              message.tone === 'success'
+                ? 'text-emerald-700'
+                : message.tone === 'error'
+                  ? 'text-rose-700'
+                  : 'text-stone-600'
+            }`}
+          >
+            {message.text}
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function IndustrySyncStatusLine({
+  isLoading,
+  enabled,
+  lastSyncAt,
+}: {
+  isLoading: boolean;
+  enabled: boolean;
+  lastSyncAt: Date | null;
+}): JSX.Element {
+  if (isLoading) {
+    return <LoadingSpinner label="載入狀態…" />;
+  }
+  if (!enabled) {
+    return (
+      <p
+        className="text-sm text-amber-700"
+        data-testid="industry-sync-status-disabled"
+      >
+        未啟用 — 在 .env 加上 ``GEMINI_API_KEY`` 後重啟容器即可開啟。
+      </p>
+    );
+  }
+  return (
+    <p className="text-sm text-stone-600" data-testid="industry-sync-status-enabled">
+      已啟用 · 上次同步: {relativeTime(lastSyncAt ? lastSyncAt.toISOString() : null)}
+    </p>
   );
 }

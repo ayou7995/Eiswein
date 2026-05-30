@@ -118,4 +118,82 @@ describe('EventDrawer', () => {
     expect(screen.getByText(/共識 EPS: \$1\.42/)).toBeInTheDocument();
     expect(screen.getByText(/時間: AMC/)).toBeInTheDocument();
   });
+
+  describe('industry trust block', () => {
+    const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const longAgoIso = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    function renderIndustry(
+      payload: Record<string, unknown>,
+      staleThresholdDays = 21,
+    ): void {
+      render(
+        <EventDrawer
+          date={new Date(2027, 4, 25)}
+          events={[
+            makeEvent({
+              id: 99,
+              type: 'industry',
+              tickerSymbol: null,
+              title: 'Computex 2027',
+              eventTime: null,
+              source: 'gemini',
+              payload,
+            }),
+          ]}
+          isPast={false}
+          onClose={vi.fn()}
+          onNavigateDay={vi.fn()}
+          staleThresholdDays={staleThresholdDays}
+        />,
+      );
+    }
+
+    it('shows confirmed badge + source link + verified-ago for confirmed events', () => {
+      renderIndustry({
+        confidence: 'confirmed',
+        source_url: 'https://www.computextaipei.com.tw/',
+        last_verified_at: yesterdayIso,
+        notes: 'Announced by TAITRA.',
+      });
+      const trust = screen.getByTestId('calendar-industry-trust');
+      expect(trust).toBeInTheDocument();
+      expect(screen.getByTestId('calendar-industry-confidence')).toHaveTextContent(
+        '已確認',
+      );
+      const link = screen.getByRole('link', { name: /computextaipei/ });
+      expect(link).toHaveAttribute('href', 'https://www.computextaipei.com.tw/');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(screen.getByText(/1 天前驗證/)).toBeInTheDocument();
+      expect(screen.getByText('Announced by TAITRA.')).toBeInTheDocument();
+    });
+
+    it('renders an "estimated" badge in amber tone', () => {
+      renderIndustry({
+        confidence: 'estimated',
+        last_verified_at: yesterdayIso,
+      });
+      const badge = screen.getByTestId('calendar-industry-confidence');
+      expect(badge).toHaveAttribute('data-confidence', 'estimated');
+      expect(badge).toHaveTextContent('估計');
+    });
+
+    it('shows the stale banner when verification is older than the threshold', () => {
+      renderIndustry({
+        confidence: 'confirmed',
+        last_verified_at: longAgoIso,
+        source_url: 'https://example.com',
+      });
+      const banner = screen.getByTestId('calendar-industry-stale-banner');
+      expect(banner).toBeInTheDocument();
+      expect(banner).toHaveTextContent(/30 天未驗證/);
+    });
+
+    it('omits the trust block entirely for yaml-sourced industry events', () => {
+      renderIndustry({ tags: ['Aerospace'] });
+      expect(screen.queryByTestId('calendar-industry-trust')).not.toBeInTheDocument();
+    });
+  });
 });

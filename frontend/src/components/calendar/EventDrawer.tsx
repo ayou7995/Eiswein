@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { CalendarEvent } from '../../api/calendar';
+import {
+  daysSinceVerified,
+  extractIndustryPayload,
+  type IndustryPayload,
+} from '../../api/calendar';
 
 interface EventDrawerProps {
   date: Date;
@@ -7,6 +12,9 @@ interface EventDrawerProps {
   isPast: boolean;
   onClose: () => void;
   onNavigateDay: (offset: number) => void;
+  // Days since last_verified_at after which the drawer shows a
+  // "資料可能過時" banner. Threshold ships from backend Settings.
+  staleThresholdDays?: number;
 }
 
 const TYPE_COLOR: Record<CalendarEvent['type'], string> = {
@@ -31,6 +39,7 @@ export function EventDrawer({
   isPast,
   onClose,
   onNavigateDay,
+  staleThresholdDays = 21,
 }: EventDrawerProps): JSX.Element {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -126,6 +135,12 @@ export function EventDrawer({
                   </div>
                   <div className="mt-1 text-sm font-semibold">{evt.title}</div>
                   <PayloadLines payload={evt.payload} />
+                  {evt.type === 'industry' && (
+                    <IndustryTrustLines
+                      event={evt}
+                      staleThresholdDays={staleThresholdDays}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
@@ -183,3 +198,106 @@ function PayloadLines({ payload }: { payload: Record<string, unknown> | null }):
     </ul>
   );
 }
+
+const CONFIDENCE_BADGE: Record<
+  'confirmed' | 'estimated' | 'uncertain',
+  { label: string; cls: string }
+> = {
+  confirmed: {
+    label: '✓ 已確認',
+    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  },
+  estimated: {
+    label: '〜 估計',
+    cls: 'bg-amber-50 text-amber-700 border-amber-200',
+  },
+  uncertain: {
+    label: '? 不確定',
+    cls: 'bg-rose-50 text-rose-700 border-rose-200',
+  },
+};
+
+// Renders confidence badge + source URL + verified-ago + notes for
+// Gemini-sourced industry events. Yaml-sourced rows (no payload metadata)
+// render nothing — graceful degradation.
+function IndustryTrustLines({
+  event,
+  staleThresholdDays,
+}: {
+  event: CalendarEvent;
+  staleThresholdDays: number;
+}): JSX.Element | null {
+  const trust = extractIndustryPayload(event.payload);
+  if (
+    trust.confidence === null &&
+    trust.sourceUrl === null &&
+    trust.lastVerifiedAt === null &&
+    trust.notes === null
+  ) {
+    return null;
+  }
+  const days = daysSinceVerified(trust);
+  const stale = days !== null && days >= staleThresholdDays;
+  return (
+    <div
+      data-testid="calendar-industry-trust"
+      data-stale={stale || undefined}
+      className="mt-3 flex flex-col gap-1 text-xs"
+    >
+      {trust.confidence && (
+        <span
+          data-testid="calendar-industry-confidence"
+          data-confidence={trust.confidence}
+          className={`inline-flex w-fit items-center rounded-md border px-1.5 py-0.5 ${CONFIDENCE_BADGE[trust.confidence].cls}`}
+        >
+          {CONFIDENCE_BADGE[trust.confidence].label}
+        </span>
+      )}
+      <SourceLine source={trust.sourceUrl} />
+      <VerifiedLine days={days} stale={stale} />
+      {trust.notes && <p className="text-stone-500">{trust.notes}</p>}
+      {stale && days !== null && (
+        <div
+          role="status"
+          data-testid="calendar-industry-stale-banner"
+          className="mt-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900"
+        >
+          ⚠ 這筆資料已 {days} 天未驗證,建議直接到官網確認。
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceLine({ source }: { source: string | null }): JSX.Element | null {
+  if (!source) return null;
+  return (
+    <a
+      href={source}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="w-fit truncate text-sky-600 underline hover:text-sky-800"
+    >
+      來源 → {source}
+    </a>
+  );
+}
+
+function VerifiedLine({
+  days,
+  stale,
+}: {
+  days: number | null;
+  stale: boolean;
+}): JSX.Element | null {
+  if (days === null) return null;
+  return (
+    <span className={stale ? 'text-amber-700' : 'text-stone-500'}>
+      {days === 0 ? '今日驗證' : `${days} 天前驗證`}
+    </span>
+  );
+}
+
+// IndustryPayload is re-exported here so future callers can reuse it
+// without bouncing through ``../../api/calendar``.
+export type { IndustryPayload };

@@ -72,4 +72,109 @@ describe('EventChip', () => {
     expect(chip.className).not.toMatch(/emerald/);
     expect(chip.className).toMatch(/stone/);
   });
+
+  describe('industry trust modifiers', () => {
+    const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const longAgoIso = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    it('renders a solid border for confirmed industry events', () => {
+      render(
+        <EventChip
+          event={makeEvent({
+            type: 'industry',
+            tickerSymbol: null,
+            title: 'Computex 2027',
+            payload: {
+              confidence: 'confirmed',
+              last_verified_at: yesterdayIso,
+              source_url: 'https://example.com',
+            },
+          })}
+          past={false}
+        />,
+      );
+      const chip = screen.getByTestId('calendar-event-chip');
+      expect(chip).toHaveAttribute('data-confidence', 'confirmed');
+      expect(chip.className).toMatch(/border-solid/);
+    });
+
+    it('renders a dashed border when the LLM marked the date estimated', () => {
+      render(
+        <EventChip
+          event={makeEvent({
+            type: 'industry',
+            tickerSymbol: null,
+            title: 'Computex 2027',
+            payload: {
+              confidence: 'estimated',
+              last_verified_at: yesterdayIso,
+            },
+          })}
+          past={false}
+        />,
+      );
+      const chip = screen.getByTestId('calendar-event-chip');
+      expect(chip).toHaveAttribute('data-confidence', 'estimated');
+      expect(chip.className).toMatch(/border-dashed/);
+    });
+
+    it('renders a dotted border for uncertain industry events', () => {
+      render(
+        <EventChip
+          event={makeEvent({
+            type: 'industry',
+            tickerSymbol: null,
+            title: 'Computex 2027',
+            payload: { confidence: 'uncertain', last_verified_at: yesterdayIso },
+          })}
+          past={false}
+        />,
+      );
+      const chip = screen.getByTestId('calendar-event-chip');
+      expect(chip).toHaveAttribute('data-confidence', 'uncertain');
+      expect(chip.className).toMatch(/border-dotted/);
+    });
+
+    it('dims the chip when last_verified_at is older than the threshold', () => {
+      render(
+        <EventChip
+          event={makeEvent({
+            type: 'industry',
+            tickerSymbol: null,
+            title: 'Computex 2027',
+            payload: {
+              confidence: 'confirmed',
+              last_verified_at: longAgoIso,
+            },
+          })}
+          past={false}
+          staleThresholdDays={21}
+        />,
+      );
+      const chip = screen.getByTestId('calendar-event-chip');
+      expect(chip).toHaveAttribute('data-stale', 'true');
+      expect(chip.className).toMatch(/opacity-60/);
+    });
+
+    it('does not annotate yaml-sourced industry events that have no payload', () => {
+      render(
+        <EventChip
+          event={makeEvent({
+            type: 'industry',
+            tickerSymbol: null,
+            title: 'SpaceX IPO filing window',
+            payload: { tags: ['Aerospace'] },
+          })}
+          past={false}
+        />,
+      );
+      const chip = screen.getByTestId('calendar-event-chip');
+      expect(chip).not.toHaveAttribute('data-confidence');
+      expect(chip).not.toHaveAttribute('data-stale');
+      expect(chip.className).toMatch(/border-solid/);
+      expect(chip.className).not.toMatch(/opacity-60/);
+    });
+  });
 });

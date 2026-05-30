@@ -9,6 +9,17 @@ import { apiRequest } from './client';
 export const eventTypeSchema = z.enum(['earnings', 'macro', 'industry']);
 export type EventType = z.infer<typeof eventTypeSchema>;
 
+// Confidence levels emitted by the Gemini-backed industry feeder.
+// Used to render solid / dashed / dotted borders on the event chip
+// so the operator can spot "this is just an LLM guess" without
+// clicking through.
+export const industryConfidenceSchema = z.enum([
+  'confirmed',
+  'estimated',
+  'uncertain',
+]);
+export type IndustryConfidence = z.infer<typeof industryConfidenceSchema>;
+
 export const calendarEventSchema = z.object({
   id: z.number().int().nonnegative(),
   event_date: z.string(), // ISO "YYYY-MM-DD"
@@ -16,9 +27,13 @@ export const calendarEventSchema = z.object({
   type: eventTypeSchema,
   ticker_symbol: z.string().nullable(),
   title: z.string(),
-  // Payload is event-type specific (earnings: time_marker /
-  // consensus_eps; macro: note; industry: tags) — treated as opaque
-  // here, parsed in the rendering layer.
+  // Payload is event-type specific. Known keys:
+  //   * earnings: time_marker, consensus_eps
+  //   * macro: note
+  //   * industry (Gemini-sourced): confidence, source_url,
+  //     last_verified_at (ISO datetime), end_date (ISO YYYY-MM-DD), notes
+  //   * industry (yaml-sourced): tags
+  // Treated as opaque here, parsed in the rendering layer.
   payload: z.record(z.string(), z.unknown()).nullable(),
   source: z.string(),
 });
@@ -120,5 +135,113 @@ export async function listCalendarEvents(params: {
     total: raw.total,
     rangeStart: parseIsoDate(raw.range_start),
     rangeEnd: parseIsoDate(raw.range_end),
+  };
+}
+
+// --- Industry sync (Gemini) status + manual trigger -------------------
+
+export interface IndustryPayload {
+  confidence: IndustryConfidence | null;
+  sourceUrl: string | null;
+  lastVerifiedAt: Date | null;
+  endDate: Date | null;
+  notes: string | null;
+  tags: readonly string[] | null;
+}
+
+// Pulls the Gemini-related keys out of a free-form payload dict.
+// Defensive — events curated via the YAML feeder won't have these
+// fields, and a forward-compatible LLM may add unknown keys we'd want
+// to surface later.
+export function extractIndustryPayload(
+  payload: Record<string, unknown> | null,
+): IndustryPayload {
+  const confidence = (() => {
+    const raw = payload?.['confidence'];
+    return typeof raw === 'string' &&
+      (raw === 'confirmed' || raw === 'estimated' || raw === 'uncertain')
+      ? raw
+      : null;
+  })();
+  const sourceUrl =
+    typeof payload?.['source_url'] === 'string'
+      ? (payload['source_url'] as string)
+      : null;
+  const lastVerifiedAt = (() => {
+    const raw = payload?.['last_verified_at'];
+    if (typeof raw !== 'string') return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  })();
+  const endDate = (() => {
+    const raw = payload?.['end_date'];
+    if (typeof raw !== 'string') return null;
+    return parseIsoDate(raw);
+  })();
+  const notes =
+    typeof payload?.['notes'] === 'string' ? (payload['notes'] as string) : null;
+  const tags = Array.isArray(payload?.['tags'])
+    ? (payload?.['tags'] as unknown[]).filter(
+        (item): item is string => typeof item === 'string',
+      )
+    : null;
+  return { confidence, sourceUrl, lastVerifiedAt, endDate, notes, tags };
+}
+
+// Days since ``last_verified_at``. Returns ``null`` when the event
+// predates the Gemini feeder (e.g. yaml-curated rows) — UI treats
+// that as "not stale" rather than "always stale".
+export function daysSinceVerified(payload: IndustryPayload): number | null {
+  if (!payload.lastVerifiedAt) return null;
+  const diffMs = Date.now() - payload.lastVerifiedAt.getTime();
+  return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+}
+
+const industrySyncStatusSchema = z.object({
+  enabled: z.boolean(),
+  last_sync_at: z.string().nullable(),
+  stale_days_threshold: z.number().int().positive(),
+});
+export type IndustrySyncStatus = z.infer<typeof industrySyncStatusSchema>;
+
+export interface IndustrySyncStatusResult {
+  enabled: boolean;
+  lastSyncAt: Date | null;
+  staleDaysThreshold: number;
+}
+
+const industrySyncRunSchema = z.object({
+  skipped_reason: z.string().nullable(),
+  events_returned: z.number().int().nonnegative(),
+  rows_upserted: z.number().int().nonnegative(),
+});
+
+export interface IndustrySyncRunResult {
+  skippedReason: string | null;
+  eventsReturned: number;
+  rowsUpserted: number;
+}
+
+export async function getIndustrySyncStatus(): Promise<IndustrySyncStatusResult> {
+  const raw = await apiRequest('/api/v1/calendar/industry-sync/status', {
+    method: 'GET',
+    schema: industrySyncStatusSchema,
+  });
+  return {
+    enabled: raw.enabled,
+    lastSyncAt: raw.last_sync_at ? new Date(raw.last_sync_at) : null,
+    staleDaysThreshold: raw.stale_days_threshold,
+  };
+}
+
+export async function runIndustrySync(): Promise<IndustrySyncRunResult> {
+  const raw = await apiRequest('/api/v1/calendar/industry-sync/run', {
+    method: 'POST',
+    schema: industrySyncRunSchema,
+  });
+  return {
+    skippedReason: raw.skipped_reason,
+    eventsReturned: raw.events_returned,
+    rowsUpserted: raw.rows_upserted,
   };
 }

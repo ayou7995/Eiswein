@@ -102,6 +102,16 @@ describe('SettingsPage', () => {
       if (url.includes('/broker/schwab/status')) {
         return { status: 200, body: { connected: false } };
       }
+      if (url.includes('/calendar/industry-sync/status')) {
+        return {
+          status: 200,
+          body: {
+            enabled: false,
+            last_sync_at: null,
+            stale_days_threshold: 21,
+          },
+        };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
@@ -136,6 +146,16 @@ describe('SettingsPage', () => {
       }
       if (url.includes('/broker/schwab/status')) {
         return { status: 200, body: { connected: false } };
+      }
+      if (url.includes('/calendar/industry-sync/status')) {
+        return {
+          status: 200,
+          body: {
+            enabled: false,
+            last_sync_at: null,
+            stale_days_threshold: 21,
+          },
+        };
       }
       if (url.includes('/settings/password')) {
         return {
@@ -187,6 +207,16 @@ describe('SettingsPage', () => {
       if (url.includes('/broker/schwab/status')) {
         return { status: 200, body: { connected: false } };
       }
+      if (url.includes('/calendar/industry-sync/status')) {
+        return {
+          status: 200,
+          body: {
+            enabled: false,
+            last_sync_at: null,
+            stale_days_threshold: 21,
+          },
+        };
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
@@ -203,6 +233,119 @@ describe('SettingsPage', () => {
       });
       // Client-side rejection — no /settings/password call happened.
       expect(fetchCalls.some((u) => u.includes('/settings/password'))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it('shows the industry sync card disabled when no Gemini key configured', async () => {
+    const restore = installFetch((url) => {
+      if (url.includes('/settings/system-info')) {
+        return { status: 200, body: SYSTEM_INFO };
+      }
+      if (url.includes('/settings/audit-log')) {
+        return {
+          status: 200,
+          body: { data: [], total: 0, has_more: false },
+        };
+      }
+      if (url.endsWith('/api/v1/watchlist')) {
+        return { status: 200, body: { data: [], total: 0, has_more: false } };
+      }
+      if (url.includes('/broker/schwab/status')) {
+        return { status: 200, body: { connected: false } };
+      }
+      if (url.includes('/calendar/industry-sync/status')) {
+        return {
+          status: 200,
+          body: {
+            enabled: false,
+            last_sync_at: null,
+            stale_days_threshold: 21,
+          },
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      renderSettings();
+      await waitFor(() => {
+        expect(screen.getByTestId('industry-sync-card')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('industry-sync-status-disabled'),
+        ).toBeInTheDocument();
+      });
+      // 立即同步 button is disabled when feature isn't enabled.
+      const button = screen.getByTestId('industry-sync-run-button');
+      expect(button).toBeDisabled();
+    } finally {
+      restore();
+    }
+  });
+
+  it('triggers manual sync and surfaces the result counts', async () => {
+    const user = userEvent.setup();
+    let runCalled = 0;
+    const restore = installFetch((url, init) => {
+      if (url.includes('/settings/system-info')) {
+        return { status: 200, body: SYSTEM_INFO };
+      }
+      if (url.includes('/settings/audit-log')) {
+        return {
+          status: 200,
+          body: { data: [], total: 0, has_more: false },
+        };
+      }
+      if (url.endsWith('/api/v1/watchlist')) {
+        return { status: 200, body: { data: [], total: 0, has_more: false } };
+      }
+      if (url.includes('/broker/schwab/status')) {
+        return { status: 200, body: { connected: false } };
+      }
+      if (url.includes('/calendar/industry-sync/status')) {
+        return {
+          status: 200,
+          body: {
+            enabled: true,
+            last_sync_at: '2026-04-17T20:00:00Z',
+            stale_days_threshold: 21,
+          },
+        };
+      }
+      if (
+        url.includes('/calendar/industry-sync/run') &&
+        init?.method === 'POST'
+      ) {
+        runCalled += 1;
+        return {
+          status: 200,
+          body: {
+            skipped_reason: null,
+            events_returned: 4,
+            rows_upserted: 4,
+          },
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      renderSettings();
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('industry-sync-status-enabled'),
+        ).toBeInTheDocument();
+      });
+      const button = screen.getByTestId('industry-sync-run-button');
+      expect(button).not.toBeDisabled();
+      await user.click(button);
+      await waitFor(() => {
+        expect(screen.getByTestId('industry-sync-message')).toHaveTextContent(
+          /已同步 4 件事件/,
+        );
+      });
+      expect(runCalled).toBe(1);
     } finally {
       restore();
     }
