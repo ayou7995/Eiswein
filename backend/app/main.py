@@ -28,7 +28,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import Engine
@@ -307,25 +308,78 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Serve the built React bundle when present (production /
     # distributable Docker image). The Dockerfile copies the Vite
-    # output to /app/frontend_dist; ``StaticFiles(html=True)`` falls
-    # back to index.html for any path that isn't a real file, so the
-    # client-side router handles deep links like /ticker/SPY. Mount
-    # order matters: API routes registered above take precedence,
-    # this catch-all only fires on non-API paths.
+    # output to /app/frontend_dist; an SPA-aware fallback returns
+    # index.html for any non-API, non-static path so client-side
+    # routing (React Router) handles deep links like /ticker/SPY and
+    # browser refreshes at /dashboard.
+    #
+    # Order matters: include_router above runs first for /api/v1/*.
+    # The fallback below catches everything else.
     _mount_frontend_if_present(app)
     return app
 
 
 def _mount_frontend_if_present(app: FastAPI) -> None:
-    """Look for the Vite build output in the standard locations and
-    mount it at ``/``. No-op when the directory is missing — the same
-    factory powers ``make dev`` (Vite serves the frontend separately
-    on :5173 in that case)."""
+    """Look for the Vite build output and wire up SPA-style serving:
+
+    * ``/assets/*`` → real built files (JS, CSS, images) via StaticFiles
+    * Other root-level files (favicon.ico, robots.txt, manifest.json)
+      → served directly when they exist
+    * Anything else (``/``, ``/dashboard``, ``/ticker/SPY``, …)
+      → ``index.html`` so React Router can take over
+
+    No-op when the build directory is absent — the same factory
+    powers ``make dev``, where Vite serves the frontend separately
+    on port 5173.
+
+    Why not ``StaticFiles(html=True)``? That helper only falls back
+    to ``index.html`` for the root path and directory-style URLs,
+    not for arbitrary SPA paths. Refreshing at ``/dashboard`` would
+    return a 404 envelope from the JSON error handler instead of
+    the React shell.
+    """
     candidates = (
         Path("/app/frontend_dist"),
         Path(__file__).resolve().parents[2] / "frontend" / "dist",
     )
     for path in candidates:
-        if path.is_dir() and (path / "index.html").is_file():
-            app.mount("/", StaticFiles(directory=str(path), html=True), name="frontend")
-            return
+        if not (path.is_dir() and (path / "index.html").is_file()):
+            continue
+        _wire_spa(app, path)
+        return
+
+
+def _wire_spa(app: FastAPI, dist_dir: Path) -> None:
+    """Register the /assets static mount + the SPA catch-all route.
+
+    Factored out so ``_mount_frontend_if_present`` stays a simple
+    discovery loop and the route handlers close over the right
+    ``dist_dir`` even if a future caller resolves multiple
+    candidates.
+    """
+    assets_dir = dist_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(assets_dir)),
+            name="frontend-assets",
+        )
+
+    index_html = dist_dir / "index.html"
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    async def spa_fallback(spa_path: str) -> FileResponse:
+        # /api/* paths fall through to the API router's 404. Without
+        # this guard, a typo'd API request would return index.html
+        # instead of the JSON error envelope.
+        if spa_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Root-level real files (favicon.ico, robots.txt, etc.) take
+        # precedence over the SPA fallback when they exist on disk.
+        if spa_path and "/" not in spa_path:
+            direct = dist_dir / spa_path
+            if direct.is_file():
+                return FileResponse(str(direct))
+        # Anything else: hand off to the SPA. React Router will read
+        # window.location and render the right page client-side.
+        return FileResponse(str(index_html))
