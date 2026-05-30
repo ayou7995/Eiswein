@@ -163,6 +163,21 @@ entered a username/password — the password is bcrypt-hashed into
 (this wipes your database too) or edit `ADMIN_PASSWORD_HASH` in
 `.env` directly using `scripts/set_password.py`.
 
+**`make install` accepted my new password but the login still
+rejects it.** Almost always means a stale `data/eiswein.db` from a
+previous install survived. The admin row inside that DB outlives
+`.env` — at first boot the container reads the admin's stored hash
+from the DB, not `.env`. Recent `make install` runs offer to wipe
+`data/` for you; older installs may have left it behind. Recovery:
+```sh
+make stop
+rm -rf data/                  # also clears any login lockout
+make start
+```
+Or, if the DB has data you want to keep, run
+`scripts/reset_password_offline.py` to update the stored hash
+without nuking the DB.
+
 **`make update` says "Your branch is behind" but nothing changes.**
 You might have local edits. Inspect with `git status` first.
 

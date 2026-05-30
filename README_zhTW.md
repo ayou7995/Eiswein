@@ -149,6 +149,20 @@ bcrypt-hash 後存在 `.env`。如果忘了，跑 `make uninstall && make instal
 （這會連同資料庫一起清掉），或直接用 `scripts/set_password.py` 改
 `.env` 裡的 `ADMIN_PASSWORD_HASH`。
 
+**`make install` 重設了密碼，但登入還是被拒絕。** 幾乎都是因為
+舊的 `data/eiswein.db` 還留著。DB 裡的 admin row 在新 `.env` 寫入
+之後**仍然存在**，container 第一次開機時讀的是 DB 那筆 row，**不是**
+新 `.env`。新的 `make install` 會主動問你要不要清 `data/`；如果之前
+跳過了，手動修：
+```sh
+make stop
+rm -rf data/                  # 順便清掉登入鎖
+make start
+```
+如果 DB 裡有你想留的資料（watchlist、訊號歷史等），改用
+`scripts/reset_password_offline.py` 直接更新 DB 裡的 hash，不會
+動到其他資料。
+
 **`make update` 說「Your branch is behind」但什麼都沒變。** 可能你
 本機有改過 code。先 `git status` 看一下。
 

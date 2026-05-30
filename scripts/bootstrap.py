@@ -651,6 +651,7 @@ def _assemble_defaults() -> dict[str, str]:
 
 def _confirm_overwrite() -> None:
     if not ENV_PATH.exists():
+        _warn_if_stale_db_exists()
         return
     print(
         f"\n⚠ {ENV_PATH.name} already exists. Re-running bootstrap will "
@@ -661,6 +662,47 @@ def _confirm_overwrite() -> None:
     if not _prompt_yes_no("Continue?", default=False):
         print("Aborted — no changes made.")
         sys.exit(0)
+    _warn_if_stale_db_exists()
+
+
+_DB_PATH: Final[Path] = REPO_ROOT / "data" / "eiswein.db"
+
+
+def _warn_if_stale_db_exists() -> None:
+    """If a DB from a previous install survives, the admin row inside it
+    will outlive the .env we're about to write — and the new password
+    hash in .env will be ignored at first boot. Offer to delete the DB
+    so the seed runs cleanly against the fresh .env.
+
+    This is the single most confusing footgun a re-install hits:
+    everything appears successful, the .env contains the new hash, but
+    login fails because the container reads the admin row from the
+    stale DB.
+    """
+    if not _DB_PATH.exists():
+        return
+    print(
+        f"\n⚠ {_DB_PATH.relative_to(REPO_ROOT)} already exists from a "
+        "previous install.\n"
+        "  The admin row inside that DB will OUTLIVE the new password "
+        "you're about to set.\n"
+        "  At first boot, the container reads the admin row from the DB "
+        "and IGNORES the new .env hash.\n"
+        "\n"
+        "  • Wipe the DB → fresh admin from the new .env (loses any "
+        "watchlist / signal history in that DB)\n"
+        "  • Keep the DB → your new password will NOT work; you'll need "
+        "scripts/reset_password_offline.py to update the stored hash"
+    )
+    if _prompt_yes_no("Wipe data/ now so the new password takes effect?", default=True):
+        import shutil as _shutil  # local — only on this branch
+
+        data_dir = REPO_ROOT / "data"
+        certs_dir = REPO_ROOT / "certs"
+        for path in (data_dir, certs_dir):
+            if path.is_dir():
+                _shutil.rmtree(path)
+                print(f"  ✓ removed {path.relative_to(REPO_ROOT)}/")
 
 
 def main() -> int:

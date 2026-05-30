@@ -55,12 +55,38 @@ from app.services.backfill_service import mark_orphaned_backfills_failed
 
 
 def _seed_admin_if_needed(settings: Settings, users: UserRepository) -> None:
+    """First-boot seed: write the .env ADMIN_PASSWORD_HASH into the
+    users table when the table is empty. After that, the DB is the
+    source of truth — the in-app password-change endpoint and
+    scripts/reset_password_offline.py both write to the DB, NOT to
+    .env. Re-running ``make install`` overwrites ``.env`` but does not
+    touch the DB; the operator must wipe ``data/eiswein.db`` (or use
+    the offline reset script) to pick up a new install-time hash.
+
+    Logs the skip path loudly so anyone tailing ``make logs`` after a
+    failed login can see "the admin already exists, your fresh .env
+    hash was ignored" instead of staring at a silent boot.
+    """
+    structlog_logger = structlog.get_logger("eiswein.lifespan")
     if users.count() > 0:
+        structlog_logger.info(
+            "admin_seed_skipped_user_exists",
+            note=(
+                "DB already has an admin row — .env ADMIN_PASSWORD_HASH "
+                "was NOT applied. To reset password: stop container, "
+                "rm -rf data/, restart; OR run scripts/"
+                "reset_password_offline.py."
+            ),
+        )
         return
     users.create(
         username=settings.admin_username,
         password_hash=settings.admin_password_hash.get_secret_value(),
         is_admin=True,
+    )
+    structlog_logger.info(
+        "admin_seeded",
+        username=settings.admin_username,
     )
 
 
