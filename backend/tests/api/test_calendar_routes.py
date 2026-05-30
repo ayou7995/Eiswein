@@ -192,3 +192,84 @@ def test_calendar_response_carries_payload(
     assert item["event_time"] == "AMC"
     assert item["payload"] == {"time_marker": "AMC", "consensus_eps": 0.78}
     assert item["source"] == "yfinance"
+
+
+# --- Industry Gemini sync status + manual trigger -------------------------
+
+
+def test_industry_sync_status_requires_auth(client: TestClient) -> None:
+    resp = client.get("/api/v1/calendar/industry-sync/status")
+    assert resp.status_code == 401
+
+
+def test_industry_sync_status_reports_disabled_when_no_key(
+    client: TestClient, test_password: str
+) -> None:
+    """Default settings fixture has no Gemini key — status reflects that."""
+    _login(client, test_password)
+    body = client.get("/api/v1/calendar/industry-sync/status").json()
+    assert body["enabled"] is False
+    assert body["last_sync_at"] is None
+    assert body["stale_days_threshold"] >= 7
+
+
+def test_industry_sync_run_requires_auth(client: TestClient) -> None:
+    resp = client.post("/api/v1/calendar/industry-sync/run")
+    assert resp.status_code == 401
+
+
+def test_industry_sync_run_skips_gracefully_with_no_key(
+    client: TestClient, test_password: str
+) -> None:
+    """Manual trigger without a configured Gemini key returns 200 with
+    ``skipped_reason=no_api_key`` — no exception, just a clean signal
+    the operator hasn't enabled this feature."""
+    _login(client, test_password)
+    resp = client.post("/api/v1/calendar/industry-sync/run")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["skipped_reason"] == "no_api_key"
+    assert body["events_returned"] == 0
+    assert body["rows_upserted"] == 0
+
+
+def test_industry_sync_run_invokes_ingestion_when_key_set(
+    client: TestClient,
+    test_password: str,
+    monkeypatch,
+) -> None:
+    """Happy path: inject a Gemini key into ``app.state.settings``, stub
+    the LLM-bound ingestion entry, and verify the wire response carries
+    the counts from the ingestion result.
+
+    Settings is a pydantic ``BaseSettings`` and is frozen — we can't
+    mutate the fixture in place, so we replace ``app.state.settings``
+    with a copy carrying the key. ``get_settings_dep`` reads from
+    app.state at request time so the next request picks it up
+    automatically."""
+    from pydantic import SecretStr
+
+    real_app = client.app
+    original_settings = real_app.state.settings
+    real_app.state.settings = original_settings.model_copy(
+        update={"gemini_api_key": SecretStr("fake-key")}
+    )
+
+    from app.api.v1 import calendar_routes
+    from app.ingestion.industry_gemini_sync import IndustryGeminiSyncResult
+
+    async def _fake_sync(session, *, api_key, as_of=None):
+        return IndustryGeminiSyncResult(skipped_reason=None, events_returned=3, rows_upserted=3)
+
+    monkeypatch.setattr(calendar_routes, "run_industry_gemini_sync", _fake_sync)
+
+    try:
+        _login(client, test_password)
+        resp = client.post("/api/v1/calendar/industry-sync/run")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["skipped_reason"] is None
+        assert body["events_returned"] == 3
+        assert body["rows_upserted"] == 3
+    finally:
+        real_app.state.settings = original_settings

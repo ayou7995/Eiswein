@@ -163,3 +163,44 @@ def test_render_env_handles_unicode_values(bootstrap) -> None:
     text = bootstrap._render_env(values)
     assert "ADMIN_USERNAME=操作員" in text
     text.encode("utf-8")  # would raise if non-UTF-8 sneaks in
+
+
+def test_render_env_emits_gemini_key_in_data_sources_section(bootstrap) -> None:
+    """Industry-event auto-sync key must land beside FRED so operators
+    don't hunt for it. Absence (empty value) must still render so the
+    line exists in .env for a later paste."""
+    values = {
+        **bootstrap._assemble_defaults(),
+        "JWT_SECRET": "x",
+        "ENCRYPTION_KEY": "y",
+        "ADMIN_USERNAME": "admin",
+        "ADMIN_PASSWORD_HASH": "$2b$12$h",
+        "FRED_API_KEY": "fredkey",
+        "GEMINI_API_KEY": "gemkey",
+        **bootstrap._empty_smtp_block(),
+        **bootstrap._empty_schwab_block(),
+    }
+    text = bootstrap._render_env(values)
+    # Both keys live under the same Data sources header.
+    assert "=== Data sources" in text
+    assert "FRED_API_KEY=fredkey" in text
+    assert "GEMINI_API_KEY=gemkey" in text
+
+
+def test_render_env_emits_empty_gemini_key_when_skipped(bootstrap) -> None:
+    """When the user skipped Gemini setup the line still appears with
+    an empty value, so a later edit doesn't have to add the key from
+    scratch."""
+    values = {
+        **bootstrap._assemble_defaults(),
+        "JWT_SECRET": "x",
+        "ENCRYPTION_KEY": "y",
+        "ADMIN_USERNAME": "admin",
+        "ADMIN_PASSWORD_HASH": "$2b$12$h",
+        "FRED_API_KEY": "",
+        "GEMINI_API_KEY": "",
+        **bootstrap._empty_smtp_block(),
+        **bootstrap._empty_schwab_block(),
+    }
+    text = bootstrap._render_env(values)
+    assert "GEMINI_API_KEY=" in text

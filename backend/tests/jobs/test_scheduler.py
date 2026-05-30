@@ -59,9 +59,41 @@ async def test_start_scheduler_registers_all_four_jobs(
         status = handle.status()
         assert status.status == "running"
         job_ids = sorted(job.id for job in status.jobs)
+        # Gemini key not configured by default — industry_sync should be
+        # absent here. Other gated jobs (schwab_token_refresh) follow the
+        # same pattern: register only when their key is set.
         assert job_ids == ["backup", "daily_update", "token_reminder", "vacuum"]
         # Every job must have a next_run_time set.
         assert all(job.next_run_time is not None for job in status.jobs)
+    finally:
+        handle.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_industry_sync_job_registers_when_gemini_key_set(
+    settings: Settings,
+    file_engine: Engine,
+    file_session_factory: sessionmaker[Session],
+    tmp_path: Path,
+    fake_data_source: object,
+) -> None:
+    """The industry_sync job must register only when GEMINI_API_KEY is
+    configured — gating it on the secret avoids noisy "skipped" log
+    ticks every Sunday in dev environments without a key."""
+    from pydantic import SecretStr
+
+    settings_with_key = settings.model_copy(update={"gemini_api_key": SecretStr("fake-key")})
+    handle = start_scheduler(
+        settings=settings_with_key,
+        engine=file_engine,
+        session_factory=file_session_factory,
+        data_source=fake_data_source,  # type: ignore[arg-type]
+        lock_path=tmp_path / "scheduler.lock",
+    )
+    assert handle is not None
+    try:
+        job_ids = sorted(job.id for job in handle.status().jobs)
+        assert "industry_sync" in job_ids
     finally:
         handle.shutdown(wait=False)
 

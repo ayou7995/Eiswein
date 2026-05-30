@@ -22,18 +22,27 @@ slowapi + FastAPI inspect Pydantic models via forward references; the
 Matches the other v1 routers.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     current_user_id,
     get_calendar_event_repository,
+    get_db_session,
+    get_settings_dep,
 )
+from app.config import Settings
 from app.db.repositories.calendar_event_repository import CalendarEventRepository
+from app.db.repositories.system_metadata_repository import SystemMetadataRepository
+from app.ingestion.industry_gemini_sync import (
+    KEY_LAST_INDUSTRY_SYNC_AT,
+    run_industry_gemini_sync,
+)
 from app.security.exceptions import ValidationError
 from app.security.rate_limit import limiter
 
@@ -146,4 +155,88 @@ async def list_calendar_events(
         total=len(items),
         range_start=start,
         range_end=end,
+    )
+
+
+# --- Industry Gemini sync — status + manual trigger ----------------------
+
+
+class IndustrySyncStatusResponse(BaseModel):
+    """Shape returned by ``GET /calendar/industry-sync/status``.
+
+    Used by the Settings page to render a card with the last sync time
+    + an enable/disable hint (rather than the operator having to grep
+    server logs)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+    last_sync_at: datetime | None
+    stale_days_threshold: int
+
+
+class IndustrySyncRunResponse(BaseModel):
+    """Shape returned by ``POST /calendar/industry-sync/run``.
+
+    The endpoint blocks until Gemini responds (typically 10-30 seconds);
+    the response captures whether the sync ran or was skipped + counts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    skipped_reason: str | None
+    events_returned: int
+    rows_upserted: int
+
+
+@router.get(
+    "/calendar/industry-sync/status",
+    response_model=IndustrySyncStatusResponse,
+    summary="Industry-event sync enablement + last-run timestamp",
+)
+@limiter.limit("60/minute")
+async def get_industry_sync_status(
+    request: Request,
+    response: Response,
+    _user_id: int = Depends(current_user_id),
+    settings: Settings = Depends(get_settings_dep),
+    session: Session = Depends(get_db_session),
+) -> IndustrySyncStatusResponse:
+    last_sync_at = SystemMetadataRepository(session).get_datetime(KEY_LAST_INDUSTRY_SYNC_AT)
+    return IndustrySyncStatusResponse(
+        enabled=settings.gemini_industry_sync_enabled,
+        last_sync_at=last_sync_at,
+        stale_days_threshold=settings.industry_sync_stale_days,
+    )
+
+
+@router.post(
+    "/calendar/industry-sync/run",
+    response_model=IndustrySyncRunResponse,
+    summary="Manually trigger the Gemini-backed industry event sync",
+)
+# Lower rate limit than the read endpoint — manual sync is a serious
+# operation (LLM call + DB write). 6/min keeps a clicked-too-fast user
+# from melting through the daily quota guard.
+@limiter.limit("6/minute")
+async def run_industry_sync(
+    request: Request,
+    response: Response,
+    _user_id: int = Depends(current_user_id),
+    settings: Settings = Depends(get_settings_dep),
+    session: Session = Depends(get_db_session),
+) -> IndustrySyncRunResponse:
+    api_key_secret = settings.gemini_api_key
+    api_key = api_key_secret.get_secret_value() if api_key_secret else ""
+    result = await run_industry_gemini_sync(session, api_key=api_key)
+    session.commit()
+    logger.info(
+        "industry_sync_manual_run",
+        skipped=result.skipped_reason,
+        events=result.events_returned,
+        rows=result.rows_upserted,
+    )
+    return IndustrySyncRunResponse(
+        skipped_reason=result.skipped_reason,
+        events_returned=result.events_returned,
+        rows_upserted=result.rows_upserted,
     )
