@@ -70,12 +70,27 @@ _AD_DAY_MIN_BARS = SERIES_DAYS + 1
 # in the DB so this is just an upper bound on the SQL range query.
 _SPY_LOOKBACK_DAYS = 1100
 
+
+def _spy_lookback_for(window: int) -> int:
+    """Calendar-day lookback that covers ``window`` trading days plus MA200
+    warm-up. Trading→calendar uses 365/252; we add a 200-bar cushion for
+    MA200, then floor at the original 1100-day budget so the 1M/3M/1Y
+    fast paths still hit the same SQL range as before."""
+    needed = int(window * 365 / 252) + _SPX_MA_MIN_BARS
+    return max(_SPY_LOOKBACK_DAYS, needed)
+
+
 # Display-window options exposed via ``?days=N``. Each indicator falls
 # back to its own default when the caller omits the param. Validation
 # clamps to [_DAYS_MIN, _DAYS_MAX] so callers can't ask for absurd
 # windows.
 _DAYS_MIN = 21
 _DAYS_MAX = 1260
+
+# When ``?range=all`` is set, we bypass _DAYS_MAX and walk back this
+# many trading days — enough to expose the full 10-year backfill option
+# the bootstrap wizard offers. 2520 ~= 10 years * 252 sessions/yr.
+_ALL_RANGE_DAYS = 2520
 _DEFAULT_DAYS: dict[str, int] = {
     "spx_ma": SERIES_DAYS,
     "vix": SERIES_DAYS,
@@ -458,6 +473,15 @@ def get_market_indicator_series(
             " when omitted (yield_spread=252, fed_rate=365, others=60)."
         ),
     ),
+    range_: Literal["all"] | None = Query(
+        default=None,
+        alias="range",
+        description=(
+            "When set to 'all', bypasses the ``days`` cap and returns up to"
+            " 10 years of history — useful for the chart 'ALL' selector when"
+            " the operator backfilled more than 5 years."
+        ),
+    ),
     _user_id: int = Depends(current_user_id),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
     macro: MacroRepository = Depends(get_macro_repository),
@@ -467,11 +491,13 @@ def get_market_indicator_series(
             details={"reason": "unknown_indicator", "name": name},
         )
 
-    window = days if days is not None else _DEFAULT_DAYS[name]
+    window = (
+        _ALL_RANGE_DAYS if range_ == "all" else (days if days is not None else _DEFAULT_DAYS[name])
+    )
 
     if name == "spx_ma":
         end = date.today()
-        start = end - timedelta(days=_SPY_LOOKBACK_DAYS)
+        start = end - timedelta(days=_spy_lookback_for(window))
         rows = prices.get_range(_SPX_SYMBOL, start=start, end=end)
         frame = build_spy_frame(rows)
         if frame.empty or len(frame) < _SPX_MA_MIN_BARS:
@@ -480,7 +506,7 @@ def get_market_indicator_series(
 
     if name == "ad_day":
         end = date.today()
-        start = end - timedelta(days=_SPY_LOOKBACK_DAYS)
+        start = end - timedelta(days=_spy_lookback_for(window))
         rows = prices.get_range(_SPX_SYMBOL, start=start, end=end)
         frame = build_spy_frame(rows)
         if frame.empty or len(frame) < _AD_DAY_MIN_BARS:

@@ -714,3 +714,25 @@ def test_relative_strength_returns_404_when_spy_history_missing(
     resp = client.get("/api/v1/ticker/AAPL/indicator/relative_strength/series")
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_range_all_returns_wider_window_than_days_max(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """``?range=all`` bypasses the 1260-trading-day cap on ``days`` so an
+    operator with a deep backfill can see the full per-ticker history."""
+    _install_empty_datasource(app, symbols={"AAPL"})
+    _login(client, test_password)
+    _seed_watchlist(session_factory, symbol="AAPL")
+    with session_factory() as session:
+        _seed_synthetic_prices(session, symbol="AAPL", end=date.today(), days=2200)
+        session.commit()
+
+    resp_max = client.get("/api/v1/ticker/AAPL/indicator/price_vs_ma/series?days=1260")
+    resp_all = client.get("/api/v1/ticker/AAPL/indicator/price_vs_ma/series?range=all")
+    assert resp_max.status_code == 200
+    assert resp_all.status_code == 200
+    assert len(resp_all.json()["series"]) > len(resp_max.json()["series"])

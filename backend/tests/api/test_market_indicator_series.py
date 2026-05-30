@@ -836,3 +836,39 @@ def test_fed_rate_summary_active_cut_within_30d(
     assert current["delta_30d"] is not None
     assert current["delta_30d"] < 0
     assert "30 日內降息" in body["summary_zh"]
+
+
+# --- range=all -----------------------------------------------------------
+
+
+def test_range_all_returns_wider_window_than_days_max(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """``?range=all`` bypasses the 1260-trading-day cap on ``days`` so an
+    operator with a deep backfill can see the full history."""
+    _login(client, test_password)
+    end = date.today()
+    days = 2200  # > _DAYS_MAX (1260) but < _ALL_RANGE_DAYS (2520)
+    rng = np.random.default_rng(11)
+    values = (18.0 + rng.normal(0, 0.5, size=days)).tolist()
+    with session_factory() as session:
+        _seed_macro_series(session, series_id="VIXCLS", end=end, days=days, values=values)
+        session.commit()
+
+    resp_max = client.get("/api/v1/market/indicator/vix/series?days=1260")
+    resp_all = client.get("/api/v1/market/indicator/vix/series?range=all")
+    assert resp_max.status_code == 200
+    assert resp_all.status_code == 200
+    assert len(resp_all.json()["series"]) > len(resp_max.json()["series"])
+
+
+def test_range_all_rejects_unknown_value(
+    client: TestClient,
+    test_password: str,
+) -> None:
+    """The query is a strict Literal['all'] — anything else 422s."""
+    _login(client, test_password)
+    resp = client.get("/api/v1/market/indicator/vix/series?range=bogus")
+    assert resp.status_code == 422

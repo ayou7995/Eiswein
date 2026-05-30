@@ -166,14 +166,18 @@ export type AdDaySeriesResponse = z.infer<typeof adDayResponseSchema>;
 export type DxyTrendSeriesResponse = z.infer<typeof dxyTrendResponseSchema>;
 export type FedFundsSeriesResponse = z.infer<typeof fedFundsResponseSchema>;
 
-// Range options (1M / 3M / 6M / 1Y / 2Y) mapped to trading days. Server
-// validates 21 ≤ days ≤ 1260, so any of these is accepted.
+// Range options mapped to trading days. Server validates 21 ≤ days ≤ 1260
+// for the ``days`` param; the ``ALL`` button instead sends ``?range=all``
+// which the server treats as 10y so operators who picked a deep backfill
+// can see all of it.
 export const MARKET_INDICATOR_RANGES = [
   { key: '1M' as const, days: 21, label: '1 月' },
   { key: '3M' as const, days: 60, label: '3 月' },
   { key: '6M' as const, days: 126, label: '6 月' },
   { key: '1Y' as const, days: 252, label: '1 年' },
   { key: '2Y' as const, days: 504, label: '2 年' },
+  { key: '5Y' as const, days: 1260, label: '5 年' },
+  { key: 'ALL' as const, days: null, label: '全部' },
 ] as const;
 
 export type MarketIndicatorRangeKey = (typeof MARKET_INDICATOR_RANGES)[number]['key'];
@@ -195,12 +199,14 @@ export const DEFAULT_RANGE_BY_INDICATOR: Record<MarketIndicatorSeriesName, Marke
 
 export function getMarketIndicatorSeries(
   name: MarketIndicatorSeriesName,
-  days?: number,
+  daysOrAll?: number | 'all',
 ): Promise<MarketIndicatorSeriesResponse> {
-  const path =
-    days === undefined
-      ? `/api/v1/market/indicator/${name}/series`
-      : `/api/v1/market/indicator/${name}/series?days=${days}`;
+  let path = `/api/v1/market/indicator/${name}/series`;
+  if (daysOrAll === 'all') {
+    path += '?range=all';
+  } else if (daysOrAll !== undefined) {
+    path += `?days=${daysOrAll}`;
+  }
   return apiRequest(path, {
     method: 'GET',
     schema: marketIndicatorSeriesResponseSchema,

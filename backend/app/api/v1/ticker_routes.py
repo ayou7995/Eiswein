@@ -448,9 +448,21 @@ def get_ticker_prices(
 _SERIES_LOOKBACK_DAYS = 1100
 
 # Per-ticker indicator series accepts the same range bounds as market
-# regime ones: 21 (1M) to 1260 (5Y).
+# regime ones: 21 (1M) to 1260 (5Y). ``?range=all`` bypasses _DAYS_MAX
+# and walks back _ALL_RANGE_DAYS so the chart can expose the full 10-year
+# backfill the bootstrap wizard offers.
 _DAYS_MIN = 21
 _DAYS_MAX = 1260
+_ALL_RANGE_DAYS = 2520
+
+
+def _series_lookback_for(window: int) -> int:
+    """Calendar-day lookback wide enough for ``window`` trading days plus
+    a 200-bar MA200 warm-up; floored at the original 1100-day budget so
+    the short windows hit the same SQL range as before."""
+    needed = int(window * 365 / 252) + 200
+    return max(_SERIES_LOOKBACK_DAYS, needed)
+
 
 # SPY is the canonical SPX proxy used across the regime indicators;
 # the relative_strength branch reads its OHLCV from daily_price (always
@@ -667,6 +679,15 @@ def get_ticker_indicator_series(
             " 60-day default when omitted."
         ),
     ),
+    range_: Literal["all"] | None = Query(
+        default=None,
+        alias="range",
+        description=(
+            "When 'all', bypasses ``days`` and returns up to 10 years —"
+            " matches the chart 'ALL' selector for operators with a deep"
+            " backfill."
+        ),
+    ),
     user_id: int = Depends(current_user_id),
     watchlist: WatchlistRepository = Depends(get_watchlist_repository),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
@@ -680,10 +701,10 @@ def get_ticker_indicator_series(
             details={"symbol": validated, "indicator": name, "reason": "unknown_indicator"},
         )
 
-    window = days if days is not None else SERIES_DAYS
+    window = _ALL_RANGE_DAYS if range_ == "all" else (days if days is not None else SERIES_DAYS)
 
     end = date.today()
-    start = end - timedelta(days=_SERIES_LOOKBACK_DAYS)
+    start = end - timedelta(days=_series_lookback_for(window))
     rows = prices.get_range(validated, start=start, end=end)
     frame = build_close_frame(rows)
 

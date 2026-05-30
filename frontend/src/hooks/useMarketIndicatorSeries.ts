@@ -7,18 +7,19 @@ import {
 
 export function marketIndicatorSeriesQueryKey(
   name: MarketIndicatorSeriesName,
-  days?: number,
+  daysOrAll?: number | 'all',
 ): readonly unknown[] {
-  // ``days`` is part of the cache key so that switching range selectors
+  // The window selector is part of the cache key so that flipping ranges
   // doesn't return a stale-windowed payload from another range.
-  return ['market-indicator-series', name, days ?? 'default'];
+  return ['market-indicator-series', name, daysOrAll ?? 'default'];
 }
 
 export interface UseMarketIndicatorSeriesOptions {
   enabled?: boolean;
-  // Trailing-window length in trading days. Omit to use the route's
+  // Trailing-window length in trading days, or the string 'all' to ask
+  // the server for the full backfilled history. Omit to use the route's
   // per-indicator default (e.g. yield_spread → 252, vix → 60).
-  days?: number;
+  days?: number | 'all';
 }
 
 export function useMarketIndicatorSeries(

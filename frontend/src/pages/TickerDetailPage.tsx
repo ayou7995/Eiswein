@@ -568,7 +568,7 @@ function IndicatorChartSection({
   // Change C, so we fetch as soon as the section mounts.
   const query = useIndicatorSeries(symbol, seriesName, {
     enabled: true,
-    days: rangeToDays(range),
+    days: rangeToParam(range),
   });
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
 
@@ -612,7 +612,7 @@ function MacroChartSection({
     defaultRangeForIndicator(indicatorKey),
   );
   const query = useMarketIndicatorSeries(seriesName, {
-    days: rangeToDays(range),
+    days: rangeToParam(range),
   });
   const title = INDICATOR_TITLES[indicatorKey] ?? indicatorKey;
 
@@ -643,7 +643,8 @@ function MacroChartSection({
   );
 }
 
-function rangeToDays(range: MarketIndicatorRangeKey): number {
+function rangeToParam(range: MarketIndicatorRangeKey): number | 'all' {
+  if (range === 'ALL') return 'all';
   return MARKET_INDICATOR_RANGES.find((r) => r.key === range)?.days ?? 60;
 }
 

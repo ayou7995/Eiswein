@@ -8,18 +8,19 @@ import {
 export function indicatorSeriesQueryKey(
   symbol: string,
   name: IndicatorSeriesName,
-  days?: number,
+  daysOrAll?: number | 'all',
 ): readonly unknown[] {
-  // ``days`` is part of the cache key so range switching doesn't return
-  // a stale-windowed payload from another range.
-  return ['indicator-series', symbol, name, days ?? 'default'];
+  // The window selector is part of the cache key so range switching
+  // doesn't return a stale-windowed payload from another range.
+  return ['indicator-series', symbol, name, daysOrAll ?? 'default'];
 }
 
 export interface UseIndicatorSeriesOptions {
   enabled?: boolean;
-  // Trailing-window length in trading days. Omit to use the route's
+  // Trailing-window length in trading days, or the string 'all' to ask
+  // the server for the full backfilled history. Omit to use the route's
   // legacy 60-day default.
-  days?: number;
+  days?: number | 'all';
 }
 
 export function useIndicatorSeries(

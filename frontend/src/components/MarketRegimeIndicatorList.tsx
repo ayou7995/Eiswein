@@ -242,7 +242,8 @@ interface RegimeChartSectionProps {
   name: MarketIndicatorSeriesName;
 }
 
-function rangeToDays(range: MarketIndicatorRangeKey): number {
+function rangeToParam(range: MarketIndicatorRangeKey): number | 'all' {
+  if (range === 'ALL') return 'all';
   return MARKET_INDICATOR_RANGES.find((r) => r.key === range)?.days ?? 60;
 }
 
@@ -251,7 +252,7 @@ function RegimeChartSection({ name }: RegimeChartSectionProps): JSX.Element {
     DEFAULT_RANGE_BY_INDICATOR[name],
   );
   const { data, isLoading, isError, error, refetch } = useMarketIndicatorSeries(name, {
-    days: rangeToDays(range),
+    days: rangeToParam(range),
   });
 
   return (

@@ -10,10 +10,9 @@ export interface IndicatorRangeSelectorProps {
   indicatorLabel?: string;
 }
 
-// Compact 5-button range selector (1M / 3M / 6M / 1Y / 2Y) that
-// callers wire above each market-indicator chart. Same pattern as the
-// CandlestickChart's PriceRange selector but generalized to the
-// market-indicator name space.
+// Compact range selector (1M / 3M / 6M / 1Y / 2Y / 5Y / ALL) wired above
+// each market-indicator chart. Same pattern as the CandlestickChart's
+// PriceRange selector but generalized to the market-indicator name space.
 export function IndicatorRangeSelector({
   value,
   onChange,

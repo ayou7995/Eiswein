@@ -184,10 +184,15 @@ export type RelativeStrengthSeriesResponse = z.infer<
 export function getIndicatorSeries(
   symbol: string,
   name: IndicatorSeriesName,
-  days?: number,
+  daysOrAll?: number | 'all',
 ): Promise<IndicatorSeriesResponse> {
   const base = `/api/v1/ticker/${encodeURIComponent(symbol)}/indicator/${name}/series`;
-  const path = days === undefined ? base : `${base}?days=${days}`;
+  let path = base;
+  if (daysOrAll === 'all') {
+    path += '?range=all';
+  } else if (daysOrAll !== undefined) {
+    path += `?days=${daysOrAll}`;
+  }
   return apiRequest(path, {
     method: 'GET',
     schema: indicatorSeriesResponseSchema,
