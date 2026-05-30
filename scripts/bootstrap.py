@@ -127,12 +127,52 @@ def _prompt_password(bcrypt_mod: object, zxcvbn_mod: object) -> str:
 def _check_docker() -> None:
     if shutil.which("docker") is None:
         print(
-            "Docker isn't on $PATH. Install Docker Desktop "
-            "(https://www.docker.com/products/docker-desktop/) and re-run.",
+            "Docker isn't on $PATH. Install Docker Desktop\n"
+            "(https://www.docker.com/products/docker-desktop/),\n"
+            "open the app once so it links the CLI, and re-run.",
             file=sys.stderr,
         )
         sys.exit(1)
-    print("  ✓ Docker found")
+    # Docker CLI is present — also verify the Compose v2 plugin works.
+    # `make start` / `make stop` / `make update` all run `docker compose
+    # …`, which silently fails with "unknown shorthand flag" if the
+    # plugin is missing. Catching it here gives a clear remediation
+    # instead of an opaque docker error 60 seconds later.
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["docker", "compose", "version"],  # noqa: S607
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        print(
+            "Docker CLI is on $PATH but `docker compose version` could "
+            f"not be invoked: {type(exc).__name__}.\n"
+            "  Open Docker Desktop from /Applications and wait for the\n"
+            "  menu-bar whale to say 'Docker Desktop is running', then\n"
+            "  re-run `make install`.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if result.returncode != 0 or "Compose version" not in result.stdout:
+        print(
+            "Docker is installed but the Compose v2 plugin is missing.\n"
+            "`make start` requires `docker compose` (not the legacy\n"
+            "`docker-compose` v1).\n"
+            "\n"
+            "Fix:\n"
+            "  1. Open Docker Desktop and wait for the menu-bar whale\n"
+            "     to say 'Docker Desktop is running'. Re-run install.\n"
+            "  2. If that doesn't help, install the plugin manually:\n"
+            "       brew install docker-compose\n"
+            "     (Despite the name, this is the Compose v2 plugin.)\n"
+            "  3. As a last resort: brew reinstall --cask docker.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"  ✓ Docker found ({result.stdout.strip()})")
 
 
 def _check_git_remote() -> None:
