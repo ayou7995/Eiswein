@@ -27,7 +27,7 @@ import structlog
 from fredapi import Fred
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential_jitter,
 )
@@ -136,10 +136,23 @@ class FREDSource(DataSource):
             raise DataSourceError(details={"reason": "fred_error", "series": series_id}) from exc
 
 
+def _is_transient_fred_error(exc: BaseException) -> bool:
+    """Retry network blips AND FRED's 429 rate-limit. fredapi surfaces
+    rate-limit as ``ValueError`` with a specific message — invalid series
+    IDs also raise ``ValueError`` but with a different one, so we match
+    on the rate-limit string instead of catching ``ValueError`` blanket."""
+    if isinstance(exc, ConnectionError | TimeoutError | OSError):
+        return True
+    return isinstance(exc, ValueError) and "Too Many Requests" in str(exc)
+
+
 @retry(
-    stop=stop_after_attempt(3),
+    # 5 attempts; backoff is 2, 4, 8, 16, 30 s (capped), covering FRED's
+    # 60-second rate-limit window even when all 5 default series fire
+    # concurrently on first-install backfill.
+    stop=stop_after_attempt(5),
     wait=wait_exponential_jitter(initial=2, max=30),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+    retry=retry_if_exception(_is_transient_fred_error),
     reraise=True,
 )
 def _fetch_with_retry(client: Fred, series_id: str) -> pd.DataFrame:
