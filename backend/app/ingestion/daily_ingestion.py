@@ -78,10 +78,19 @@ TriggerMode = Literal["scheduled", "manual", "startup"]
 # auto-reload, every redeploy would send another digest.
 _EMAIL_SENDING_TRIGGERS: frozenset[TriggerMode] = frozenset({"scheduled"})
 
-# Trading-day lookback cap for gap detection. 60 ≈ 3 months of
-# sessions — deep enough to catch a week-long VM outage but shallow
-# enough to bound the yfinance fetch window if the DB is corrupted.
-_GAP_LOOKBACK_TRADING_DAYS = 60
+# Trading-day lookback cap for gap detection. 300 ≈ 14 months of
+# sessions — deep enough to seed all 12 indicators on a fresh install
+# (longest lookback is 52-week RSI ≈ 260 trading days; SPX 200-MA
+# needs 200). On steady-state runs, gap detection short-circuits per
+# symbol so this cap doesn't add cost — only the first daily_update
+# after a fresh install actually pulls the full window.
+#
+# Increased from 60 (2026-05-30): the previous value left SPX MA at
+# "資料不足" forever on day-1 installs and a friend's first dashboard
+# stayed sparse for ~10 months until enough daily increments
+# accumulated. 300 lets the first run prime the indicator math
+# straight away.
+_GAP_LOOKBACK_TRADING_DAYS = 300
 
 # Buffer past NYSE close before a row is considered "settled". Yahoo
 # adjustments can lag a few minutes; the 30-min buffer absorbs that.
