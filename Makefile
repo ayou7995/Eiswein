@@ -42,6 +42,14 @@ help:
 BOOTSTRAP_VENV := .venv-bootstrap
 BOOTSTRAP_PY   := $(BOOTSTRAP_VENV)/bin/python
 
+# `--env-file /dev/null` skips compose's interpolation pass over .env.
+# Why: bcrypt hashes contain literal `$`s ("$2b$12$...") which compose
+# would treat as variable references, printing noisy WARNs and (worse)
+# risking a silent substitution if the segment happens to match a shell
+# env var. The container still receives every .env line literally via
+# the `env_file: .env` directive inside docker-compose.yml.
+COMPOSE := docker compose --env-file /dev/null
+
 install: $(BOOTSTRAP_VENV)/.installed
 	@$(BOOTSTRAP_PY) scripts/bootstrap.py
 
@@ -57,24 +65,24 @@ $(BOOTSTRAP_VENV)/.installed: scripts/requirements.bootstrap.txt
 	@touch $(BOOTSTRAP_VENV)/.installed
 
 start:
-	@docker compose up -d
+	@$(COMPOSE) up -d
 	@echo ""
 	@echo "Eiswein started. Open http://localhost:8080"
 	@echo "(or https://localhost:8080 if you generated Schwab certs)."
 
 stop:
-	@docker compose down
+	@$(COMPOSE) down
 
 logs:
-	@docker compose logs -f eiswein
+	@$(COMPOSE) logs -f eiswein
 
 update:
 	@echo "==> Pulling latest changes..."
 	@git pull --ff-only
 	@echo "==> Rebuilding image..."
-	@docker compose build
+	@$(COMPOSE) build
 	@echo "==> Restarting..."
-	@docker compose up -d
+	@$(COMPOSE) up -d
 	@echo "Update complete."
 
 uninstall:

@@ -30,7 +30,11 @@ if [ "$CONFIRM" != "yes" ]; then
 fi
 
 echo "Stopping containers..."
-docker compose down -v --remove-orphans 2>/dev/null || true
+# --env-file /dev/null skips compose's .env interpolation pass. The
+# bootstrapped .env carries bcrypt hashes whose literal `$`s would
+# trigger noisy WARN lines. Matches what `make start` / `make stop`
+# do.
+docker compose --env-file /dev/null down -v --remove-orphans 2>/dev/null || true
 
 echo "Removing eiswein image..."
 docker rmi -f eiswein 2>/dev/null || true
