@@ -47,7 +47,14 @@ logger = structlog.get_logger("eiswein.datasources.gemini_industry")
 
 # Model + grounding tool — pinned strings so a Gemini SDK upgrade doesn't
 # silently switch model behaviour. Bump deliberately when the user wants.
-_MODEL: Final[str] = "gemini-2.0-flash"
+#
+# Why ``gemini-2.5-flash`` and not ``2.0-flash``: as of 2026 Google moved
+# ``gemini-2.0-flash`` off the free tier for new projects — the error
+# manifests as ``429 RESOURCE_EXHAUSTED ... limit: 0`` which is NOT
+# "you used your quota" but "this model has zero free quota for you".
+# ``gemini-2.5-flash`` keeps a real free tier (5 RPM / 250 RPD), and we
+# only call it ~4 times per month so we're well under the cap.
+_MODEL: Final[str] = "gemini-2.5-flash"
 
 # Max retries against the LLM call before we give up for this sync run.
 # A 429 from Google's free tier is rare at our volume (~4 req/month) but
