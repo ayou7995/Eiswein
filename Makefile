@@ -18,7 +18,7 @@
 help:
 	@echo "Eiswein — user commands"
 	@echo "  make install     First-time interactive setup (writes .env + certs/)"
-	@echo "  make start       Boot the stack in the background"
+	@echo "  make start       Boot the stack in the background (rebuilds if source changed)"
 	@echo "  make stop        Shut the stack down"
 	@echo "  make logs        Tail backend logs (Ctrl+C to leave)"
 	@echo "  make update      git pull + rebuild + restart"
@@ -64,8 +64,13 @@ $(BOOTSTRAP_VENV)/.installed: scripts/requirements.bootstrap.txt
 	@$(BOOTSTRAP_PY) -m pip install --quiet -r scripts/requirements.bootstrap.txt
 	@touch $(BOOTSTRAP_VENV)/.installed
 
+# Always pass --build so a `git pull` followed by `make start` picks
+# up source changes in the image. Docker's layer cache makes the
+# no-op case (no source changed) cheap — typically ~5 seconds.
+# Without --build, restarting only swaps the container against the
+# *cached* image and silently runs old code.
 start:
-	@$(COMPOSE) up -d
+	@$(COMPOSE) up -d --build
 	@echo ""
 	@echo "Eiswein started. Open http://localhost:8080"
 	@echo "(or https://localhost:8080 if you generated Schwab certs)."
@@ -79,10 +84,8 @@ logs:
 update:
 	@echo "==> Pulling latest changes..."
 	@git pull --ff-only
-	@echo "==> Rebuilding image..."
-	@$(COMPOSE) build
-	@echo "==> Restarting..."
-	@$(COMPOSE) up -d
+	@echo "==> Rebuilding + restarting..."
+	@$(COMPOSE) up -d --build
 	@echo "Update complete."
 
 uninstall:
