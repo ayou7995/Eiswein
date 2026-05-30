@@ -1,4 +1,11 @@
+# ruff: noqa: RUF001
 """bootstrap.py — unit tests for the pure helpers.
+
+The smart-quote / dash test cases below intentionally embed those
+exact codepoints to verify the normaliser. The blanket ``ruff: noqa``
+above the docstring is the only way to keep ruff's
+ambiguous-character heuristic from rejecting the file.
+
 
 The interactive sections (admin password, FRED, SMTP, Schwab) drive
 ``input()`` and ``getpass.getpass`` directly; their integration is
@@ -102,6 +109,42 @@ def test_render_env_emits_headed_sections(bootstrap) -> None:
     # Each key=value pair is present on its own line.
     for key, value in values.items():
         assert f"{key}={value}" in text
+
+
+def test_normalise_quotes_folds_smart_quotes_and_dashes(bootstrap) -> None:
+    """macOS auto-substitution can turn straight quotes into curly ones
+    during password entry. The login form does no such substitution,
+    so we fold smart quotes back to ASCII before hashing."""
+    raw = "“pass’word” – with — em-dash"
+    out = bootstrap._normalise_quotes(raw)
+    assert "“" not in out and "”" not in out
+    assert "‘" not in out and "’" not in out
+    assert "–" not in out and "—" not in out
+    assert '"pass\'word"' in out
+
+
+def test_normalise_quotes_passes_plain_ascii_unchanged(bootstrap) -> None:
+    raw = "plain-ASCII'password\""
+    assert bootstrap._normalise_quotes(raw) == raw
+
+
+def test_find_unprintable_flags_control_chars(bootstrap) -> None:
+    """Control chars (NUL, LF, TAB) almost always come from rich-text
+    paste, and the user has no way to retype them at login."""
+    assert bootstrap._find_unprintable("password\x00pasted") == 0x00
+    assert bootstrap._find_unprintable("foo\nbar") == 0x0A
+    assert bootstrap._find_unprintable("foo\tbar") == 0x09
+
+
+def test_find_unprintable_flags_zero_width_chars(bootstrap) -> None:
+    """Zero-width space + BOM are the classic invisible-paste foot-guns."""
+    assert bootstrap._find_unprintable("foo​bar") == 0x200B
+    assert bootstrap._find_unprintable("foo﻿bar") == 0xFEFF
+
+
+def test_find_unprintable_returns_none_for_clean_input(bootstrap) -> None:
+    assert bootstrap._find_unprintable("CorrectHorseBatteryStaple") is None
+    assert bootstrap._find_unprintable("with spaces and !@#$%^&*()") is None
 
 
 def test_render_env_handles_unicode_values(bootstrap) -> None:

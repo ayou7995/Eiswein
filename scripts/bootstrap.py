@@ -93,10 +93,56 @@ def _prompt_yes_no(message: str, *, default: bool = True) -> bool:
 
 
 def _prompt_password(bcrypt_mod: object, zxcvbn_mod: object) -> str:
-    """Prompt twice, validate strength, return the bcrypt hash."""
+    """Prompt twice, validate strength, return the bcrypt hash.
+
+    Defensive against three real-world copy/paste foot-guns we've
+    actually hit:
+
+    1. Trailing newline / whitespace from clipboard. Stripped silently;
+       the user's intended password almost never ends with a space, and
+       the resulting hash needs to round-trip against the cleanly-typed
+       login form.
+    2. macOS smart-quote substitution. ``"`` / ``"`` / ``'`` / ``'``
+       get folded back to ASCII ``"`` / ``'`` before hashing AND a
+       warning is printed so the operator knows to type ASCII at the
+       login form.
+    3. Non-printable / control characters anywhere in the password —
+       almost always an artefact of pasting from a rich-text source;
+       refuse the entry and ask again rather than silently strip.
+    """
     while True:
-        first = getpass.getpass("Admin password: ")
-        second = getpass.getpass("Confirm password: ")
+        first_raw = getpass.getpass("Admin password: ")
+        second_raw = getpass.getpass("Confirm password: ")
+
+        # Strip surrounding whitespace; flag if we had to.
+        first = first_raw.strip()
+        second = second_raw.strip()
+        if first != first_raw or second != second_raw:
+            print(
+                "  ℹ Surrounding whitespace was stripped from the pasted "
+                "password — the hash is for the trimmed value."
+            )
+
+        # Normalise smart quotes → ASCII so login-form typing matches.
+        normalised_first = _normalise_quotes(first)
+        if normalised_first != first:
+            print(
+                "  ⚠ Smart-quote characters were converted to ASCII (\" / '). "
+                "Type ASCII quotes at the login form."
+            )
+            first = normalised_first
+            second = _normalise_quotes(second)
+
+        # Refuse control / non-printable chars — almost always a paste
+        # artefact and impossible to retype reliably.
+        bad = _find_unprintable(first)
+        if bad is not None:
+            print(
+                f"  ✗ Password contains a non-printable character (U+{bad:04X}). "
+                "Likely a rich-text paste — try again with plain text."
+            )
+            continue
+
         if first != second:
             print("Passwords do not match — try again.")
             continue
@@ -119,6 +165,44 @@ def _prompt_password(bcrypt_mod: object, zxcvbn_mod: object) -> str:
             bcrypt_mod.gensalt(rounds=12),  # type: ignore[attr-defined]
         )
         return hashed.decode("utf-8")
+
+
+_SMART_QUOTE_MAP: Final[dict[str, str]] = {
+    "“": '"',  # LEFT DOUBLE QUOTATION MARK
+    "”": '"',  # RIGHT DOUBLE QUOTATION MARK
+    "‘": "'",  # LEFT SINGLE QUOTATION MARK
+    "’": "'",  # RIGHT SINGLE QUOTATION MARK
+    "–": "-",  # EN DASH (macOS auto-replace)
+    "—": "-",  # EM DASH
+}
+
+
+def _normalise_quotes(value: str) -> str:
+    """Replace macOS auto-substituted smart quotes / dashes with their
+    ASCII equivalents so the login-form (no auto-substitution) input
+    matches the bootstrap-time input."""
+    if not any(ch in value for ch in _SMART_QUOTE_MAP):
+        return value
+    return "".join(_SMART_QUOTE_MAP.get(ch, ch) for ch in value)
+
+
+def _find_unprintable(value: str) -> int | None:
+    """Return the codepoint of the first non-printable / control
+    character in ``value``, or ``None`` if all chars are printable.
+
+    Used to refuse passwords that obviously came from a rich-text
+    paste (zero-width spaces, BIDI marks, NULs) since the user would
+    have no way to retype them at the login form.
+    """
+    for ch in value:
+        code = ord(ch)
+        if code < 0x20 or code == 0x7F:
+            return code
+        # U+200B-U+200D zero-width chars + U+FEFF BOM are the usual
+        # invisible-paste suspects.
+        if code in (0x200B, 0x200C, 0x200D, 0xFEFF):
+            return code
+    return None
 
 
 # ---------- Environment checks ----------------------------------------------
