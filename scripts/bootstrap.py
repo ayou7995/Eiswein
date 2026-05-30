@@ -138,6 +138,47 @@ def _check_docker() -> None:
     # …`, which silently fails with "unknown shorthand flag" if the
     # plugin is missing. Catching it here gives a clear remediation
     # instead of an opaque docker error 60 seconds later.
+    version_output = _query_compose_version()
+    if version_output is not None:
+        print(f"  ✓ Docker found ({version_output.strip()})")
+        return
+
+    # Docker CLI works but the plugin isn't on its search path. The
+    # most common cause on a Homebrew Mac is that the user installed
+    # `brew install docker-compose` (which drops the plugin into
+    # /opt/homebrew/lib/docker/cli-plugins/) without telling the
+    # Docker CLI to look there. Probe + auto-patch.
+    if _try_link_homebrew_compose_plugin():
+        version_output = _query_compose_version()
+        if version_output is not None:
+            print(f"  ✓ Docker found ({version_output.strip()}) — linked Homebrew plugin")
+            return
+
+    print(
+        "Docker is installed but the Compose v2 plugin is missing.\n"
+        "`make start` requires `docker compose` (not the legacy\n"
+        "`docker-compose` v1).\n"
+        "\n"
+        "Fix:\n"
+        "  1. Open Docker Desktop and wait for the menu-bar whale\n"
+        "     to say 'Docker Desktop is running'. Re-run install.\n"
+        "  2. If that doesn't help, install the plugin manually:\n"
+        "       brew install docker-compose\n"
+        "     (Despite the name, this is the Compose v2 plugin.\n"
+        "     Bootstrap will auto-link it into ~/.docker/config.json\n"
+        "     on the next run.)\n"
+        "  3. As a last resort: brew reinstall --cask docker.\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _query_compose_version() -> str | None:
+    """Run `docker compose version` and return stdout on success.
+
+    Returns ``None`` when the plugin isn't found OR the command times
+    out. Never raises — callers branch on the return value.
+    """
     try:
         result = subprocess.run(  # noqa: S603
             ["docker", "compose", "version"],  # noqa: S607
@@ -146,33 +187,76 @@ def _check_docker() -> None:
             text=True,
             timeout=10,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-        print(
-            "Docker CLI is on $PATH but `docker compose version` could "
-            f"not be invoked: {type(exc).__name__}.\n"
-            "  Open Docker Desktop from /Applications and wait for the\n"
-            "  menu-bar whale to say 'Docker Desktop is running', then\n"
-            "  re-run `make install`.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    if result.returncode != 0 or "Compose version" not in result.stdout:
-        print(
-            "Docker is installed but the Compose v2 plugin is missing.\n"
-            "`make start` requires `docker compose` (not the legacy\n"
-            "`docker-compose` v1).\n"
-            "\n"
-            "Fix:\n"
-            "  1. Open Docker Desktop and wait for the menu-bar whale\n"
-            "     to say 'Docker Desktop is running'. Re-run install.\n"
-            "  2. If that doesn't help, install the plugin manually:\n"
-            "       brew install docker-compose\n"
-            "     (Despite the name, this is the Compose v2 plugin.)\n"
-            "  3. As a last resort: brew reinstall --cask docker.\n",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    print(f"  ✓ Docker found ({result.stdout.strip()})")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return None
+    if "Compose version" not in result.stdout:
+        return None
+    return result.stdout
+
+
+# Standard Homebrew Compose plugin location on Apple Silicon. Intel
+# Homebrew uses /usr/local/lib/docker/cli-plugins; we probe both.
+_HOMEBREW_COMPOSE_PLUGIN_DIRS: Final[tuple[Path, ...]] = (
+    Path("/opt/homebrew/lib/docker/cli-plugins"),
+    Path("/usr/local/lib/docker/cli-plugins"),
+)
+_DOCKER_CONFIG_PATH: Final[Path] = Path.home() / ".docker" / "config.json"
+
+
+def _try_link_homebrew_compose_plugin() -> bool:
+    """Patch ``~/.docker/config.json`` to include the Homebrew Compose
+    plugin directory in ``cliPluginsExtraDirs``.
+
+    Returns True iff a plugin binary was found AND the config now
+    references its directory. Safe to call repeatedly — existing
+    ``cliPluginsExtraDirs`` entries are preserved; the function only
+    appends missing paths. If no plugin binary lives in any
+    Homebrew-standard location, the function is a no-op and returns
+    False so the caller can fall through to the user-facing error.
+    """
+    plugin_dir: Path | None = None
+    for candidate in _HOMEBREW_COMPOSE_PLUGIN_DIRS:
+        if (candidate / "docker-compose").exists():
+            plugin_dir = candidate
+            break
+    if plugin_dir is None:
+        return False
+
+    import json  # local import — only needed on this slow path.
+
+    _DOCKER_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if _DOCKER_CONFIG_PATH.exists():
+        try:
+            existing = json.loads(_DOCKER_CONFIG_PATH.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                existing = {}
+        except (OSError, json.JSONDecodeError):
+            # Corrupt or unreadable config — surface to the user
+            # rather than silently overwriting whatever they had.
+            print(
+                f"  ⚠ {_DOCKER_CONFIG_PATH} exists but isn't valid JSON. "
+                "Skipping auto-link; please fix it by hand."
+            )
+            return False
+    else:
+        existing = {}
+
+    extra_dirs_raw = existing.get("cliPluginsExtraDirs", [])
+    extra_dirs: list[str] = (
+        list(extra_dirs_raw) if isinstance(extra_dirs_raw, list) else []
+    )
+    plugin_str = str(plugin_dir)
+    if plugin_str not in extra_dirs:
+        extra_dirs.append(plugin_str)
+    existing["cliPluginsExtraDirs"] = extra_dirs
+    _DOCKER_CONFIG_PATH.write_text(
+        json.dumps(existing, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"  → linked {plugin_dir} into {_DOCKER_CONFIG_PATH}")
+    return True
 
 
 def _check_git_remote() -> None:
