@@ -22,26 +22,25 @@ slowapi + FastAPI inspect Pydantic models via forward references; the
 Matches the other v1 routers.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     current_user_id,
     get_calendar_event_repository,
     get_db_session,
-    get_settings_dep,
 )
-from app.config import Settings
+from app.datasources.gemini_industry_source import build_industry_sync_prompt
 from app.db.repositories.calendar_event_repository import CalendarEventRepository
 from app.db.repositories.system_metadata_repository import SystemMetadataRepository
 from app.ingestion.industry_gemini_sync import (
     KEY_LAST_INDUSTRY_SYNC_AT,
-    run_industry_gemini_sync,
+    import_industry_events_from_paste,
 )
 from app.security.exceptions import ValidationError
 from app.security.rate_limit import limiter
@@ -158,85 +157,123 @@ async def list_calendar_events(
     )
 
 
-# --- Industry Gemini sync — status + manual trigger ----------------------
+# --- Industry sync (manual paste flow) ----------------------------------
+#
+# Original design called Gemini API directly; we pivoted after the
+# ``google-genai==0.7.0`` SDK returned ``parts=null`` for grounded
+# responses on every model variant we tried. Manual flow: operator
+# fetches the prompt from us, pastes it into https://aistudio.google.com,
+# pastes the JSON output back, we validate + upsert.
 
 
 class IndustrySyncStatusResponse(BaseModel):
     """Shape returned by ``GET /calendar/industry-sync/status``.
 
-    Used by the Settings page to render a card with the last sync time
-    + an enable/disable hint (rather than the operator having to grep
-    server logs)."""
+    Used by the Settings page to render a "last import N hours ago" tag
+    so the operator knows when to re-run the prompt."""
 
     model_config = ConfigDict(frozen=True)
 
-    enabled: bool
     last_sync_at: datetime | None
     stale_days_threshold: int
 
 
-class IndustrySyncRunResponse(BaseModel):
-    """Shape returned by ``POST /calendar/industry-sync/run``.
-
-    The endpoint blocks until Gemini responds (typically 10-30 seconds);
-    the response captures whether the sync ran or was skipped + counts."""
+class IndustrySyncPromptResponse(BaseModel):
+    """Prompt the operator should paste into Gemini's web UI."""
 
     model_config = ConfigDict(frozen=True)
 
-    skipped_reason: str | None
-    events_returned: int
+    prompt: str
+    as_of: date
+
+
+class IndustrySyncImportRequest(BaseModel):
+    """Body for ``POST /calendar/industry-sync/import``."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # The raw text the operator pasted from Gemini. We accept anything
+    # up to 100 KB so a generous response with citations / metadata
+    # still fits. Parsing handles markdown fences, prose preambles, and
+    # per-entry validation errors gracefully.
+    json_text: str = Field(min_length=1, max_length=100_000)
+
+
+class IndustrySyncImportResponse(BaseModel):
+    """Result of one paste import."""
+
+    model_config = ConfigDict(frozen=True)
+
+    parsed_count: int
     rows_upserted: int
+
+
+# Default stale-days threshold for the UI — kept in code rather than
+# Settings since we no longer have a daily-budget concept on this path.
+_DEFAULT_STALE_DAYS_THRESHOLD = 21
 
 
 @router.get(
     "/calendar/industry-sync/status",
     response_model=IndustrySyncStatusResponse,
-    summary="Industry-event sync enablement + last-run timestamp",
+    summary="Industry-event sync last-paste timestamp",
 )
 @limiter.limit("60/minute")
 async def get_industry_sync_status(
     request: Request,
     response: Response,
     _user_id: int = Depends(current_user_id),
-    settings: Settings = Depends(get_settings_dep),
     session: Session = Depends(get_db_session),
 ) -> IndustrySyncStatusResponse:
     last_sync_at = SystemMetadataRepository(session).get_datetime(KEY_LAST_INDUSTRY_SYNC_AT)
     return IndustrySyncStatusResponse(
-        enabled=settings.gemini_industry_sync_enabled,
         last_sync_at=last_sync_at,
-        stale_days_threshold=settings.industry_sync_stale_days,
+        stale_days_threshold=_DEFAULT_STALE_DAYS_THRESHOLD,
+    )
+
+
+@router.get(
+    "/calendar/industry-sync/prompt",
+    response_model=IndustrySyncPromptResponse,
+    summary="Render the prompt to paste into Gemini's web UI",
+)
+@limiter.limit("60/minute")
+async def get_industry_sync_prompt(
+    request: Request,
+    response: Response,
+    _user_id: int = Depends(current_user_id),
+) -> IndustrySyncPromptResponse:
+    today = datetime.now(UTC).date()
+    return IndustrySyncPromptResponse(
+        prompt=build_industry_sync_prompt(as_of=today),
+        as_of=today,
     )
 
 
 @router.post(
-    "/calendar/industry-sync/run",
-    response_model=IndustrySyncRunResponse,
-    summary="Manually trigger the Gemini-backed industry event sync",
+    "/calendar/industry-sync/import",
+    response_model=IndustrySyncImportResponse,
+    summary="Import Gemini's pasted JSON output into the calendar",
 )
-# Lower rate limit than the read endpoint — manual sync is a serious
-# operation (LLM call + DB write). 6/min keeps a clicked-too-fast user
-# from melting through the daily quota guard.
-@limiter.limit("6/minute")
-async def run_industry_sync(
+# Reasonable cap: typing this in by hand is rare, paste-imports are
+# infrequent. 12/min still lets a user re-paste after spotting a typo
+# without getting locked out.
+@limiter.limit("12/minute")
+async def import_industry_events(
     request: Request,
     response: Response,
+    payload: IndustrySyncImportRequest,
     _user_id: int = Depends(current_user_id),
-    settings: Settings = Depends(get_settings_dep),
     session: Session = Depends(get_db_session),
-) -> IndustrySyncRunResponse:
-    api_key_secret = settings.gemini_api_key
-    api_key = api_key_secret.get_secret_value() if api_key_secret else ""
-    result = await run_industry_gemini_sync(session, api_key=api_key)
+) -> IndustrySyncImportResponse:
+    result = import_industry_events_from_paste(session, raw_json_text=payload.json_text)
     session.commit()
     logger.info(
-        "industry_sync_manual_run",
-        skipped=result.skipped_reason,
-        events=result.events_returned,
+        "industry_sync_paste_import",
+        parsed=result.parsed_count,
         rows=result.rows_upserted,
     )
-    return IndustrySyncRunResponse(
-        skipped_reason=result.skipped_reason,
-        events_returned=result.events_returned,
+    return IndustrySyncImportResponse(
+        parsed_count=result.parsed_count,
         rows_upserted=result.rows_upserted,
     )

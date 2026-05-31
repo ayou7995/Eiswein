@@ -445,30 +445,6 @@ def _section_fred() -> dict[str, str]:
     return {"FRED_API_KEY": _prompt("FRED API key", default="")}
 
 
-def _section_gemini() -> dict[str, str]:
-    """Optional Gemini key for the weekly industry-event auto-sync.
-
-    Free tier covers our use case by ~10 000x — see
-    ``backend/app/ingestion/industry_gemini_sync.py`` for the safety
-    budget. Skipping just disables this one feeder; calendar still works
-    via earnings + macro + any manual YAML entries."""
-    print("\n[Gemini — auto-sync industry conference dates (optional)]")
-    print(
-        "  Once a week Eiswein asks Gemini Flash with Google Search to find\n"
-        "  the next confirmed date for ~25 tech conferences (GTC / Computex /\n"
-        "  WWDC / CES / AWS re:Invent / Berkshire AGM / ...). Free tier on\n"
-        "  Google AI Studio is plenty (we use ~4 requests/month)."
-    )
-    if not _prompt_yes_no("Enable industry event auto-sync?", default=False):
-        return {"GEMINI_API_KEY": ""}
-    print(
-        "  Get a free API key (sign in with any Google account):\n"
-        "    https://aistudio.google.com/apikey\n"
-        "  (Press Enter to skip for now — you can paste the key into .env later.)"
-    )
-    return {"GEMINI_API_KEY": _prompt("Gemini API key", default="")}
-
-
 def _section_smtp() -> dict[str, str]:
     print("\n[Email reminders (optional)]")
     if not _prompt_yes_no("Enable email reminders?", default=False):
@@ -648,7 +624,7 @@ def _render_env(values: dict[str, str]) -> str:
         ),
         (
             "Data sources",
-            ["FRED_API_KEY", "GEMINI_API_KEY"],
+            ["FRED_API_KEY"],
         ),
         (
             "Schwab (optional)",
@@ -795,7 +771,6 @@ def main() -> int:
     values.update(_section_admin(bcrypt_mod, zxcvbn_mod))
     values.update(_section_backfill())
     values.update(_section_fred())
-    values.update(_section_gemini())
     values.update(_section_smtp())
     schwab_values = _section_schwab()
     values.update(schwab_values)

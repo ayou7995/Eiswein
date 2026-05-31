@@ -198,27 +198,32 @@ export function daysSinceVerified(payload: IndustryPayload): number | null {
 }
 
 const industrySyncStatusSchema = z.object({
-  enabled: z.boolean(),
   last_sync_at: z.string().nullable(),
   stale_days_threshold: z.number().int().positive(),
 });
-export type IndustrySyncStatus = z.infer<typeof industrySyncStatusSchema>;
 
 export interface IndustrySyncStatusResult {
-  enabled: boolean;
   lastSyncAt: Date | null;
   staleDaysThreshold: number;
 }
 
-const industrySyncRunSchema = z.object({
-  skipped_reason: z.string().nullable(),
-  events_returned: z.number().int().nonnegative(),
+const industrySyncPromptSchema = z.object({
+  prompt: z.string(),
+  as_of: z.string(),
+});
+
+export interface IndustrySyncPromptResult {
+  prompt: string;
+  asOf: Date;
+}
+
+const industrySyncImportSchema = z.object({
+  parsed_count: z.number().int().nonnegative(),
   rows_upserted: z.number().int().nonnegative(),
 });
 
-export interface IndustrySyncRunResult {
-  skippedReason: string | null;
-  eventsReturned: number;
+export interface IndustrySyncImportResult {
+  parsedCount: number;
   rowsUpserted: number;
 }
 
@@ -228,20 +233,29 @@ export async function getIndustrySyncStatus(): Promise<IndustrySyncStatusResult>
     schema: industrySyncStatusSchema,
   });
   return {
-    enabled: raw.enabled,
     lastSyncAt: raw.last_sync_at ? new Date(raw.last_sync_at) : null,
     staleDaysThreshold: raw.stale_days_threshold,
   };
 }
 
-export async function runIndustrySync(): Promise<IndustrySyncRunResult> {
-  const raw = await apiRequest('/api/v1/calendar/industry-sync/run', {
+export async function getIndustrySyncPrompt(): Promise<IndustrySyncPromptResult> {
+  const raw = await apiRequest('/api/v1/calendar/industry-sync/prompt', {
+    method: 'GET',
+    schema: industrySyncPromptSchema,
+  });
+  return { prompt: raw.prompt, asOf: parseIsoDate(raw.as_of) };
+}
+
+export async function importIndustryEvents(
+  jsonText: string,
+): Promise<IndustrySyncImportResult> {
+  const raw = await apiRequest('/api/v1/calendar/industry-sync/import', {
     method: 'POST',
-    schema: industrySyncRunSchema,
+    body: { json_text: jsonText },
+    schema: industrySyncImportSchema,
   });
   return {
-    skippedReason: raw.skipped_reason,
-    eventsReturned: raw.events_returned,
+    parsedCount: raw.parsed_count,
     rowsUpserted: raw.rows_upserted,
   };
 }

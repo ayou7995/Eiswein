@@ -9,9 +9,11 @@ import {
   type SystemInfoResponse,
 } from '../api/settings';
 import {
+  getIndustrySyncPrompt,
   getIndustrySyncStatus,
-  runIndustrySync,
-  type IndustrySyncRunResult,
+  importIndustryEvents,
+  type IndustrySyncImportResult,
+  type IndustrySyncPromptResult,
   type IndustrySyncStatusResult,
 } from '../api/calendar';
 
@@ -76,16 +78,33 @@ export function useIndustrySyncStatus(): ReturnType<
   });
 }
 
-export function useIndustrySyncRun(): ReturnType<
-  typeof useMutation<IndustrySyncRunResult, Error, void>
+export function useIndustrySyncPrompt(): ReturnType<
+  typeof useQuery<IndustrySyncPromptResult>
+> {
+  // The prompt is interpolated server-side with today's date, but we
+  // only fetch it when the user clicks "copy" so it's always fresh.
+  return useQuery({
+    queryKey: ['settings', 'industry-sync-prompt'] as const,
+    queryFn: getIndustrySyncPrompt,
+    refetchOnWindowFocus: false,
+    // Prompt depends on today's date; treat anything older than 6 h as
+    // stale so the next click after midnight UTC re-fetches.
+    staleTime: 6 * 60 * 60 * 1000,
+    // Don't auto-fetch on mount — let the operator click to reveal.
+    enabled: false,
+  });
+}
+
+export function useIndustryEventsImport(): ReturnType<
+  typeof useMutation<IndustrySyncImportResult, Error, string>
 > {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => runIndustrySync(),
+    mutationFn: (jsonText: string) => importIndustryEvents(jsonText),
     onSuccess: () => {
-      // The sync mutates calendar_event rows and the last_industry_sync_at
-      // metadata key — invalidate both so the Settings card refreshes
-      // and the calendar page picks up any new entries on next view.
+      // Successful import mutates calendar_event rows and
+      // last_industry_sync_at — invalidate so the Settings card
+      // refreshes and the calendar page picks up new entries.
       void qc.invalidateQueries({ queryKey: ['settings', 'industry-sync-status'] });
       void qc.invalidateQueries({ queryKey: ['calendar', 'events'] });
     },

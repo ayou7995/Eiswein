@@ -105,15 +105,10 @@ class Settings(BaseSettings):
         description="Path to operator-curated industry catalyst events.",
     )
 
-    # Gemini-backed industry event auto-sync (optional). When unset the
-    # weekly ``industry_sync`` scheduler job and the manual-trigger admin
-    # endpoint short-circuit with ``skipped_reason='no_api_key'`` — the
-    # rest of the calendar (earnings, macro, YAML-curated industry) still
-    # works. Get a free key from https://aistudio.google.com/apikey.
-    gemini_api_key: SecretStr | None = Field(default=None)
     # Calendar UI treats industry events whose ``last_verified_at`` is
     # older than this many days as "資料可能過時" — drawer shows a banner
-    # so the operator knows to spot-check the official site.
+    # so the operator knows to spot-check the official site. (Industry
+    # sync runs as an operator-driven paste flow; see Settings page.)
     industry_sync_stale_days: int = Field(default=21, ge=7, le=90)
 
     # Phase 6 — outbound email for daily summary + token expiry alerts.
@@ -151,19 +146,6 @@ class Settings(BaseSettings):
         the individual secret fields exist.
         """
         return self.schwab_client_id is not None and self.schwab_client_secret is not None
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def gemini_industry_sync_enabled(self) -> bool:
-        """True iff a Gemini API key is configured.
-
-        Gates the weekly ``industry_sync`` scheduler job and the admin
-        manual-trigger endpoint. The Gemini-backed industry-event sync
-        is fully optional — when disabled the rest of the calendar
-        (earnings, macro, YAML industry) still works."""
-        if self.gemini_api_key is None:
-            return False
-        return bool(self.gemini_api_key.get_secret_value().strip())
 
     @field_validator("admin_password_hash")
     @classmethod

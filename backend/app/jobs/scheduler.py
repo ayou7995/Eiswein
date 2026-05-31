@@ -38,7 +38,6 @@ from app.config import Settings
 from app.datasources.base import DataSource
 from app.jobs import backup as backup_job
 from app.jobs import daily_update as daily_update_job
-from app.jobs import industry_sync as industry_sync_job
 from app.jobs import schwab_token_refresh as schwab_token_refresh_job
 from app.jobs import token_reminder as token_reminder_job
 from app.jobs import vacuum as vacuum_job
@@ -55,7 +54,6 @@ JobId = Literal[
     "token_reminder",
     "vacuum",
     "schwab_token_refresh",
-    "industry_sync",
 ]
 
 
@@ -247,25 +245,6 @@ def _register_jobs(
             "session_factory": session_factory,
         },
     )
-    # Weekly Gemini-backed industry event sync (Sunday 10:00 ET — market
-    # closed, results ready by Monday open). Gate on the API key so dev
-    # environments without one don't see a no-op job tick.
-    if settings.gemini_industry_sync_enabled:
-        scheduler.add_job(
-            _industry_sync_wrapper,
-            trigger=CronTrigger(day_of_week="sun", hour=10, minute=0, timezone=_TIMEZONE),
-            id="industry_sync",
-            name="industry_sync",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=3600,
-            kwargs={
-                "session_factory": session_factory,
-                "settings": settings,
-            },
-        )
-
     # Schwab access tokens live 30 min; we refresh every 20 min so any
     # user-initiated call in the remaining 10m has a warm token.
     # Scheduler gate: if Schwab isn't configured the job is a no-op
@@ -315,10 +294,6 @@ async def _vacuum_wrapper(**kwargs: Any) -> None:
 
 async def _schwab_token_refresh_wrapper(**kwargs: Any) -> None:
     await schwab_token_refresh_job.run(**kwargs)
-
-
-async def _industry_sync_wrapper(**kwargs: Any) -> None:
-    await industry_sync_job.run(**kwargs)
 
 
 def get_scheduler_status(handle: SchedulerHandle | None) -> SchedulerStatus:

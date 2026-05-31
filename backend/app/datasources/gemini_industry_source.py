@@ -1,23 +1,30 @@
-"""Gemini-backed industry event sync.
+"""Gemini-assisted industry event sync (manual paste mode).
 
-The free industry-event YAML feeder needs operator effort to stay fresh —
-this module replaces that by asking Gemini 2.0 Flash + Google Search
-grounding for the next confirmed date of every conference in
-:mod:`_industry_conference_registry`. One batched prompt per weekly sync
-keeps API usage trivially within the Google AI Studio free tier
-(1500 RPD); the per-event response includes a confidence level and the
-official source URL so the UI can render trust signals.
+Originally this module called the Gemini API directly via google-genai
++ grounded search. After four iterations against ``google-genai==0.7.0``
+we hit a hard SDK bug: ``gemini-2.5-flash-lite + Tool(google_search)``
+returned ``finish_reason=STOP, candidates_token_count=295, parts=null``
+— the model generated content but the SDK packaged it with empty parts,
+making the response unparseable. The pre-1.0 SDK API churn made bumping
+versions a risk multiplier, so we pivoted to a manual paste flow.
 
-The result is a list of :class:`CalendarEventRow` dicts ready for
-:meth:`CalendarEventRepository.upsert_many`, identical to the shape the
-YAML loader emits — calendar_sync treats us as just another feeder.
+The current shape:
 
-Failure modes are all graceful:
-* No ``GEMINI_API_KEY`` → :func:`fetch_upcoming_industry_events` returns ``[]``.
-* Network / quota error → tenacity retries, then ``[]`` (existing DB rows
-  untouched, daily_update logs a warning).
-* Malformed LLM JSON → per-entry validation drops bad rows, keeps good
-  rows. Total wipe-out only happens if the whole batch is unparseable.
+1. Operator opens Settings → Industry Sync card → clicks "複製 prompt".
+   :func:`build_industry_sync_prompt` renders the prompt from the live
+   :data:`CONFERENCES` registry + today's date.
+2. Operator pastes prompt into https://aistudio.google.com (browser UI
+   uses a stable Gemini call path that doesn't suffer the SDK bug),
+   grabs the JSON output.
+3. Operator pastes JSON back into the Settings textarea → submit.
+4. Backend calls :func:`parse_industry_events_text`, validates per
+   :class:`IndustryEventResponse`, and returns rows ready for
+   ``CalendarEventRepository.upsert_many``.
+
+The prompt + Pydantic schema + per-entry payload conversion are all
+shared with the (now-retired) direct-API path, so flipping back to
+auto-sync later is a small refactor — just re-add the LLM client and
+wire ``parse_industry_events_text`` to its output.
 """
 
 from __future__ import annotations
@@ -30,12 +37,6 @@ from typing import Any, Final
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from tenacity import (
-    AsyncRetrying,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_exponential_jitter,
-)
 
 from app.datasources._industry_conference_registry import (
     CONFERENCES,
@@ -44,28 +45,6 @@ from app.datasources._industry_conference_registry import (
 from app.db.repositories.calendar_event_repository import CalendarEventRow
 
 logger = structlog.get_logger("eiswein.datasources.gemini_industry")
-
-# Model + grounding tool — pinned strings so a Gemini SDK upgrade doesn't
-# silently switch model behaviour. Bump deliberately when the user wants.
-#
-# Why ``gemini-2.5-flash-lite``:
-# * ``gemini-2.0-flash`` — Google moved off free tier in 2026 (limit: 0).
-# * ``gemini-2.5-flash`` — works on free tier (5 RPM / 250 RPD) BUT ships
-#   with thinking mode on by default, which spends output tokens on
-#   internal reasoning. With grounded search also bloating the response,
-#   the 25-entry batch JSON gets truncated mid-way (observed: 1 of 25
-#   returned). ``google-genai==0.7.0``'s ``ThinkingConfig`` lacks the
-#   ``thinking_budget`` field we'd need to disable thinking explicitly.
-# * ``gemini-2.5-flash-lite`` — thinking OFF by default, supports
-#   ``google_search`` grounding, free tier is even better (15 RPM /
-#   1000 RPD). Right fit for structured extraction.
-_MODEL: Final[str] = "gemini-2.5-flash-lite"
-
-# Max retries against the LLM call before we give up for this sync run.
-# A 429 from Google's free tier is rare at our volume (~4 req/month) but
-# we still want a backoff envelope so a transient network blip doesn't
-# blank the feeder.
-_MAX_RETRIES: Final[int] = 3
 
 _SOURCE_NAME: Final[str] = "gemini"
 
@@ -92,19 +71,23 @@ class IndustryEventResponse(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
 
 
-def _build_prompt(*, as_of: date, conferences: Sequence[ConferenceSource]) -> str:
-    """Compose the batch prompt sent to Gemini.
+def build_industry_sync_prompt(
+    *,
+    as_of: date | None = None,
+    conferences: Sequence[ConferenceSource] = CONFERENCES,
+) -> str:
+    """Render the paste-ready prompt.
 
-    Conference rows are emitted with their organizer + typical window so
-    grounded search can disambiguate (e.g. Microsoft has Build and Ignite
-    in the same calendar year — naming both helps the LLM not confuse
-    them)."""
+    Same string we used to send to the API — keeps the registry as
+    source of truth and means a registry edit propagates to the next
+    UI render without code change."""
+    today = as_of or datetime.now(UTC).date()
     lines = [
-        f"You maintain a tech industry event calendar. Today's date is {as_of.isoformat()}.",
+        f"You maintain a tech industry event calendar. Today's date is {today.isoformat()}.",
         "",
         "For each conference below, use Google Search grounding to find the NEXT",
-        f"scheduled occurrence between {as_of.isoformat()} and "
-        f"{(as_of.replace(year=as_of.year + 1)).isoformat()}.",
+        f"scheduled occurrence between {today.isoformat()} and "
+        f"{(today.replace(year=today.year + 1)).isoformat()}.",
         "",
         "Rules:",
         "- Prefer OFFICIAL announcements (event homepage, organizer press release).",
@@ -143,34 +126,42 @@ def _build_prompt(*, as_of: date, conferences: Sequence[ConferenceSource]) -> st
     return "\n".join(lines)
 
 
-def _is_transient_gemini_error(exc: BaseException) -> bool:
-    """Retry network blips + Google's 429 / 503 transient responses.
+def parse_industry_events_text(
+    raw_text: str,
+    *,
+    verified_at: datetime | None = None,
+    conferences: Sequence[ConferenceSource] = CONFERENCES,
+) -> list[CalendarEventRow]:
+    """Validate the LLM JSON payload and convert it to calendar rows.
 
-    The google-genai SDK surfaces HTTP errors with the status code in the
-    exception class name (``ResourceExhausted``, ``ServiceUnavailable``,
-    ``DeadlineExceeded``, ``InternalServerError``) or message body. We
-    match by string fragment so we don't have to bind to specific SDK
-    exception classes that may rename across releases."""
-    if isinstance(exc, ConnectionError | TimeoutError | OSError):
-        return True
-    msg = str(exc).lower()
-    return any(
-        token in msg
-        for token in (
-            "429",
-            "rate limit",
-            "resource exhausted",
-            "503",
-            "service unavailable",
-            "deadline exceeded",
-            "internal server error",
+    Used by the ``POST /calendar/industry-sync/import`` endpoint. The
+    parsing layer is forgiving: whole-batch failures (raw isn't JSON
+    at all) return an empty list with a warning log; per-entry failures
+    skip just that entry. ``verified_at`` defaults to ``now()`` so the
+    UI staleness banner counts from the moment the operator pasted —
+    not from when the operator opened Gemini."""
+    parsed = _parse_response_text(raw_text)
+    when_verified = verified_at or datetime.now(UTC)
+    rows = [
+        _to_calendar_row(
+            entry,
+            matched_conference=_match_conference(entry.registry_id, conferences),
+            verified_at=when_verified,
         )
+        for entry in parsed
+    ]
+    logger.info(
+        "gemini_industry_paste_parsed",
+        returned=len(parsed),
+        rows=len(rows),
     )
+    return rows
 
 
 def _strip_markdown_fences(raw: str) -> str:
-    """Gemini sometimes wraps JSON in ```json fences despite instructions.
-    Strip the fences if present so json.loads can parse the body."""
+    """Gemini occasionally wraps JSON in ```json fences. Strip them so
+    ``json.loads`` can parse the body without the operator having to
+    clean the paste by hand."""
     stripped = raw.strip()
     if stripped.startswith("```"):
         stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
@@ -179,12 +170,13 @@ def _strip_markdown_fences(raw: str) -> str:
 
 
 def _parse_response_text(raw_text: str) -> list[IndustryEventResponse]:
-    """Validate the LLM response into typed event objects.
+    """Validate the paste payload into typed event objects.
 
     Whole-batch failures (raw is not valid JSON) return ``[]`` with a
-    log so the sync degrades gracefully. Per-entry failures
-    (one bad confidence value, missing date) log the row index and
-    continue, so a flaky single entry doesn't wipe out the batch."""
+    log so the import endpoint can surface a clean error to the UI.
+    Per-entry failures (one bad confidence value, missing date) log
+    the row index and continue, so a flaky single entry doesn't wipe
+    out the batch."""
     text = _strip_markdown_fences(raw_text)
     try:
         decoded: Any = json.loads(text)
@@ -235,7 +227,7 @@ def _to_calendar_row(
     matched_conference: ConferenceSource | None,
     verified_at: datetime,
 ) -> CalendarEventRow:
-    """Convert one validated LLM response into a calendar_event row."""
+    """Convert one validated entry into a calendar_event row."""
     payload: dict[str, Any] = {
         "confidence": response.confidence,
         "last_verified_at": verified_at.isoformat(),
@@ -274,180 +266,8 @@ def _match_conference(
     return None
 
 
-async def fetch_upcoming_industry_events(
-    *,
-    api_key: str,
-    as_of: date | None = None,
-    conferences: Sequence[ConferenceSource] = CONFERENCES,
-) -> list[CalendarEventRow]:
-    """Ask Gemini for upcoming industry-conference dates.
-
-    Returns rows ready for :meth:`CalendarEventRepository.upsert_many`.
-    On any failure (empty key, network, malformed response) returns ``[]``
-    and logs a structured warning — caller treats empty result as
-    "leave existing DB rows untouched"."""
-    if not api_key:
-        logger.info("gemini_industry_skipped_no_key")
-        return []
-    if not conferences:
-        return []
-
-    today = as_of or datetime.now(UTC).date()
-    prompt = _build_prompt(as_of=today, conferences=conferences)
-
-    try:
-        raw_text = await _invoke_gemini_with_retry(api_key=api_key, prompt=prompt)
-    except Exception as exc:
-        logger.warning(
-            "gemini_industry_call_failed",
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        return []
-
-    parsed = _parse_response_text(raw_text)
-    verified_at = datetime.now(UTC)
-    rows = [
-        _to_calendar_row(
-            entry,
-            matched_conference=_match_conference(entry.registry_id, conferences),
-            verified_at=verified_at,
-        )
-        for entry in parsed
-    ]
-    logger.info(
-        "gemini_industry_sync_parsed",
-        requested=len(conferences),
-        returned=len(parsed),
-        rows=len(rows),
-    )
-    return rows
-
-
-async def _invoke_gemini_with_retry(*, api_key: str, prompt: str) -> str:
-    """Call Gemini Flash with grounded search, retrying transient errors.
-
-    Returns the raw text payload. Caller is responsible for JSON parsing
-    so retry decisions stay separate from validation decisions."""
-    async for attempt in AsyncRetrying(
-        stop=stop_after_attempt(_MAX_RETRIES),
-        wait=wait_exponential_jitter(initial=2, max=30),
-        retry=retry_if_exception(_is_transient_gemini_error),
-        reraise=True,
-    ):
-        with attempt:
-            return await _call_gemini_once(api_key=api_key, prompt=prompt)
-    raise RuntimeError("AsyncRetrying exited without raising or returning")
-
-
-async def _call_gemini_once(*, api_key: str, prompt: str) -> str:
-    """Single Gemini request. Imports the SDK lazily so test runs that
-    monkeypatch this function don't import the heavy SDK at all, and so
-    a missing ``google-genai`` install fails loudly at call-time rather
-    than at module import (keeping the FastAPI startup cheap)."""
-    from google import genai  # type: ignore[import-untyped]
-    from google.genai import types as genai_types  # type: ignore[import-untyped]
-
-    client = genai.Client(api_key=api_key)
-    response = await client.aio.models.generate_content(
-        model=_MODEL,
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(
-            tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
-            temperature=0.1,
-        ),
-    )
-    text = _extract_response_text(response)
-    # INFO (not DEBUG) so the response size is visible without changing
-    # log levels — useful while diagnosing per-batch truncation.
-    logger.info("gemini_industry_raw_response", chars=len(text))
-    return text
-
-
-def _extract_response_text(response: object) -> str:
-    """Pull concatenated text out of a Gemini response.
-
-    ``response.text`` is a convenience that returns ``None`` for several
-    real-world cases on grounded responses:
-    * The text lives split across multiple ``content.parts`` entries
-      (grounded answers package citations as separate parts).
-    * The response was blocked by safety filters (no parts at all).
-    * ``finish_reason`` was MAX_TOKENS partway through a part.
-
-    Walking ``candidates[0].content.parts`` and stringifying every part
-    that has a ``text`` attr is more robust. On total failure we log
-    enough metadata (candidates count, finish reasons, block reason) so
-    the operator can tell "safety block" from "empty response" from
-    "API hiccup" without enabling debug logging."""
-    raw_text = getattr(response, "text", None)
-    if isinstance(raw_text, str) and raw_text.strip():
-        return raw_text
-
-    candidates = getattr(response, "candidates", None) or []
-    chunks: list[str] = []
-    for candidate in candidates:
-        content = getattr(candidate, "content", None)
-        if content is None:
-            continue
-        for part in getattr(content, "parts", None) or []:
-            part_text = getattr(part, "text", None)
-            if isinstance(part_text, str):
-                chunks.append(part_text)
-
-    if chunks:
-        return "".join(chunks)
-
-    feedback = getattr(response, "prompt_feedback", None)
-    part_shapes: list[list[str]] = []
-    for candidate in candidates:
-        content = getattr(candidate, "content", None)
-        part_summaries: list[str] = []
-        for part in getattr(content, "parts", None) or []:
-            # Identify which sub-field (if any) the part carries —
-            # ``text``, ``function_call``, ``executable_code``,
-            # ``inline_data``, etc. Helps us tell apart "model output a
-            # tool call" from "model literally said nothing".
-            attrs = [
-                attr
-                for attr in (
-                    "text",
-                    "function_call",
-                    "function_response",
-                    "executable_code",
-                    "code_execution_result",
-                    "inline_data",
-                    "file_data",
-                    "thought",
-                )
-                if getattr(part, attr, None) is not None
-            ]
-            part_summaries.append(",".join(attrs) if attrs else "empty")
-        part_shapes.append(part_summaries)
-    # Dump the full response as JSON for one-shot debugging. Pydantic-
-    # backed responses expose ``model_dump_json`` but we truncate to keep
-    # the structured log line small. Best-effort: not every SDK version
-    # exposes it, fall back to repr.
-    raw_dump: str
-    dump = getattr(response, "model_dump_json", None)
-    if callable(dump):
-        try:
-            raw_dump = dump()[:2000]
-        except Exception:
-            raw_dump = repr(response)[:2000]
-    else:
-        raw_dump = repr(response)[:2000]
-    logger.warning(
-        "gemini_industry_response_empty",
-        candidates=len(candidates),
-        finish_reasons=[str(getattr(c, "finish_reason", None)) for c in candidates],
-        block_reason=str(getattr(feedback, "block_reason", None)) if feedback is not None else None,
-        part_shapes=part_shapes,
-        response_preview=raw_dump,
-    )
-    raise ValueError("gemini response had no text parts")
-
-
 __all__ = [
     "IndustryEventResponse",
-    "fetch_upcoming_industry_events",
+    "build_industry_sync_prompt",
+    "parse_industry_events_text",
 ]

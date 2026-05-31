@@ -42,7 +42,6 @@ coverage[toml]==7.13.5
 cryptography==43.0.1
     # via
     #   -r requirements.in
-    #   google-auth
     #   python-jose
 curl-cffi==0.15.0
     # via yfinance
@@ -60,10 +59,6 @@ freezegun==1.5.1
     # via -r requirements.in
 frozendict==2.4.7
     # via yfinance
-google-auth==2.53.0
-    # via google-genai
-google-genai==0.7.0
-    # via -r requirements.in
 h11==0.16.0
     # via
     #   httpcore
@@ -139,18 +134,14 @@ pyarrow==17.0.0
     # via -r requirements.in
 pyasn1==0.6.3
     # via
-    #   pyasn1-modules
     #   python-jose
     #   rsa
-pyasn1-modules==0.4.2
-    # via google-auth
 pycparser==3.0
     # via cffi
 pydantic==2.9.2
     # via
     #   -r requirements.in
     #   fastapi
-    #   google-genai
     #   pydantic-settings
 pydantic-core==2.23.4
     # via pydantic
@@ -195,9 +186,7 @@ pytz==2026.1.post1
 pyyaml==6.0.3
     # via uvicorn
 requests==2.33.1
-    # via
-    #   google-genai
-    #   yfinance
+    # via yfinance
 rich==15.0.0
     # via curl-cffi
 rsa==4.9.1
@@ -254,7 +243,6 @@ watchfiles==1.1.1
     # via uvicorn
 websockets==14.2
     # via
-    #   google-genai
     #   uvicorn
     #   yfinance
 wheel==0.46.3

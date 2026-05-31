@@ -9,7 +9,8 @@ import {
   useAuditLog,
   useChangePassword,
   useDataRefresh,
-  useIndustrySyncRun,
+  useIndustryEventsImport,
+  useIndustrySyncPrompt,
   useIndustrySyncStatus,
   useSystemInfo,
 } from '../hooks/useSettings';
@@ -508,36 +509,65 @@ function AuditRow({ entry }: { entry: AuditEntry }): JSX.Element {
   );
 }
 
+// Three-step paste flow. We tried wiring Gemini's API directly, but
+// google-genai 0.7.0 + Gemini 2.x + grounded search returned empty
+// ``parts`` despite generated tokens (see commit notes). The web UI at
+// aistudio.google.com uses a different code path that works reliably,
+// so the operator runs the prompt there and pastes the JSON back.
 function IndustrySyncCard(): JSX.Element {
   const status = useIndustrySyncStatus();
-  const mutation = useIndustrySyncRun();
+  const prompt = useIndustrySyncPrompt();
+  const importMutation = useIndustryEventsImport();
+
+  const [pastedJson, setPastedJson] = useState('');
   const [message, setMessage] = useState<{
     tone: 'success' | 'info' | 'error';
     text: string;
   } | null>(null);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
-  const onClick = async (): Promise<void> => {
-    setMessage(null);
+  const handleCopyPrompt = async (): Promise<void> => {
+    setCopyState('idle');
+    const { data } = await prompt.refetch();
+    if (!data) {
+      setCopyState('failed');
+      return;
+    }
     try {
-      const result = await mutation.mutateAsync();
-      if (result.skippedReason) {
-        const reasonText =
-          result.skippedReason === 'no_api_key'
-            ? '未啟用 — 在 .env 加上 GEMINI_API_KEY 後重啟容器。'
-            : `本次跳過(${result.skippedReason})。`;
-        setMessage({ tone: 'info', text: reasonText });
+      await navigator.clipboard.writeText(data.prompt);
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 3000);
+    } catch {
+      setCopyState('failed');
+    }
+  };
+
+  const handleImport = async (): Promise<void> => {
+    setMessage(null);
+    if (!pastedJson.trim()) {
+      setMessage({ tone: 'info', text: '請先把 Gemini 的 JSON 輸出貼到下面的框內。' });
+      return;
+    }
+    try {
+      const result = await importMutation.mutateAsync(pastedJson);
+      if (result.parsedCount === 0) {
+        setMessage({
+          tone: 'info',
+          text: '沒有解析出任何事件 — 檢查貼上的內容是否為 JSON 陣列。',
+        });
         return;
       }
       setMessage({
         tone: 'success',
-        text: `已同步 ${result.eventsReturned} 件事件 · 寫入 ${result.rowsUpserted} 列。`,
+        text: `已解析 ${result.parsedCount} 件 · 寫入 ${result.rowsUpserted} 列到行事曆。`,
       });
+      setPastedJson('');
     } catch (err) {
       if (err instanceof EisweinApiError && err.code === 'rate_limited') {
-        setMessage({ tone: 'error', text: '已達同步頻率上限,請稍後再試。' });
+        setMessage({ tone: 'error', text: '已達匯入頻率上限,請稍後再試。' });
         return;
       }
-      setMessage({ tone: 'error', text: '同步失敗,請稍後再試或檢查後端 log。' });
+      setMessage({ tone: 'error', text: '匯入失敗,請稍後再試或檢查後端 log。' });
     }
   };
 
@@ -545,80 +575,118 @@ function IndustrySyncCard(): JSX.Element {
     <section
       aria-labelledby="industry-sync-heading"
       data-testid="industry-sync-card"
-      className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6"
+      className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-6"
     >
       <header>
         <h2 id="industry-sync-heading" className="text-lg font-semibold">
-          產業事件自動同步 (Gemini)
+          產業事件同步 (Gemini 手動模式)
         </h2>
         <p className="mt-1 text-xs text-stone-500">
-          每週日 10:00 ET 由 Gemini Flash + Google Search 抓取 ~25 場大型科技
-          會議的下次確認日期。免費 tier 額度遠超我們用量,不會超支。
+          複製 prompt → 貼進 Gemini 網頁 → 把 JSON 結果貼回 → 匯入。
+          ~25 場大型科技會議(GTC / Computex / WWDC / CES / AWS re:Invent / ...)
+          的下次日期。建議每月跑一次。
         </p>
       </header>
 
       <IndustrySyncStatusLine
         isLoading={status.isLoading}
-        enabled={status.data?.enabled ?? false}
         lastSyncAt={status.data?.lastSyncAt ?? null}
       />
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <button
-          type="button"
-          onClick={() => void onClick()}
-          disabled={mutation.isPending || !(status.data?.enabled ?? false)}
-          data-testid="industry-sync-run-button"
-          className="inline-flex items-center gap-2 self-start rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-        >
-          {mutation.isPending && <LoadingSpinner label="同步中…" />}
-          <span>{mutation.isPending ? '同步中…' : '立即同步'}</span>
-        </button>
-        {message && (
-          <span
-            role={message.tone === 'error' ? 'alert' : 'status'}
-            data-testid="industry-sync-message"
-            className={`text-sm ${
-              message.tone === 'success'
-                ? 'text-emerald-700'
-                : message.tone === 'error'
-                  ? 'text-rose-700'
-                  : 'text-stone-600'
-            }`}
+      <ol className="flex flex-col gap-3 text-sm">
+        <li className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-stone-700">1. 複製 prompt</span>
+            <button
+              type="button"
+              onClick={() => void handleCopyPrompt()}
+              disabled={prompt.isFetching}
+              data-testid="industry-sync-copy-prompt"
+              className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-1 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+            >
+              {prompt.isFetching ? '取得中…' : '複製到剪貼簿'}
+            </button>
+            {copyState === 'copied' && (
+              <span className="text-xs text-emerald-700">已複製 ✓</span>
+            )}
+            {copyState === 'failed' && (
+              <span className="text-xs text-rose-700">
+                複製失敗 — 用瀏覽器 devtools 看 prompt 內容
+              </span>
+            )}
+          </div>
+        </li>
+
+        <li className="text-stone-700">
+          2. 開啟{' '}
+          <a
+            href="https://aistudio.google.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sky-600 underline hover:text-sky-800"
           >
-            {message.text}
-          </span>
-        )}
-      </div>
+            Google AI Studio
+          </a>
+          {' '}→ 新對話 → 開啟「Grounding with Google Search」工具 → 貼上 prompt →
+          送出 → 等回應 → 複製 JSON 結果(整段)。
+        </li>
+
+        <li className="flex flex-col gap-2">
+          <span className="font-medium text-stone-700">3. 貼回 JSON 結果</span>
+          <textarea
+            value={pastedJson}
+            onChange={(e) => setPastedJson(e.target.value)}
+            placeholder='[{"registry_id": 1, "name": "...", "start_date": "...", ...}, ...]'
+            rows={8}
+            data-testid="industry-sync-paste-textarea"
+            className="rounded-md border border-stone-300 px-2 py-1 font-mono text-xs focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-300"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleImport()}
+              disabled={importMutation.isPending || pastedJson.trim().length === 0}
+              data-testid="industry-sync-import-button"
+              className="inline-flex items-center gap-2 self-start rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+            >
+              {importMutation.isPending && <LoadingSpinner label="匯入中…" />}
+              <span>{importMutation.isPending ? '匯入中…' : '匯入'}</span>
+            </button>
+            {message && (
+              <span
+                role={message.tone === 'error' ? 'alert' : 'status'}
+                data-testid="industry-sync-message"
+                className={`text-sm ${
+                  message.tone === 'success'
+                    ? 'text-emerald-700'
+                    : message.tone === 'error'
+                      ? 'text-rose-700'
+                      : 'text-stone-600'
+                }`}
+              >
+                {message.text}
+              </span>
+            )}
+          </div>
+        </li>
+      </ol>
     </section>
   );
 }
 
 function IndustrySyncStatusLine({
   isLoading,
-  enabled,
   lastSyncAt,
 }: {
   isLoading: boolean;
-  enabled: boolean;
   lastSyncAt: Date | null;
 }): JSX.Element {
   if (isLoading) {
     return <LoadingSpinner label="載入狀態…" />;
   }
-  if (!enabled) {
-    return (
-      <p
-        className="text-sm text-amber-700"
-        data-testid="industry-sync-status-disabled"
-      >
-        未啟用 — 在 .env 加上 ``GEMINI_API_KEY`` 後重啟容器即可開啟。
-      </p>
-    );
-  }
   return (
-    <p className="text-sm text-stone-600" data-testid="industry-sync-status-enabled">
-      已啟用 · 上次同步: {relativeTime(lastSyncAt ? lastSyncAt.toISOString() : null)}
+    <p className="text-sm text-stone-600" data-testid="industry-sync-status">
+      上次匯入: {relativeTime(lastSyncAt ? lastSyncAt.toISOString() : null)}
     </p>
   );
 }

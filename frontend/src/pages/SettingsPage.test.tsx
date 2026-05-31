@@ -106,7 +106,6 @@ describe('SettingsPage', () => {
         return {
           status: 200,
           body: {
-            enabled: false,
             last_sync_at: null,
             stale_days_threshold: 21,
           },
@@ -151,7 +150,6 @@ describe('SettingsPage', () => {
         return {
           status: 200,
           body: {
-            enabled: false,
             last_sync_at: null,
             stale_days_threshold: 21,
           },
@@ -211,7 +209,6 @@ describe('SettingsPage', () => {
         return {
           status: 200,
           body: {
-            enabled: false,
             last_sync_at: null,
             stale_days_threshold: 21,
           },
@@ -259,7 +256,6 @@ describe('SettingsPage', () => {
         return {
           status: 200,
           body: {
-            enabled: false,
             last_sync_at: null,
             stale_days_threshold: 21,
           },
@@ -272,22 +268,22 @@ describe('SettingsPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('industry-sync-card')).toBeInTheDocument();
       });
+      // Status renders unconditionally now (no API-key gate).
       await waitFor(() => {
-        expect(
-          screen.getByTestId('industry-sync-status-disabled'),
-        ).toBeInTheDocument();
+        expect(screen.getByTestId('industry-sync-status')).toBeInTheDocument();
       });
-      // 立即同步 button is disabled when feature isn't enabled.
-      const button = screen.getByTestId('industry-sync-run-button');
+      // The 匯入 button is disabled when the textarea is empty.
+      const button = screen.getByTestId('industry-sync-import-button');
       expect(button).toBeDisabled();
     } finally {
       restore();
     }
   });
 
-  it('triggers manual sync and surfaces the result counts', async () => {
+  it('pastes JSON into the textarea and imports successfully', async () => {
     const user = userEvent.setup();
-    let runCalled = 0;
+    let importCalled = 0;
+    let lastBody: string | null = null;
     const restore = installFetch((url, init) => {
       if (url.includes('/settings/system-info')) {
         return { status: 200, body: SYSTEM_INFO };
@@ -308,24 +304,20 @@ describe('SettingsPage', () => {
         return {
           status: 200,
           body: {
-            enabled: true,
             last_sync_at: '2026-04-17T20:00:00Z',
             stale_days_threshold: 21,
           },
         };
       }
       if (
-        url.includes('/calendar/industry-sync/run') &&
+        url.includes('/calendar/industry-sync/import') &&
         init?.method === 'POST'
       ) {
-        runCalled += 1;
+        importCalled += 1;
+        lastBody = init.body as string;
         return {
           status: 200,
-          body: {
-            skipped_reason: null,
-            events_returned: 4,
-            rows_upserted: 4,
-          },
+          body: { parsed_count: 4, rows_upserted: 4 },
         };
       }
       throw new Error(`unexpected fetch ${url}`);
@@ -333,19 +325,24 @@ describe('SettingsPage', () => {
     try {
       renderSettings();
       await waitFor(() => {
-        expect(
-          screen.getByTestId('industry-sync-status-enabled'),
-        ).toBeInTheDocument();
+        expect(screen.getByTestId('industry-sync-card')).toBeInTheDocument();
       });
-      const button = screen.getByTestId('industry-sync-run-button');
+      const textarea = screen.getByTestId('industry-sync-paste-textarea');
+      // ``user.type`` parses ``{`` as a key descriptor — use ``.paste``
+      // (which fires the input event with the literal text) to drop
+      // a JSON snippet in without character-class parsing.
+      textarea.focus();
+      await user.paste('[{"registry_id":1}]');
+      const button = screen.getByTestId('industry-sync-import-button');
       expect(button).not.toBeDisabled();
       await user.click(button);
       await waitFor(() => {
         expect(screen.getByTestId('industry-sync-message')).toHaveTextContent(
-          /已同步 4 件事件/,
+          /已解析 4 件/,
         );
       });
-      expect(runCalled).toBe(1);
+      expect(importCalled).toBe(1);
+      expect(lastBody).toContain('json_text');
     } finally {
       restore();
     }

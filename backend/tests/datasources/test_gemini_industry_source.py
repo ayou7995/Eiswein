@@ -1,25 +1,24 @@
-"""GeminiIndustrySource — mocked LLM roundtrip + parsing + retry."""
+"""Gemini paste flow — prompt builder + JSON parser + row converter."""
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
-from typing import Any
+from datetime import date
 
 import pytest
 
-from app.datasources import gemini_industry_source as mod
 from app.datasources._industry_conference_registry import (
     CONFERENCES,
     ConferenceSource,
 )
 from app.datasources.gemini_industry_source import (
     IndustryEventResponse,
-    fetch_upcoming_industry_events,
+    build_industry_sync_prompt,
+    parse_industry_events_text,
 )
 
 # registry_id values reference CONFERENCES order (1-based):
 #   1 = NVIDIA GTC Spring,  3 = Computex Taipei,  9 = Apple WWDC Keynote
-_VALID_LLM_RESPONSE = """[
+_VALID_PASTE = """[
   {
     "registry_id": 3,
     "name": "Computex 2027",
@@ -50,30 +49,37 @@ _VALID_LLM_RESPONSE = """[
 ]"""
 
 
-# --- helpers --------------------------------------------------------------
+# --- Prompt builder ------------------------------------------------------
 
 
-def _patch_invoke(monkeypatch: pytest.MonkeyPatch, *, payload: str) -> None:
-    """Stub :func:`_invoke_gemini_with_retry` so tests never hit the network
-    or import the heavy google-genai SDK."""
+def test_prompt_includes_registry_entries() -> None:
+    prompt = build_industry_sync_prompt(as_of=date(2026, 5, 31))
+    # Spot-check a handful of conference names.
+    assert "NVIDIA GTC" in prompt
+    assert "Computex Taipei" in prompt
+    assert "Apple WWDC Keynote" in prompt
+    # Schema cues the LLM needs to follow.
+    assert "registry_id" in prompt
+    assert "confidence" in prompt
+    # Today's date is interpolated so the LLM knows the forward window.
+    assert "2026-05-31" in prompt
 
-    async def _fake(*, api_key: str, prompt: str) -> str:
-        return payload
 
-    monkeypatch.setattr(mod, "_invoke_gemini_with_retry", _fake)
+def test_prompt_renders_with_default_as_of() -> None:
+    """Omitting ``as_of`` falls back to today — the prompt still
+    contains a valid ISO date somewhere."""
+    prompt = build_industry_sync_prompt()
+    import re
+
+    assert re.search(r"\d{4}-\d{2}-\d{2}", prompt) is not None
 
 
-# --- happy path ----------------------------------------------------------
+# --- Parser --------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_fetch_returns_rows_for_valid_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_invoke(monkeypatch, payload=_VALID_LLM_RESPONSE)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+def test_parser_returns_rows_for_valid_paste() -> None:
+    rows = parse_industry_events_text(_VALID_PASTE)
     assert len(rows) == 3
-    # Each row uses the registry "industry" type and gemini source.
     for row in rows:
         assert row["type"] == "industry"
         assert row["source"] == "gemini"
@@ -83,27 +89,19 @@ async def test_fetch_returns_rows_for_valid_response(
         assert "last_verified_at" in payload
 
 
-@pytest.mark.asyncio
-async def test_fetch_attaches_primary_ticker_from_registry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """LLM names include the year; the matcher strips it and looks up
-    the registry entry by substring so primary_ticker / tags follow."""
-    _patch_invoke(monkeypatch, payload=_VALID_LLM_RESPONSE)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+def test_parser_attaches_primary_ticker_from_registry() -> None:
+    """``registry_id`` lookups attach the registry's ``primary_ticker``
+    + ``tags`` so WWDC → AAPL etc."""
+    rows = parse_industry_events_text(_VALID_PASTE)
     by_title = {row["title"]: row for row in rows}
-    # WWDC → AAPL; GTC → NVDA; Computex → None (no primary ticker).
     assert by_title["Apple WWDC 2026 Keynote"]["ticker_symbol"] == "AAPL"
     assert by_title["NVIDIA GTC 2027 (Spring)"]["ticker_symbol"] == "NVDA"
+    # Computex has no primary ticker in the registry.
     assert by_title["Computex 2027"]["ticker_symbol"] is None
 
 
-@pytest.mark.asyncio
-async def test_fetch_payload_carries_source_url_and_end_date_when_present(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_invoke(monkeypatch, payload=_VALID_LLM_RESPONSE)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+def test_parser_carries_source_url_and_end_date_when_present() -> None:
+    rows = parse_industry_events_text(_VALID_PASTE)
     by_title = {row["title"]: row for row in rows}
     computex_payload = by_title["Computex 2027"]["payload_json"]
     assert computex_payload is not None
@@ -116,69 +114,24 @@ async def test_fetch_payload_carries_source_url_and_end_date_when_present(
     assert "source_url" not in wwdc_payload
 
 
-# --- empty / no-key ------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_fetch_returns_empty_when_api_key_missing() -> None:
-    """No key → no LLM call, no error — caller treats as "feeder disabled"."""
-    rows = await fetch_upcoming_industry_events(api_key="", as_of=date(2026, 5, 31))
+def test_parser_returns_empty_on_unparseable_json() -> None:
+    rows = parse_industry_events_text("this is definitely not JSON {[")
     assert rows == []
 
 
-@pytest.mark.asyncio
-async def test_fetch_returns_empty_when_no_conferences(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Empty registry → skip LLM call entirely (avoids token waste)."""
-    called = False
-
-    async def _should_not_call(**_: Any) -> str:
-        nonlocal called
-        called = True
-        return ""
-
-    monkeypatch.setattr(mod, "_invoke_gemini_with_retry", _should_not_call)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", conferences=())
-    assert rows == []
-    assert called is False
-
-
-# --- malformed responses -------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_fetch_returns_empty_on_unparseable_json(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_invoke(monkeypatch, payload="this is definitely not JSON {[")
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+def test_parser_returns_empty_when_response_is_not_array() -> None:
+    rows = parse_industry_events_text('{"events": []}')
     assert rows == []
 
 
-@pytest.mark.asyncio
-async def test_fetch_returns_empty_when_response_is_not_array(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_invoke(monkeypatch, payload='{"events": []}')
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
-    assert rows == []
-
-
-@pytest.mark.asyncio
-async def test_fetch_strips_markdown_fences(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Gemini occasionally wraps JSON in ```json fences despite the prompt
-    asking for raw JSON. We strip them so the batch isn't lost."""
-    fenced = "```json\n" + _VALID_LLM_RESPONSE + "\n```"
-    _patch_invoke(monkeypatch, payload=fenced)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+def test_parser_strips_markdown_fences() -> None:
+    """Gemini occasionally wraps JSON in ```json fences despite the prompt."""
+    fenced = "```json\n" + _VALID_PASTE + "\n```"
+    rows = parse_industry_events_text(fenced)
     assert len(rows) == 3
 
 
-@pytest.mark.asyncio
-async def test_fetch_drops_only_bad_entries_keeps_good_ones(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_parser_drops_only_bad_entries_keeps_good_ones() -> None:
     """One row with an unknown confidence shouldn't taint the batch."""
     payload = """[
       {
@@ -201,17 +154,13 @@ async def test_fetch_drops_only_bad_entries_keeps_good_ones(
         "confidence": "confirmed"
       }
     ]"""
-    _patch_invoke(monkeypatch, payload=payload)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+    rows = parse_industry_events_text(payload)
     # Only the WWDC row survives — the other two trip schema validation.
     assert len(rows) == 1
     assert rows[0]["title"] == "Apple WWDC 2026 Keynote"
 
 
-@pytest.mark.asyncio
-async def test_fetch_accepts_uncertain_confidence(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_parser_accepts_uncertain_confidence() -> None:
     """'uncertain' is a legitimate signal the UI uses — must not be dropped."""
     payload = """[
       {
@@ -223,44 +172,14 @@ async def test_fetch_accepts_uncertain_confidence(
         "notes": "Conflicting sources."
       }
     ]"""
-    _patch_invoke(monkeypatch, payload=payload)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
+    rows = parse_industry_events_text(payload)
     assert len(rows) == 1
     payload_dict = rows[0]["payload_json"]
     assert payload_dict is not None
     assert payload_dict["confidence"] == "uncertain"
 
 
-# --- network / quota error handling --------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_fetch_returns_empty_when_llm_call_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Any unhandled exception from the LLM call is swallowed so the
-    weekly sync degrades gracefully (existing DB rows stay put)."""
-
-    async def _explode(**_: Any) -> str:
-        raise RuntimeError("upstream blew up")
-
-    monkeypatch.setattr(mod, "_invoke_gemini_with_retry", _explode)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
-    assert rows == []
-
-
-def test_transient_error_predicate_matches_rate_limit_strings() -> None:
-    """Sanity-check the substring matcher used by the retry filter."""
-    assert mod._is_transient_gemini_error(ValueError("429 Too Many Requests"))
-    assert mod._is_transient_gemini_error(RuntimeError("Resource exhausted"))
-    assert mod._is_transient_gemini_error(RuntimeError("503 Service Unavailable"))
-    assert mod._is_transient_gemini_error(ConnectionError("dropped socket"))
-    # Real validation errors (LLM lied about date format) should NOT retry —
-    # retrying won't help and would burn quota.
-    assert not mod._is_transient_gemini_error(ValueError("invalid date format"))
-
-
-# --- registry sanity -----------------------------------------------------
+# --- Registry sanity -----------------------------------------------------
 
 
 def test_conference_registry_is_non_empty_and_typed() -> None:
@@ -288,22 +207,3 @@ def test_industry_event_response_validates_strict() -> None:
 
     with pytest.raises(pydantic.ValidationError):
         IndustryEventResponse.model_validate({"name": "X", "confidence": "confirmed"})
-
-
-# --- end-to-end timestamp wiring -----------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_fetch_writes_last_verified_at_in_iso_utc(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_invoke(monkeypatch, payload=_VALID_LLM_RESPONSE)
-    before = datetime.now(UTC)
-    rows = await fetch_upcoming_industry_events(api_key="fake-key", as_of=date(2026, 5, 31))
-    after = datetime.now(UTC)
-    for row in rows:
-        payload = row["payload_json"]
-        assert payload is not None
-        verified_at_str = payload["last_verified_at"]
-        verified_at = datetime.fromisoformat(verified_at_str)
-        assert before <= verified_at <= after
