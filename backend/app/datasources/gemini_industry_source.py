@@ -350,11 +350,23 @@ async def _call_gemini_once(*, api_key: str, prompt: str) -> str:
         config=genai_types.GenerateContentConfig(
             tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
             temperature=0.1,
+            # ``gemini-2.5-flash`` defaults to thinking mode on, which
+            # spends output tokens on internal reasoning. With grounded
+            # search ALSO eating context, a 25-entry batch JSON gets
+            # truncated mid-way (observed: 1 of 25 entries returned).
+            # Setting ``thinking_budget=0`` disables the reasoning step
+            # so the model behaves like a vanilla LLM and emits the full
+            # JSON. This task is structured extraction, not reasoning —
+            # thinking helps nothing here.
+            thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
         ),
     )
     text = response.text
     if not isinstance(text, str):
         raise ValueError("gemini returned non-text response")
+    # INFO (not DEBUG) so the response size is visible without changing
+    # log levels — useful while we're tuning thinking_budget / batching.
+    logger.info("gemini_industry_raw_response", chars=len(text))
     return text
 
 
