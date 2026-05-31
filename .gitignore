@@ -1,5 +1,10 @@
 # Secrets — never commit
+# (Root ``.env`` already matches subdirectory ``.env`` files per standard
+# git behavior, but listing them explicitly here is belt-and-suspenders
+# clarity for anyone scanning this file on an unusual filesystem.)
 .env
+backend/.env
+frontend/.env
 .env.local
 .env.*.local
 *.key

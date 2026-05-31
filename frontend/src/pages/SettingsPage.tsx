@@ -582,9 +582,9 @@ function IndustrySyncCard(): JSX.Element {
           產業事件同步 (Gemini 手動模式)
         </h2>
         <p className="mt-1 text-xs text-stone-500">
-          複製 prompt → 貼進 Gemini 網頁 → 把 JSON 結果貼回 → 匯入。
-          ~25 場大型科技會議(GTC / Computex / WWDC / CES / AWS re:Invent / ...)
-          的下次日期。建議每月跑一次。
+          (選用) 把 ~25 場主要科技會議的下次日期匯進行事曆 — GTC / Computex /
+          WWDC / CES / AWS re:Invent 等等。建議每月跑一次。
+          也可以直接編輯 <code className="rounded bg-stone-100 px-1 py-0.5 text-[11px]">docs/events.yaml</code> 後重啟 (適合一次補一兩件 ad-hoc 事件)。
         </p>
       </header>
 
@@ -627,8 +627,10 @@ function IndustrySyncCard(): JSX.Element {
           >
             Google AI Studio
           </a>
-          {' '}→ 新對話 → 開啟「Grounding with Google Search」工具 → 貼上 prompt →
-          送出 → 等回應 → 複製 JSON 結果(整段)。
+          {' '}→ 新對話 → 在右側工具列{' '}
+          <strong>務必開啟「Grounding with Google Search」</strong>{' '}
+          (不開的話 LLM 會憑記憶亂猜日期) → 貼上 prompt → 送出 → 等約
+          30-60 秒 → 複製 JSON 結果(包含 <code>```json</code> 標記 OK,後端會自動清掉)。
         </li>
 
         <li className="flex flex-col gap-2">

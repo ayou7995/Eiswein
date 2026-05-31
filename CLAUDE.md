@@ -1,5 +1,18 @@
 # Eiswein — Personal Stock Market Decision-Support Tool
 
+> ## ⚠ This document describes the *production / cloud* architecture
+>
+> Friends running the repo locally use a **simplified distributable model**:
+>
+> - **Access**: `http://localhost:8080` (no Cloudflare)
+> - **Auth**: App-level JWT + bcrypt only (no Cloudflare Access OAuth layer)
+> - **Secrets**: Plaintext `.env` (chmod 600) populated by `make install` — no SOPS, no age
+> - **Deployment**: `make install` → `make start`; see `README.md`
+>
+> The architecture / security / ops sections below apply only to the
+> production cloud deployment. Distributable-model details that differ
+> are flagged inline with **[Distributable]** notes.
+
 ## Project Overview
 A web dashboard that analyzes a user-managed watchlist using 12 technical indicators, produces daily signal reports (entry/exit/stop-loss recommendations), and tracks positions and decision history. Inspired by Heaton's Sherry trading system.
 
@@ -10,7 +23,7 @@ A web dashboard that analyzes a user-managed watchlist using 12 technical indica
 - **Frontend**: React + TypeScript + Tailwind CSS + TradingView Lightweight Charts
 - **Deployment**: Single Docker container (multi-stage build: React → FastAPI serves static)
 - **Cloud**: Oracle Cloud Free Tier (ARM, 24GB RAM) or Hetzner CX22 backup
-- **Network**: Cloudflare Tunnel (no public ports) + Cloudflare Access (OAuth)
+- **Network**: Cloudflare Tunnel (no public ports) + Cloudflare Access (OAuth) **[Production only — distributable runs on plain localhost]**
 
 ## Directory Structure
 ```
@@ -130,11 +143,18 @@ After completing a module: run `security-auditor` then `test-writer`.
 - **Dedup guards**: UNIQUE constraints + asyncio.Lock per-symbol for cold-start; stop_loss_triggered_at for intra-day alerts.
 
 ## Operational Scripts (in `scripts/`)
-- `setup_secrets.sh` — first-time SOPS + age setup
-- `set_password.py` — generate bcrypt hash for initial ADMIN_PASSWORD_HASH
+
+**[Distributable]** Friends running `make install` do NOT need any of the
+SOPS/age scripts below. `bootstrap.py` generates JWT/ENCRYPTION secrets
+on first run, writes `.env` with chmod 600, and you're done. The scripts
+prefixed *(Production)* are only relevant for the cloud VM deployment.
+
+- `bootstrap.py` — **distributable**: interactive `make install` entry
+- `set_password.py` — generate bcrypt hash for ADMIN_PASSWORD_HASH
 - `reset_password_offline.py` — reset admin password without app running (SSH to VM)
-- `rotate_age_key.sh` — rotate SOPS age encryption key
-- `rotate_secrets.py` — rotate JWT_SECRET / ENCRYPTION_KEY (re-encrypts BrokerCredential)
+- *(Production)* `setup_secrets.sh` — first-time SOPS + age setup
+- *(Production)* `rotate_age_key.sh` — rotate SOPS age encryption key
+- *(Production)* `rotate_secrets.py` — rotate JWT_SECRET / ENCRYPTION_KEY (re-encrypts BrokerCredential)
 
 ## References (committed to repo)
 - Implementation plan: `docs/IMPLEMENTATION_PLAN.md`

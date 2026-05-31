@@ -148,10 +148,23 @@ test:
 migrate:
 	cd backend && alembic upgrade head
 
+# Belt-and-suspenders secret check — fails loudly if a staged file
+# contains a value that looks like one of the secrets bootstrap writes
+# into .env. ``.env`` is already gitignored; this guards against
+# ``git add -f`` or someone manually copying a key into another file.
+check-secrets:
+	@if git diff --cached --no-color | \
+		grep -E '^[+].*((JWT_SECRET|ENCRYPTION_KEY|ADMIN_PASSWORD_HASH|SMTP_PASSWORD|SCHWAB_CLIENT_SECRET|FRED_API_KEY)=[^[:space:]]{8,})' \
+		>/dev/null; then \
+		echo "ERR: staged diff looks like it contains a real secret value."; \
+		echo "Run 'git diff --cached' to inspect, or 'git reset HEAD <file>' to unstage."; \
+		exit 1; \
+	fi
+
 # Pre-push gate — runs every check GitHub Actions runs, in the same
 # order, so a green ``make verify`` means CI will go green too.
 # AGENTS.md treats this as MANDATORY before any push to origin/main.
-verify:
+verify: check-secrets
 	@echo "==> [1/6] Backend lint (ruff check .)"
 	@cd backend && ruff check .
 	@echo "==> [2/6] Backend format (ruff format --check .)"

@@ -271,6 +271,13 @@ function IndustryTrustLines({
 
 function SourceLine({ source }: { source: string | null }): JSX.Element | null {
   if (!source) return null;
+  // Defence-in-depth: backend Pydantic already rejects non-http(s) URLs,
+  // but blocking again on render keeps a hand-edited DB row or a future
+  // alternate ingest path from injecting a ``javascript:`` href.
+  const lowered = source.toLowerCase();
+  if (!(lowered.startsWith('http://') || lowered.startsWith('https://'))) {
+    return null;
+  }
   return (
     <a
       href={source}

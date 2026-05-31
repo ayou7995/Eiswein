@@ -677,11 +677,15 @@ def _assemble_defaults() -> dict[str, str]:
         "LOG_LEVEL": "INFO",
         "DATABASE_URL": "sqlite:///./data/eiswein.db",
         "FRONTEND_URL": f"http://localhost:{HOST_PORT}",
-        # Cookies must be ``Secure=true`` only over HTTPS. The
-        # entrypoint switches based on cert presence, but Cookie
-        # Secure is a runtime flag too — keep it loose here so HTTP
-        # cookies work, the Schwab branch overrides if certs were
-        # generated.
+        # COOKIE_SECURE must match the URL scheme the browser actually
+        # uses — set Secure=true on a plain http:// page and the browser
+        # silently refuses the cookie, breaking login. The default below
+        # matches the default FRONTEND_URL (http://localhost). The
+        # Schwab branch flips both to HTTPS when mkcert certs land.
+        #
+        # If you later put this behind Cloudflare Tunnel (HTTPS at the
+        # edge), flip COOKIE_SECURE=true AND FRONTEND_URL=https://...
+        # in .env by hand.
         "COOKIE_SECURE": "false",
     }
 

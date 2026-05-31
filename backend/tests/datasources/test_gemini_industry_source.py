@@ -207,3 +207,65 @@ def test_industry_event_response_validates_strict() -> None:
 
     with pytest.raises(pydantic.ValidationError):
         IndustryEventResponse.model_validate({"name": "X", "confidence": "confirmed"})
+
+
+def test_industry_event_response_rejects_non_http_source_url() -> None:
+    """A malicious or hallucinated paste can't smuggle a ``javascript:``
+    URL into ``source_url`` — the field validator blocks any scheme
+    other than http(s) before the row reaches the DB."""
+    import pydantic
+
+    for bad in (
+        "javascript:alert(1)",
+        "data:text/html,<script>x</script>",
+        "file:///etc/passwd",
+        "ftp://example.com/",
+    ):
+        with pytest.raises(pydantic.ValidationError):
+            IndustryEventResponse.model_validate(
+                {
+                    "registry_id": 1,
+                    "name": "X",
+                    "start_date": "2027-01-01",
+                    "confidence": "confirmed",
+                    "source_url": bad,
+                }
+            )
+
+    # http(s) variants pass.
+    for good in ("http://example.com", "https://example.com/path?q=1"):
+        ok = IndustryEventResponse.model_validate(
+            {
+                "registry_id": 1,
+                "name": "X",
+                "start_date": "2027-01-01",
+                "confidence": "confirmed",
+                "source_url": good,
+            }
+        )
+        assert ok.source_url == good
+
+
+def test_parser_drops_entry_with_malicious_source_url() -> None:
+    """Whole-batch behaviour: a poisoned entry is dropped, the good
+    entries still get through. The bad row doesn't reach the upsert
+    layer, so no Calendar Drawer link can ever point at a non-http URL."""
+    payload = """[
+      {
+        "registry_id": 1,
+        "name": "Good event",
+        "start_date": "2027-03-15",
+        "confidence": "confirmed",
+        "source_url": "https://nvidia.com/gtc/"
+      },
+      {
+        "registry_id": 9,
+        "name": "Poisoned event",
+        "start_date": "2026-06-08",
+        "confidence": "confirmed",
+        "source_url": "javascript:alert(1)"
+      }
+    ]"""
+    rows = parse_industry_events_text(payload)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Good event"

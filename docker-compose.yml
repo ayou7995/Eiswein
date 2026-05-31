@@ -67,12 +67,16 @@ services:
     # Mailpit (MailHog successor) catches outbound SMTP and exposes a
     # web inbox at http://localhost:8025 — useful for previewing the
     # catalyst digest template without delivering real email.
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.22
     profiles:
       - email
+    # Bind to loopback only — Mailpit is a dev mail-capture tool, never
+    # something that should be reachable from another host. On a cloud
+    # VM without a host firewall, leaving these as ``"8025:8025"`` would
+    # expose an open SMTP relay + an authless web UI to the internet.
     ports:
-      - "8025:8025"  # web UI
-      - "1025:1025"  # SMTP receiver
+      - "127.0.0.1:8025:8025"  # web UI
+      - "127.0.0.1:1025:1025"  # SMTP receiver
     restart: unless-stopped
     environment:
       MP_MAX_MESSAGES: "5000"

@@ -36,7 +36,7 @@ from datetime import UTC, date, datetime
 from typing import Any, Final
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.datasources._industry_conference_registry import (
     CONFERENCES,
@@ -58,7 +58,13 @@ class IndustryEventResponse(BaseModel):
     it's the stable identifier we use to look the ConferenceSource back
     up. Substring matching on names was fragile because the LLM injects
     year tokens mid-name ("Apple WWDC 2026 Keynote") and that breaks
-    naive substring on the registry name "Apple WWDC Keynote"."""
+    naive substring on the registry name "Apple WWDC Keynote".
+
+    ``source_url`` is constrained to ``http``/``https`` so a malicious
+    or hallucinated paste can't smuggle a ``javascript:`` href into the
+    EventDrawer link. The frontend doubles up with its own scheme guard
+    as defence-in-depth, but blocking it at validation keeps the bad
+    row out of the DB entirely."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -67,8 +73,19 @@ class IndustryEventResponse(BaseModel):
     start_date: date
     end_date: date | None = None
     confidence: str
-    source_url: str | None = None
+    source_url: str | None = Field(default=None, max_length=2000)
     notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("source_url")
+    @classmethod
+    def _require_http_scheme(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        lowered = v.strip().lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            msg = f"source_url must be http(s); got {v[:40]!r}"
+            raise ValueError(msg)
+        return v.strip()
 
 
 def build_industry_sync_prompt(
