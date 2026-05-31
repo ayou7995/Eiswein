@@ -48,13 +48,18 @@ logger = structlog.get_logger("eiswein.datasources.gemini_industry")
 # Model + grounding tool — pinned strings so a Gemini SDK upgrade doesn't
 # silently switch model behaviour. Bump deliberately when the user wants.
 #
-# Why ``gemini-2.5-flash`` and not ``2.0-flash``: as of 2026 Google moved
-# ``gemini-2.0-flash`` off the free tier for new projects — the error
-# manifests as ``429 RESOURCE_EXHAUSTED ... limit: 0`` which is NOT
-# "you used your quota" but "this model has zero free quota for you".
-# ``gemini-2.5-flash`` keeps a real free tier (5 RPM / 250 RPD), and we
-# only call it ~4 times per month so we're well under the cap.
-_MODEL: Final[str] = "gemini-2.5-flash"
+# Why ``gemini-2.5-flash-lite``:
+# * ``gemini-2.0-flash`` — Google moved off free tier in 2026 (limit: 0).
+# * ``gemini-2.5-flash`` — works on free tier (5 RPM / 250 RPD) BUT ships
+#   with thinking mode on by default, which spends output tokens on
+#   internal reasoning. With grounded search also bloating the response,
+#   the 25-entry batch JSON gets truncated mid-way (observed: 1 of 25
+#   returned). ``google-genai==0.7.0``'s ``ThinkingConfig`` lacks the
+#   ``thinking_budget`` field we'd need to disable thinking explicitly.
+# * ``gemini-2.5-flash-lite`` — thinking OFF by default, supports
+#   ``google_search`` grounding, free tier is even better (15 RPM /
+#   1000 RPD). Right fit for structured extraction.
+_MODEL: Final[str] = "gemini-2.5-flash-lite"
 
 # Max retries against the LLM call before we give up for this sync run.
 # A 429 from Google's free tier is rare at our volume (~4 req/month) but
@@ -350,15 +355,6 @@ async def _call_gemini_once(*, api_key: str, prompt: str) -> str:
         config=genai_types.GenerateContentConfig(
             tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
             temperature=0.1,
-            # ``gemini-2.5-flash`` defaults to thinking mode on, which
-            # spends output tokens on internal reasoning. With grounded
-            # search ALSO eating context, a 25-entry batch JSON gets
-            # truncated mid-way (observed: 1 of 25 entries returned).
-            # Setting ``thinking_budget=0`` disables the reasoning step
-            # so the model behaves like a vanilla LLM and emits the full
-            # JSON. This task is structured extraction, not reasoning —
-            # thinking helps nothing here.
-            thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
         ),
     )
     text = response.text
