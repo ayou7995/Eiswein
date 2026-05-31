@@ -11,7 +11,8 @@ overall market posture (進攻 / 正常 / 防守).
 You run it on your own laptop. No data leaves your machine. There is
 no auto-trading — every decision is still yours.
 
-**Inspired by** Heaton's Sherry trading system. **Not affiliated with**
+**Inspired by** Heaton's Sherry trading system
+([背景 / philosophy](./docs/SHERRY_SYSTEM.md)). **Not affiliated with**
 Heaton or his Patreon.
 
 ---

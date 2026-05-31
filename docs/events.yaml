@@ -1,5 +1,17 @@
 # Eiswein industry / catalyst events.
 #
+# Two ways to populate the calendar's industry chips:
+#
+#   1. (Recommended for the big batch) Settings → 產業事件同步:
+#      copy the prompt, paste into Gemini AI Studio with Grounding on,
+#      paste the JSON output back → backend validates + upserts. Covers
+#      the ~25 well-known conferences (GTC / Computex / WWDC / CES / ...).
+#
+#   2. (This file) Use for ad-hoc one-off events that don't fit the
+#      registry — SpaceX IPO, a specific company analyst day, an
+#      unscheduled NVIDIA AI summit. Edit below, save, then `make stop
+#      && make start` so the daily_update sync picks it up.
+#
 # Each entry shapes into a calendar_event row of type=industry. The
 # daily calendar_sync loads this file and upserts everything; entries
 # that disappear here on next sync are NOT auto-deleted — drop the line

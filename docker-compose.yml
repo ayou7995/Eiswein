@@ -27,19 +27,18 @@ services:
       # slot, picked specifically to avoid colliding with a foreground
       # ``make dev`` (uvicorn on 8000) running on the same machine.
       - "8080:8000"
-    # We deliberately do NOT use `env_file: .env` here. Reason: the
-    # Homebrew docker-compose 5.1.4 build interpolates `$XYZ` segments
-    # inside env_file VALUES, which truncates the bcrypt hash in
-    # ADMIN_PASSWORD_HASH ($2b$12$… → "") on its way to the container.
-    # Instead, mount the .env file as a read-only volume below and let
-    # pydantic-settings (via python-dotenv, which does NOT interpolate)
-    # read it directly inside the container.
+    # Why we mount .env as a volume instead of using ``env_file: .env``:
+    # bcrypt hashes contain ``$`` characters (e.g. ``$2b$12$abc...``),
+    # which some docker-compose builds (notably Homebrew 5.1.4) treat
+    # as shell variables and strip out — turning the admin password
+    # hash into an empty string and breaking login. Mounting the file
+    # bypasses that interpolation step; pydantic-settings reads the
+    # file literally inside the container. Don't "simplify" this to
+    # env_file or your friends' logins will silently break.
     volumes:
       # SQLite + parquet caches survive container rebuilds.
       - ./data:/app/data
-      # .env mounted as a file rather than forwarded via env_file so the
-      # bcrypt hash inside ADMIN_PASSWORD_HASH survives compose's
-      # interpolation quirks. See the comment above ports:.
+      # See "why we mount .env as a volume" comment above ports:.
       - ./.env:/app/.env:ro
       # Optional self-signed certs from `mkcert localhost`. The
       # entrypoint detects them and starts uvicorn with TLS; absent →

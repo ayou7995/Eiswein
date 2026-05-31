@@ -415,15 +415,18 @@ _BACKFILL_PRESETS: Final[dict[str, int]] = {
 def _section_backfill() -> dict[str, str]:
     print("\n[Historical data depth]")
     print(
-        "  On first start, Eiswein backfills trading-day history per\n"
-        "  symbol so all 12 indicators have enough data to compute.\n"
-        "  Steady-state daily updates only fetch new bars after that —\n"
-        "  this is a one-time choice you can change later by re-running\n"
-        "  `make install` or editing BACKFILL_WINDOW_TRADING_DAYS in .env.\n"
+        "  Pick how far back to fetch price history on first install. All\n"
+        "  12 indicators only need ~300 trading days to compute; deeper\n"
+        "  windows give the History page + chart 'ALL' button more to\n"
+        "  show. After install, steady-state daily updates only fetch the\n"
+        "  newest bar — depth is a one-time cost.\n"
         "\n"
-        "    1)  ~14 months  (default, fast install — covers every indicator)\n"
-        "    2)   ~2 years   (a bit more History-page context)\n"
-        "    3)   ~5 years   (deepest — matches the chart 'ALL' button)"
+        "    1)  ~14 months  (default, fastest — covers all indicators)\n"
+        "    2)   ~2 years   (more History-page context)\n"
+        "    3)   ~5 years   (best for year-over-year pattern lookups)\n"
+        "\n"
+        "  Can be changed later: `make backfill DAYS=<n>` (max 1260),\n"
+        "  or edit BACKFILL_WINDOW_TRADING_DAYS in .env + restart."
     )
     choice = _prompt("Choice [1-3]", default="1").strip()
     days = _BACKFILL_PRESETS.get(choice, _BACKFILL_PRESETS["1"])
