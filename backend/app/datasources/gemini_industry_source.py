@@ -398,11 +398,51 @@ def _extract_response_text(response: object) -> str:
         return "".join(chunks)
 
     feedback = getattr(response, "prompt_feedback", None)
+    part_shapes: list[list[str]] = []
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        part_summaries: list[str] = []
+        for part in getattr(content, "parts", None) or []:
+            # Identify which sub-field (if any) the part carries —
+            # ``text``, ``function_call``, ``executable_code``,
+            # ``inline_data``, etc. Helps us tell apart "model output a
+            # tool call" from "model literally said nothing".
+            attrs = [
+                attr
+                for attr in (
+                    "text",
+                    "function_call",
+                    "function_response",
+                    "executable_code",
+                    "code_execution_result",
+                    "inline_data",
+                    "file_data",
+                    "thought",
+                )
+                if getattr(part, attr, None) is not None
+            ]
+            part_summaries.append(",".join(attrs) if attrs else "empty")
+        part_shapes.append(part_summaries)
+    # Dump the full response as JSON for one-shot debugging. Pydantic-
+    # backed responses expose ``model_dump_json`` but we truncate to keep
+    # the structured log line small. Best-effort: not every SDK version
+    # exposes it, fall back to repr.
+    raw_dump: str
+    dump = getattr(response, "model_dump_json", None)
+    if callable(dump):
+        try:
+            raw_dump = dump()[:2000]
+        except Exception:
+            raw_dump = repr(response)[:2000]
+    else:
+        raw_dump = repr(response)[:2000]
     logger.warning(
         "gemini_industry_response_empty",
         candidates=len(candidates),
         finish_reasons=[str(getattr(c, "finish_reason", None)) for c in candidates],
         block_reason=str(getattr(feedback, "block_reason", None)) if feedback is not None else None,
+        part_shapes=part_shapes,
+        response_preview=raw_dump,
     )
     raise ValueError("gemini response had no text parts")
 
