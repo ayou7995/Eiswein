@@ -357,13 +357,54 @@ async def _call_gemini_once(*, api_key: str, prompt: str) -> str:
             temperature=0.1,
         ),
     )
-    text = response.text
-    if not isinstance(text, str):
-        raise ValueError("gemini returned non-text response")
+    text = _extract_response_text(response)
     # INFO (not DEBUG) so the response size is visible without changing
-    # log levels — useful while we're tuning thinking_budget / batching.
+    # log levels — useful while diagnosing per-batch truncation.
     logger.info("gemini_industry_raw_response", chars=len(text))
     return text
+
+
+def _extract_response_text(response: object) -> str:
+    """Pull concatenated text out of a Gemini response.
+
+    ``response.text`` is a convenience that returns ``None`` for several
+    real-world cases on grounded responses:
+    * The text lives split across multiple ``content.parts`` entries
+      (grounded answers package citations as separate parts).
+    * The response was blocked by safety filters (no parts at all).
+    * ``finish_reason`` was MAX_TOKENS partway through a part.
+
+    Walking ``candidates[0].content.parts`` and stringifying every part
+    that has a ``text`` attr is more robust. On total failure we log
+    enough metadata (candidates count, finish reasons, block reason) so
+    the operator can tell "safety block" from "empty response" from
+    "API hiccup" without enabling debug logging."""
+    raw_text = getattr(response, "text", None)
+    if isinstance(raw_text, str) and raw_text.strip():
+        return raw_text
+
+    candidates = getattr(response, "candidates", None) or []
+    chunks: list[str] = []
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        if content is None:
+            continue
+        for part in getattr(content, "parts", None) or []:
+            part_text = getattr(part, "text", None)
+            if isinstance(part_text, str):
+                chunks.append(part_text)
+
+    if chunks:
+        return "".join(chunks)
+
+    feedback = getattr(response, "prompt_feedback", None)
+    logger.warning(
+        "gemini_industry_response_empty",
+        candidates=len(candidates),
+        finish_reasons=[str(getattr(c, "finish_reason", None)) for c in candidates],
+        block_reason=str(getattr(feedback, "block_reason", None)) if feedback is not None else None,
+    )
+    raise ValueError("gemini response had no text parts")
 
 
 __all__ = [
