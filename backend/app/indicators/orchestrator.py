@@ -27,9 +27,12 @@ from app.indicators.direction.volume_anomaly import compute_volume_anomaly
 from app.indicators.macro.dxy import compute_dxy
 from app.indicators.macro.fed_rate import compute_fed_rate
 from app.indicators.market_regime.ad_day import compute_ad_day
+from app.indicators.market_regime.spx_adx import compute_spx_adx
 from app.indicators.market_regime.spx_ma import compute_spx_ma
 from app.indicators.market_regime.vix import compute_vix
 from app.indicators.market_regime.yield_spread import compute_yield_spread
+from app.indicators.timing.adx import compute_adx
+from app.indicators.timing.atr import compute_atr
 from app.indicators.timing.bollinger import compute_bollinger
 from app.indicators.timing.macd import compute_macd
 
@@ -51,6 +54,11 @@ _PER_TICKER: dict[str, IndicatorFunc] = {
     "relative_strength": compute_relative_strength,
     "macd": compute_macd,
     "bollinger": compute_bollinger,
+    # v2 Phase 2 (2026-06): ADX as a mid-term trust modifier on the
+    # other direction signals; ATR as the volatility gauge that feeds
+    # stop-loss sizing + the "today's move unusual?" headline.
+    "adx": compute_adx,
+    "atr": compute_atr,
     "dxy": compute_dxy,
     "fed_rate": compute_fed_rate,
 }
@@ -60,6 +68,10 @@ _MARKET_REGIME: dict[str, IndicatorFunc] = {
     "ad_day": compute_ad_day,
     "vix": compute_vix,
     "yield_spread": compute_yield_spread,
+    # v2 Phase 2: market-wide trend strength. Pairs with spx_ma (which
+    # gives direction) — when SPX is above 200MA and SPX ADX > 25 the
+    # trend is real; SPX above 200MA but ADX < 20 means we're drifting.
+    "spx_adx": compute_spx_adx,
 }
 
 

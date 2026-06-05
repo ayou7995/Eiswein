@@ -25,6 +25,9 @@ def test_compute_all_returns_all_expected_names(
         "relative_strength",
         "macd",
         "bollinger",
+        # v2 Phase 2 additions: ADX trend-strength + ATR volatility scale.
+        "adx",
+        "atr",
         "dxy",
         "fed_rate",
     }
@@ -37,7 +40,15 @@ def test_compute_market_regime_returns_four_indicators(
 ) -> None:
     ctx = indicator_context_factory(spx_frame=trend_frame)
     results = orch.compute_market_regime(ctx)
-    assert set(results.keys()) == {"spx_ma", "ad_day", "vix", "yield_spread"}
+    # v2 Phase 2: SPX ADX joined the regime registry alongside the
+    # original 4 (spx_ma / ad_day / vix / yield_spread).
+    assert set(results.keys()) == {
+        "spx_ma",
+        "ad_day",
+        "vix",
+        "yield_spread",
+        "spx_adx",
+    }
 
 
 def test_compute_all_isolates_broken_indicator(
@@ -62,8 +73,9 @@ def test_compute_all_isolates_broken_indicator(
     assert results["rsi"].data_sufficient is False
     assert results["rsi"].short_label == "計算錯誤"
     assert results["rsi"].detail == {"error_class": "ValueError"}
-    # Every other indicator is present and computed.
-    assert len(results) == 8
+    # Every other indicator is present and computed. (8 originals + 2
+    # new Phase 2 entries = 10.)
+    assert len(results) == 10
     # A neighboring indicator (price_vs_ma) still ran fine.
     assert results["price_vs_ma"].data_sufficient is True
 

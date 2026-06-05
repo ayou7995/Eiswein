@@ -87,9 +87,18 @@ def compose_and_persist_ticker(
         price_frame if price_frame is not None else pd.DataFrame(),
         timing_modifier=timing,
     )
+    # ATR (Phase 2) feeds the stop-loss as a per-ticker volatility scale.
+    # Detail is JSON-shaped so we read the float defensively.
+    atr_result = per_ticker_results.get("atr")
+    atr_value: float | None = None
+    if atr_result is not None and atr_result.data_sufficient:
+        raw = atr_result.detail.get("atr") if atr_result.detail else None
+        if isinstance(raw, int | float):
+            atr_value = float(raw)
     stop_loss = compute_stop_loss(
         price_frame if price_frame is not None else pd.DataFrame(),
         direction_action=action,
+        atr_value=atr_value,
     )
 
     signal = compose_signal(

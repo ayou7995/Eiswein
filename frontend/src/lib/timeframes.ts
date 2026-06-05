@@ -42,8 +42,11 @@ export const INDICATOR_TIMEFRAMES: Record<string, Timeframe> = {
   ad_day: 'short',
   vix: 'short',
   yield_spread: 'long',
+  spx_adx: 'mid',
   macd: 'short',
   bollinger: 'short',
+  adx: 'mid',
+  atr: 'short',
   dxy: 'long',
   fed_rate: 'long',
 };

@@ -35,7 +35,10 @@ import { ROUTES } from '../lib/constants';
 // trend is intact" (mid) from "yield curve is structurally bearish"
 // (long). Backend ``INDICATOR_TIMEFRAMES`` is source of truth.
 const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'ad_day'];
-const REGIME_MID: ReadonlyArray<string> = ['spx_ma'];
+// v2 Phase 2: SPX ADX joins the mid card — answers "is the SPX trend
+// strong enough to bet on?" alongside SPX 50/200 MA (which gives the
+// direction). Together they answer "trend confirmed" vs "drifting".
+const REGIME_MID: ReadonlyArray<string> = ['spx_ma', 'spx_adx'];
 const REGIME_LONG: ReadonlyArray<string> = ['yield_spread'];
 const MACRO_BACKDROP_NAMES: ReadonlySet<string> = new Set(['dxy', 'fed_rate']);
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = [

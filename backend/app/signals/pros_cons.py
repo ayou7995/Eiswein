@@ -32,12 +32,17 @@ from app.signals.types import (
 _DIRECTION_NAMES: Final[frozenset[str]] = frozenset(
     {"price_vs_ma", "rsi", "volume_anomaly", "relative_strength"}
 )
-_TIMING_NAMES: Final[frozenset[str]] = frozenset({"macd", "bollinger"})
+# v2 Phase 2: ADX + ATR slot under the timing category (they're
+# "should I trust the signal / how wide should my stop be?" rather than
+# directional votes). ATR also has a stop_loss-sizing role surfaced in
+# the EnhancedDetail UI but it's still a timing-flavoured indicator.
+_TIMING_NAMES: Final[frozenset[str]] = frozenset({"macd", "bollinger", "adx", "atr"})
 # Per-ticker macro + market-regime indicators both surface under the
 # "macro" category at the domain layer — the frontend can split them
-# visually (大盤 vs 總經) using the indicator_name.
+# visually (大盤 vs 總經) using the indicator_name. SPX ADX (v2 Phase 2)
+# joins as the market-trend-strength gauge.
 _MACRO_NAMES: Final[frozenset[str]] = frozenset(
-    {"dxy", "fed_rate", "spx_ma", "ad_day", "vix", "yield_spread"}
+    {"dxy", "fed_rate", "spx_ma", "ad_day", "vix", "yield_spread", "spx_adx"}
 )
 
 

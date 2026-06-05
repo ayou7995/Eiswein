@@ -100,6 +100,131 @@ def sma(series: pd.Series, length: int) -> pd.Series:
     return cast(pd.Series, series.astype("float64").rolling(length, min_periods=length).mean())
 
 
+# --- ATR + ADX ----------------------------------------------------------
+# Wilder's ADX system computes True Range, smoothes via the same
+# alpha = 1/length recursive EMA used for RSI, and finally derives the
+# directional movement (+DI, -DI) + the ADX itself. We hand-roll the
+# math here for the same reasons as elsewhere in this module: stable
+# pandas-only path, easy to audit against Wilder's "New Concepts in
+# Technical Trading Systems" (1978).
+
+
+class ADXResult(NamedTuple):
+    """ADX system output: the three lines that drive both the ATR-based
+    stop and the trend-strength signal."""
+
+    atr: pd.Series
+    plus_di: pd.Series
+    minus_di: pd.Series
+    adx: pd.Series
+
+
+def true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    """Wilder's True Range = max of three candidate ranges:
+
+    1. today's H - L
+    2. abs(today's H - yesterday's close)
+    3. abs(today's L - yesterday's close)
+
+    The previous-close terms capture gap-up / gap-down moves the simple
+    H-L range would miss — which is exactly why ATR (smoothed TR) is
+    more useful than ``high - low`` for stop sizing."""
+    high = high.astype("float64")
+    low = low.astype("float64")
+    close = close.astype("float64")
+    prev_close = close.shift(1)
+    range_hl = high - low
+    range_hc = (high - prev_close).abs()
+    range_lc = (low - prev_close).abs()
+    return cast(
+        pd.Series,
+        pd.concat([range_hl, range_hc, range_lc], axis=1).max(axis=1, skipna=False),
+    )
+
+
+def wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
+    """ATR with Wilder's smoothing (alpha = 1/length).
+
+    Seeds with the simple mean of the first ``length`` TR values so the
+    series doesn't have to wait for the recursive EMA to converge."""
+    tr = true_range(high, low, close)
+    seed = tr.iloc[:length].mean()
+    if pd.isna(seed):
+        return pd.Series(index=tr.index, dtype="float64")
+    out = [float("nan")] * (length - 1) + [float(seed)]
+    alpha = 1.0 / length
+    for i in range(length, len(tr)):
+        prev = out[-1]
+        current = float(tr.iloc[i])
+        out.append((1 - alpha) * prev + alpha * current)
+    return cast(pd.Series, pd.Series(out, index=tr.index, name="atr"))
+
+
+def wilder_adx(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> ADXResult:
+    """Wilder's ADX + ATR + ±DI in one pass.
+
+    Output series share the input index so callers can align with the
+    underlying OHLCV frame. NaN-prefixed until the recursive smoothing
+    has had ``length`` bars of input."""
+    high = high.astype("float64")
+    low = low.astype("float64")
+    close = close.astype("float64")
+
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = pd.Series(0.0, index=high.index, name="+DM")
+    minus_dm = pd.Series(0.0, index=high.index, name="-DM")
+    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move
+    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move
+
+    tr = true_range(high, low, close)
+
+    # Wilder smoothing on TR / +DM / -DM via the same recursive 1/length EMA.
+    def _smooth(series: pd.Series) -> pd.Series:
+        seed = series.iloc[:length].sum()
+        if pd.isna(seed):
+            return pd.Series(index=series.index, dtype="float64")
+        out = [float("nan")] * (length - 1) + [float(seed)]
+        for i in range(length, len(series)):
+            prev = out[-1]
+            out.append(prev - prev / length + float(series.iloc[i]))
+        return cast(pd.Series, pd.Series(out, index=series.index))
+
+    tr_smoothed = _smooth(tr)
+    plus_dm_smoothed = _smooth(plus_dm)
+    minus_dm_smoothed = _smooth(minus_dm)
+
+    plus_di = 100.0 * (plus_dm_smoothed / tr_smoothed)
+    minus_di = 100.0 * (minus_dm_smoothed / tr_smoothed)
+    dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+
+    # ADX is the Wilder EMA of DX itself. Seed with the first ``length``
+    # DX values' simple mean.
+    dx_valid = dx.dropna()
+    if len(dx_valid) < length:
+        adx = pd.Series(index=dx.index, dtype="float64")
+    else:
+        first_valid_pos = dx.index.get_loc(dx_valid.index[0])
+        seed_pos = int(first_valid_pos) + length - 1
+        if seed_pos >= len(dx):
+            adx_values: list[float] = [float("nan")] * len(dx)
+        else:
+            seed_value = float(dx.iloc[int(first_valid_pos) : seed_pos + 1].mean())
+            adx_values = [float("nan")] * seed_pos + [seed_value]
+            alpha = 1.0 / length
+            for i in range(seed_pos + 1, len(dx)):
+                prev = adx_values[-1]
+                current = float(dx.iloc[i]) if not pd.isna(dx.iloc[i]) else prev
+                adx_values.append((1 - alpha) * prev + alpha * current)
+        adx = pd.Series(adx_values, index=dx.index, name="adx")
+
+    # ATR == TR EMA (Wilder smoothing produces the same value via /length
+    # divisor) — re-use the running smoothed TR.
+    atr = tr_smoothed / length
+
+    return ADXResult(atr=atr, plus_di=plus_di, minus_di=minus_di, adx=adx)
+
+
 def last_float(series: pd.Series) -> float | None:
     """Return the last non-NaN value as a plain float, else None."""
     if series.empty:

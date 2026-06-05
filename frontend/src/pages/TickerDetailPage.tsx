@@ -78,8 +78,24 @@ import { EisweinApiError } from '../api/errors';
 //
 // All indicators are rendered inline (no <details> wrapper) — the
 // operator scrolls top-to-bottom through every data view in one pass.
-const SHORT_TERM_INDICATORS = ['rsi', 'volume_anomaly', 'macd', 'bollinger'];
-const MID_TERM_INDICATORS = ['price_vs_ma', 'relative_strength'];
+const SHORT_TERM_INDICATORS = [
+  'rsi',
+  'volume_anomaly',
+  'macd',
+  'bollinger',
+  // v2 Phase 2: ATR is the volatility scale that drives the
+  // ATR-based stop-loss. Sits in short because it answers "is today's
+  // move unusual vs the last 14 bars?".
+  'atr',
+];
+const MID_TERM_INDICATORS = [
+  'price_vs_ma',
+  'relative_strength',
+  // v2 Phase 2: ADX tells the operator whether the short-term signals
+  // (RSI / BB / MACD) should be trusted right now. > 25 + rising →
+  // trend in play, ignore mean-reversion. < 20 → choppy, trust them.
+  'adx',
+];
 const LONG_TERM_INDICATORS = ['dxy', 'fed_rate'];
 
 const INDICATOR_TITLES: Record<string, string> = {
@@ -89,6 +105,11 @@ const INDICATOR_TITLES: Record<string, string> = {
   relative_strength: '相對強度',
   macd: 'MACD',
   bollinger: 'Bollinger Bands',
+  // v2 Phase 2 — ADX answers "is the current trend strong enough to
+  // trust trend signals?"; ATR is the per-stock volatility scale that
+  // also feeds the stop-loss distance.
+  adx: 'ADX (趨勢強度)',
+  atr: 'ATR (波動率)',
   dxy: 'DXY (美元指數)',
   fed_rate: 'Fed 利率',
 };
