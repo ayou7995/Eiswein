@@ -51,15 +51,23 @@ def compose_signal(
     market_posture: MarketPosture,
     entry_tiers: EntryTiers,
     stop_loss: Decimal | None,
+    # Short-term vote (v2 Phase 1) — optional with WATCH/0/0 defaults so
+    # legacy callers (mostly tests written before the dual-action split)
+    # compile without modification. Production ingestion always passes
+    # these explicitly via ``classify_direction_short``.
+    action_short: ActionCategory = ActionCategory.WATCH,
+    direction_short_green_count: int = 0,
+    direction_short_red_count: int = 0,
     indicator_version: str = INDICATOR_VERSION,
     computed_at: datetime | None = None,
 ) -> ComposedSignal:
     """Assemble the final :class:`ComposedSignal` record.
 
     Thin adapter — all decision logic is upstream in the classifiers.
-    Keeping this as a function (rather than a ``ComposedSignal``
-    factory classmethod) avoids coupling the domain type to the
-    composition algorithm.
+    The ``action`` parameter holds the mid-term verdict (existing 4-vote
+    on price_vs_ma + rsi + volume_anomaly + relative_strength); the
+    ``action_short`` parameter holds the short-term verdict (4-vote on
+    rsi + macd + bollinger + volume_anomaly). The two may disagree.
     """
     return ComposedSignal(
         symbol=symbol,
@@ -69,6 +77,9 @@ def compose_signal(
         direction_red_count=direction_red_count,
         timing_modifier=timing_modifier,
         show_timing_modifier=should_show_timing(action),
+        action_short=action_short,
+        direction_short_green_count=direction_short_green_count,
+        direction_short_red_count=direction_short_red_count,
         entry_tiers=entry_tiers,
         stop_loss=stop_loss,
         market_posture_at_compute=market_posture,

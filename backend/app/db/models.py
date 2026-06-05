@@ -463,6 +463,19 @@ class TickerSnapshot(Base):
     direction_red_count: Mapped[int] = mapped_column(Integer, nullable=False)
     timing_modifier: Mapped[str] = mapped_column(String(20), nullable=False)
     show_timing_modifier: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Short-term vote (v2 Phase 1, 2026-06). Mid-term vote above runs on
+    # the 4 direction indicators (price_vs_ma / rsi / volume_anomaly /
+    # relative_strength); short-term runs on the 4 fastest indicators
+    # (rsi / macd / bollinger / volume_anomaly). ``server_default`` lets
+    # legacy fixtures + migration 0020 backfill both new + existing rows
+    # without having to know about the new columns.
+    action_short: Mapped[str] = mapped_column(String(20), nullable=False, server_default="watch")
+    direction_short_green_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    direction_short_red_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     entry_aggressive: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     entry_ideal: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     entry_conservative: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
@@ -491,6 +504,17 @@ class MarketSnapshot(Base):
     regime_green_count: Mapped[int] = mapped_column(Integer, nullable=False)
     regime_red_count: Mapped[int] = mapped_column(Integer, nullable=False)
     regime_yellow_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Short-term posture (v2 Phase 1, 2026-06). Mid-term posture above
+    # votes on all 4 regime indicators (spx_ma / ad_day / vix /
+    # yield_spread); short-term posture votes on the 2 fastest (vix +
+    # ad_day) so it can flip on intra-week panic without dragging in
+    # the multi-month yield curve signal. ``server_default`` covers
+    # legacy fixtures + migration 0020 backfill paths.
+    posture_short: Mapped[str] = mapped_column(String(20), nullable=False, server_default="normal")
+    regime_short_green_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    regime_short_red_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     indicator_version: Mapped[str] = mapped_column(String(20), nullable=False)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow

@@ -15,7 +15,7 @@ import {
 } from '../components/charts/IndicatorBoundedLine';
 import { IndicatorVolumeBars } from '../components/charts/IndicatorVolumeBars';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { ActionBadge } from '../components/ActionBadge';
+import { ActionBadgePair } from '../components/ActionBadgePair';
 import { NextCatalystChip } from '../components/NextCatalystChip';
 import { SignalBadge } from '../components/SignalBadge';
 import { Tooltip } from '../components/Tooltip';
@@ -68,17 +68,19 @@ import type {
 } from '../api/tickerIndicatorSeries';
 import { EisweinApiError } from '../api/errors';
 
-// Render order: tactical → trend → cross-check, mirroring the dashboard
-// scan order. All indicators are rendered inline (no <details> wrapper) —
-// the operator scrolls top-to-bottom through every data view in one pass.
-const DIRECTION_INDICATORS = [
-  'rsi',
-  'volume_anomaly',
-  'price_vs_ma',
-  'relative_strength',
-];
-const TIMING_INDICATORS = ['macd', 'bollinger'];
-const MACRO_INDICATORS = ['dxy', 'fed_rate'];
+// Per-ticker indicators grouped by HORIZON, not by semantic category. The
+// v1 split ("方向 / 時機 / 總經") mixed short + mid timeframes in each
+// section, which made it hard for the operator to answer "what does this
+// indicator say about the next 3 days vs the next 3 weeks?". v2 Phase 1
+// (2026-06) flipped to a strict short / mid / long layout so the
+// timeframe is obvious at a glance — backend INDICATOR_TIMEFRAMES is the
+// source of truth for which indicator goes into which bucket.
+//
+// All indicators are rendered inline (no <details> wrapper) — the
+// operator scrolls top-to-bottom through every data view in one pass.
+const SHORT_TERM_INDICATORS = ['rsi', 'volume_anomaly', 'macd', 'bollinger'];
+const MID_TERM_INDICATORS = ['price_vs_ma', 'relative_strength'];
+const LONG_TERM_INDICATORS = ['dxy', 'fed_rate'];
 
 const INDICATOR_TITLES: Record<string, string> = {
   price_vs_ma: '價格 vs 50/200 MA',
@@ -213,9 +215,9 @@ export function TickerDetailPage(): JSX.Element {
       />
 
       <IndicatorGroup
-        title="方向指標"
-        subtitle="4 項"
-        keys={DIRECTION_INDICATORS}
+        title="短期 (3-5 天)"
+        subtitle="RSI · 量能 · MACD · Bollinger — 戰術進出場依據"
+        keys={SHORT_TERM_INDICATORS}
         symbol={symbol}
         indicators={indicators}
         isLoading={indicatorsQuery.isLoading}
@@ -224,9 +226,9 @@ export function TickerDetailPage(): JSX.Element {
       />
 
       <IndicatorGroup
-        title="時機指標"
-        subtitle="2 項"
-        keys={TIMING_INDICATORS}
+        title="中期 (2-4 週)"
+        subtitle="價格 vs 均線 · 相對強度 — 持倉判斷依據"
+        keys={MID_TERM_INDICATORS}
         symbol={symbol}
         indicators={indicators}
         isLoading={indicatorsQuery.isLoading}
@@ -235,9 +237,9 @@ export function TickerDetailPage(): JSX.Element {
       />
 
       <IndicatorGroup
-        title="總經背景"
-        subtitle="2 項"
-        keys={MACRO_INDICATORS}
+        title="長期 / 總經背景"
+        subtitle="DXY · Fed 利率 — 部位配置背景"
+        keys={LONG_TERM_INDICATORS}
         symbol={symbol}
         indicators={indicators}
         isLoading={indicatorsQuery.isLoading}
@@ -279,13 +281,14 @@ function TickerHeader({
           </h1>
           {signalLoading && <LoadingSpinner label="讀取訊號…" />}
           {signal && (
-            <ActionBadge
-              action={signal.action}
-              timingBadge={signal.timing_badge}
-              explainContext={{
-                directionGreenCount: signal.direction_green_count,
-                directionRedCount: signal.direction_red_count,
-              }}
+            <ActionBadgePair
+              midAction={signal.action}
+              midGreen={signal.direction_green_count}
+              midRed={signal.direction_red_count}
+              midTimingBadge={signal.timing_badge}
+              shortAction={signal.action_short}
+              shortGreen={signal.direction_short_green_count}
+              shortRed={signal.direction_short_red_count}
             />
           )}
           <NextCatalystChip symbol={symbol} />

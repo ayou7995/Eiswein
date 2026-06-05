@@ -40,10 +40,15 @@ from app.db.repositories.ticker_snapshot_repository import (
 from app.indicators.base import INDICATOR_VERSION, IndicatorResult
 from app.signals.compose import compose_signal
 from app.signals.direction import classify_direction
+from app.signals.direction_short import classify_direction_short
 from app.signals.entry_price import compute_entry_tiers
 from app.signals.market_posture import (
     classify_market_posture,
     count_regime_tones,
+)
+from app.signals.market_posture_short import (
+    classify_market_posture_short,
+    count_regime_short_tones,
 )
 from app.signals.stop_loss import compute_stop_loss
 from app.signals.timing import classify_timing
@@ -76,6 +81,7 @@ def compose_and_persist_ticker(
     # empty (shouldn't happen after Phase 2 persist) we still compose
     # but with None entry/stop tiers.
     action, green, red = classify_direction(per_ticker_results)
+    action_short, green_short, red_short = classify_direction_short(per_ticker_results)
     timing = classify_timing(per_ticker_results)
     entry_tiers = compute_entry_tiers(
         price_frame if price_frame is not None else pd.DataFrame(),
@@ -93,6 +99,9 @@ def compose_and_persist_ticker(
         direction_green_count=green,
         direction_red_count=red,
         timing_modifier=timing,
+        action_short=action_short,
+        direction_short_green_count=green_short,
+        direction_short_red_count=red_short,
         market_posture=market_posture,
         entry_tiers=entry_tiers,
         stop_loss=stop_loss,
@@ -117,6 +126,8 @@ def compose_and_persist_market(
     """
     posture = classify_market_posture(regime_results)
     greens, reds, yellows = count_regime_tones(regime_results)
+    posture_short = classify_market_posture_short(regime_results)
+    greens_short, reds_short, _ = count_regime_short_tones(regime_results)
     computed_at = datetime.now(UTC)
 
     snap_row = build_market_snapshot_row(
@@ -125,6 +136,9 @@ def compose_and_persist_market(
         regime_green_count=greens,
         regime_red_count=reds,
         regime_yellow_count=yellows,
+        posture_short=posture_short,
+        regime_short_green_count=greens_short,
+        regime_short_red_count=reds_short,
         indicator_version=INDICATOR_VERSION,
         computed_at=computed_at,
     )

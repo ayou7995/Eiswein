@@ -126,6 +126,7 @@ class MarketPostureResponse(BaseModel):
 
     date: date
     timezone: str = "America/New_York"
+    # Mid-term posture (weeks horizon, 4 regime indicators).
     posture: MarketPosture
     posture_label: str
     regime_green_count: int
@@ -133,6 +134,14 @@ class MarketPostureResponse(BaseModel):
     regime_yellow_count: int
     streak_days: int
     streak_badge: str | None
+    # Short-term posture (days horizon, 2 regime indicators: vix + ad_day).
+    # v2 Phase 1 — UI renders this beside the mid-term posture so the
+    # operator can distinguish "structurally fine but today is panicky"
+    # from "structurally weakening".
+    posture_short: MarketPosture
+    posture_short_label: str
+    regime_short_green_count: int
+    regime_short_red_count: int
     pros_cons: list[ProsConsItemResponse]
     indicator_version: str
     computed_at: datetime
@@ -163,6 +172,7 @@ def get_market_posture(
     regime_results = _load_regime_results(signals_repo, snapshot.date)
     pros_cons = build_pros_cons_items(regime_results)
 
+    posture_short = _coerce_posture(snapshot.posture_short)
     return MarketPostureResponse(
         date=snapshot.date,
         posture=posture,
@@ -172,6 +182,10 @@ def get_market_posture(
         regime_yellow_count=snapshot.regime_yellow_count,
         streak_days=streak_days,
         streak_badge=posture_streak_badge(posture, streak_days),
+        posture_short=posture_short,
+        posture_short_label=POSTURE_LABELS[posture_short],
+        regime_short_green_count=snapshot.regime_short_green_count,
+        regime_short_red_count=snapshot.regime_short_red_count,
         pros_cons=[_to_wire(item) for item in pros_cons],
         indicator_version=snapshot.indicator_version,
         computed_at=snapshot.computed_at,

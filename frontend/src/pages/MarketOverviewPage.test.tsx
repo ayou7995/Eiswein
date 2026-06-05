@@ -69,6 +69,10 @@ describe('MarketOverviewPage', () => {
             regime_yellow_count: 1,
             streak_days: 4,
             streak_badge: null,
+            posture_short: 'normal',
+            posture_short_label: '正常',
+            regime_short_green_count: 1,
+            regime_short_red_count: 0,
             pros_cons: [
               {
                 category: 'direction',
@@ -131,6 +135,10 @@ describe('MarketOverviewPage', () => {
             timing_modifier: 'favorable',
             timing_badge: '✓ 時機好',
             show_timing_modifier: true,
+            action_short: 'buy',
+            action_short_label: '買入 🟢',
+            direction_short_green_count: 3,
+            direction_short_red_count: 0,
             entry_tiers: {
               aggressive: '180.00',
               ideal: '175.00',
@@ -177,7 +185,7 @@ describe('MarketOverviewPage', () => {
       renderPage();
       await waitFor(() => {
         expect(screen.getByTestId('market-posture-label')).toHaveTextContent(
-          '市場態勢：正常',
+          '中期態勢：正常',
         );
       });
       // AAPL strong_buy → attention banner.

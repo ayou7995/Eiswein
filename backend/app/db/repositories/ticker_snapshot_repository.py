@@ -28,6 +28,9 @@ class TickerSnapshotRow(TypedDict):
     direction_red_count: int
     timing_modifier: str
     show_timing_modifier: bool
+    action_short: str
+    direction_short_green_count: int
+    direction_short_red_count: int
     entry_aggressive: Decimal | None
     entry_ideal: Decimal | None
     entry_conservative: Decimal | None
@@ -52,6 +55,9 @@ def composed_to_row(signal: ComposedSignal) -> TickerSnapshotRow:
         direction_red_count=signal.direction_red_count,
         timing_modifier=signal.timing_modifier.value,
         show_timing_modifier=signal.show_timing_modifier,
+        action_short=signal.action_short.value,
+        direction_short_green_count=signal.direction_short_green_count,
+        direction_short_red_count=signal.direction_short_red_count,
         entry_aggressive=signal.entry_tiers.aggressive,
         entry_ideal=signal.entry_tiers.ideal,
         entry_conservative=signal.entry_tiers.conservative,
@@ -79,6 +85,9 @@ class TickerSnapshotRepository:
                 "direction_red_count": stmt.excluded.direction_red_count,
                 "timing_modifier": stmt.excluded.timing_modifier,
                 "show_timing_modifier": stmt.excluded.show_timing_modifier,
+                "action_short": stmt.excluded.action_short,
+                "direction_short_green_count": stmt.excluded.direction_short_green_count,
+                "direction_short_red_count": stmt.excluded.direction_short_red_count,
                 "entry_aggressive": stmt.excluded.entry_aggressive,
                 "entry_ideal": stmt.excluded.entry_ideal,
                 "entry_conservative": stmt.excluded.entry_conservative,

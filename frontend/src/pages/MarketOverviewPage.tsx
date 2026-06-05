@@ -28,7 +28,15 @@ import { ROUTES } from '../lib/constants';
 // Watchlist navigation is now sidebar-only; the "所有觀察標的" overview
 // table is removed.
 
-const REGIME_ORDER: ReadonlyArray<string> = ['vix', 'ad_day', 'spx_ma', 'yield_spread'];
+// Market regime indicators grouped by horizon, mirroring the
+// per-ticker layout on TickerDetailPage. v2 Phase 1 (2026-06) flipped
+// from a flat 4-card grid to three timeframe-tagged sections so the
+// operator can tell apart "today VIX is panicky" (short) from "SPX
+// trend is intact" (mid) from "yield curve is structurally bearish"
+// (long). Backend ``INDICATOR_TIMEFRAMES`` is source of truth.
+const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'ad_day'];
+const REGIME_MID: ReadonlyArray<string> = ['spx_ma'];
+const REGIME_LONG: ReadonlyArray<string> = ['yield_spread'];
 const MACRO_BACKDROP_NAMES: ReadonlySet<string> = new Set(['dxy', 'fed_rate']);
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = [
   'strong_buy',
@@ -167,10 +175,25 @@ function HeroCard(): JSX.Element {
               }
             >
               <span data-testid="market-posture-label">
-                市場態勢：{data.posture_label}
+                中期態勢：{data.posture_label}
               </span>
             </Explainable>
           </h2>
+          <p
+            data-testid="market-posture-short-line"
+            className="flex flex-wrap items-center gap-x-2 text-base text-stone-700"
+          >
+            <span className="inline-flex items-center rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-700">
+              短期
+            </span>
+            <span data-testid="market-posture-short-label">
+              {data.posture_short_label}
+            </span>
+            <span className="text-xs text-stone-500">
+              (VIX + A/D Day · {data.regime_short_green_count}🟢 ·{' '}
+              {data.regime_short_red_count}🔴)
+            </span>
+          </p>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-stone-600">
             {data.streak_badge ? (
               <span>{data.streak_badge} ·</span>
@@ -221,36 +244,87 @@ function CountChip({ color, label, count }: CountChipProps): JSX.Element {
 
 function RegimeIndicatorsGrid(): JSX.Element {
   const { data, isLoading } = useMarketPosture();
-  const items = useMemo(() => {
-    if (!data) return [];
-    return data.pros_cons
-      .filter(
-        (item) =>
-          marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
-      )
-      .slice()
-      .sort(
-        (a, b) =>
-          REGIME_ORDER.indexOf(a.indicator_name) -
-          REGIME_ORDER.indexOf(b.indicator_name),
-      );
+  // Bucket the 4 regime indicators by timeframe. We do the filter once
+  // and group; rendering then walks each bucket in a fixed order so the
+  // SHORT card sits at the top (where the operator's eye lands first
+  // on a panic day) and LONG sits at the bottom (structural context).
+  const { shortItems, midItems, longItems } = useMemo(() => {
+    const empty = { shortItems: [], midItems: [], longItems: [] } as const;
+    if (!data) return empty;
+    const recognised = data.pros_cons.filter(
+      (item) =>
+        marketIndicatorSeriesNameSchema.safeParse(item.indicator_name).success,
+    );
+    const pick = (whitelist: readonly string[]): readonly ProsConsItem[] =>
+      recognised
+        .filter((item) => whitelist.includes(item.indicator_name))
+        .slice()
+        .sort(
+          (a, b) =>
+            whitelist.indexOf(a.indicator_name) -
+            whitelist.indexOf(b.indicator_name),
+        );
+    return {
+      shortItems: pick(REGIME_SHORT),
+      midItems: pick(REGIME_MID),
+      longItems: pick(REGIME_LONG),
+    };
   }, [data]);
 
   if (isLoading) return <p className="text-xs text-stone-500">載入指標…</p>;
-  if (items.length === 0) return <></>;
+  if (shortItems.length + midItems.length + longItems.length === 0) {
+    return <></>;
+  }
 
   return (
+    <div className="flex flex-col gap-4">
+      <RegimeSection
+        idPrefix="regime-short"
+        title="短期市場態勢 (天)"
+        subtitle="VIX 恐慌 · 25 日 A/D — 反映今日盤勢冷熱"
+        items={shortItems}
+      />
+      <RegimeSection
+        idPrefix="regime-mid"
+        title="中期市場態勢 (週)"
+        subtitle="SPX 50/200 均線 — 趨勢健康度"
+        items={midItems}
+      />
+      <RegimeSection
+        idPrefix="regime-long"
+        title="長期市場態勢 (月)"
+        subtitle="10Y-2Y 殖利率差 — 衰退領先指標"
+        items={longItems}
+      />
+    </div>
+  );
+}
+
+interface RegimeSectionProps {
+  idPrefix: string;
+  title: string;
+  subtitle: string;
+  items: readonly ProsConsItem[];
+}
+
+function RegimeSection({
+  idPrefix,
+  title,
+  subtitle,
+  items,
+}: RegimeSectionProps): JSX.Element {
+  if (items.length === 0) return <></>;
+  const headingId = `${idPrefix}-heading`;
+  return (
     <section
-      aria-labelledby="regime-indicators-heading"
+      aria-labelledby={headingId}
       className="rounded-2xl border border-stone-200 bg-white p-6"
     >
       <header className="mb-3">
-        <h2
-          id="regime-indicators-heading"
-          className="text-base font-semibold text-stone-900"
-        >
-          4 個市場態勢指標
+        <h2 id={headingId} className="text-base font-semibold text-stone-900">
+          {title}
         </h2>
+        <p className="text-xs text-stone-500">{subtitle}</p>
       </header>
       <MarketRegimeIndicatorList items={items} />
     </section>

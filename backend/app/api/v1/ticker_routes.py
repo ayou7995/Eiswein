@@ -189,6 +189,7 @@ class ComposedSignalResponse(BaseModel):
     symbol: str
     date: date
     timezone: str = "America/New_York"
+    # Mid-term vote (2-4 weeks horizon).
     action: ActionCategory
     action_label: str
     direction_green_count: int
@@ -196,6 +197,12 @@ class ComposedSignalResponse(BaseModel):
     timing_modifier: TimingModifier
     timing_badge: str | None
     show_timing_modifier: bool
+    # Short-term vote (3-5 days horizon, v2 Phase 1). Same 6-action
+    # ladder; the UI renders the two badges side by side.
+    action_short: ActionCategory
+    action_short_label: str
+    direction_short_green_count: int
+    direction_short_red_count: int
     entry_tiers: EntryTiersResponse
     stop_loss: Decimal | None
     market_posture_at_compute: MarketPosture
@@ -271,6 +278,7 @@ def get_ticker_signal(
     if proximity.force_override_badge is not None:
         badge = proximity.force_override_badge
 
+    action_short = _coerce_action(snapshot.action_short)
     return ComposedSignalResponse(
         symbol=validated,
         date=snapshot.date,
@@ -281,6 +289,10 @@ def get_ticker_signal(
         timing_modifier=timing,
         timing_badge=badge,
         show_timing_modifier=snapshot.show_timing_modifier,
+        action_short=action_short,
+        action_short_label=ACTION_LABELS[action_short],
+        direction_short_green_count=snapshot.direction_short_green_count,
+        direction_short_red_count=snapshot.direction_short_red_count,
         entry_tiers=EntryTiersResponse(
             aggressive=snapshot.entry_aggressive,
             ideal=snapshot.entry_ideal,

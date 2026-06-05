@@ -103,6 +103,10 @@ describe('TickerDetailPage', () => {
             timing_modifier: 'favorable',
             timing_badge: '✓ 時機好',
             show_timing_modifier: true,
+            action_short: 'hold',
+            action_short_label: '持有 ✓',
+            direction_short_green_count: 2,
+            direction_short_red_count: 1,
             entry_tiers: {
               aggressive: '180.00',
               ideal: '175.00',

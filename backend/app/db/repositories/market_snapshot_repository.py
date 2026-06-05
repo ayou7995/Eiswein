@@ -23,6 +23,9 @@ class MarketSnapshotRow(TypedDict):
     regime_green_count: int
     regime_red_count: int
     regime_yellow_count: int
+    posture_short: str
+    regime_short_green_count: int
+    regime_short_red_count: int
     indicator_version: str
     computed_at: datetime
 
@@ -36,6 +39,11 @@ def build_market_snapshot_row(
     regime_yellow_count: int,
     indicator_version: str,
     computed_at: datetime,
+    # Short-term posture (v2 Phase 1) — optional with NORMAL/0/0 defaults
+    # so legacy fixtures compile. Production always passes these.
+    posture_short: MarketPosture = MarketPosture.NORMAL,
+    regime_short_green_count: int = 0,
+    regime_short_red_count: int = 0,
 ) -> MarketSnapshotRow:
     return MarketSnapshotRow(
         date=trade_date,
@@ -43,6 +51,9 @@ def build_market_snapshot_row(
         regime_green_count=regime_green_count,
         regime_red_count=regime_red_count,
         regime_yellow_count=regime_yellow_count,
+        posture_short=posture_short.value,
+        regime_short_green_count=regime_short_green_count,
+        regime_short_red_count=regime_short_red_count,
         indicator_version=indicator_version,
         computed_at=computed_at,
     )
@@ -61,6 +72,9 @@ class MarketSnapshotRepository:
                 "regime_green_count": stmt.excluded.regime_green_count,
                 "regime_red_count": stmt.excluded.regime_red_count,
                 "regime_yellow_count": stmt.excluded.regime_yellow_count,
+                "posture_short": stmt.excluded.posture_short,
+                "regime_short_green_count": stmt.excluded.regime_short_green_count,
+                "regime_short_red_count": stmt.excluded.regime_short_red_count,
                 "indicator_version": stmt.excluded.indicator_version,
                 "computed_at": stmt.excluded.computed_at,
             },

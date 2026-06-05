@@ -113,17 +113,31 @@ class ComposedSignal(BaseModel):
     One ``ComposedSignal`` corresponds to one ``TickerSnapshot`` DB row
     after persistence; the in-memory type is the domain-layer record,
     while the SQL row is the infrastructure-layer projection.
+
+    Phase 1 of v2 (2026-06) split the single ``action`` into ``action``
+    (mid-term, 2-4 weeks) + ``action_short`` (3-5 days). The two votes
+    run on different indicator subsets (see ``direction.py`` /
+    ``direction_short.py``) and may disagree — that's the feature, not
+    a bug. UI surfaces both in a dual badge so the operator can tell
+    a tactical short-term entry apart from a mid-term holding decision.
     """
 
     model_config = ConfigDict(frozen=True)
 
     symbol: str
     date: date
+    # Mid-term vote (existing fields kept for backward compatibility —
+    # the prefix-less ``action`` IS the mid-term verdict).
     action: ActionCategory
     direction_green_count: int
     direction_red_count: int
     timing_modifier: TimingModifier
     show_timing_modifier: bool
+    # Short-term vote (Phase 1 v2 — new fields).
+    action_short: ActionCategory
+    direction_short_green_count: int
+    direction_short_red_count: int
+    # Entry / stop / posture / metadata.
     entry_tiers: EntryTiers
     stop_loss: Decimal | None
     market_posture_at_compute: MarketPosture

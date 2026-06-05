@@ -29,6 +29,7 @@ export const tickerSignalResponseSchema = z.object({
   symbol: z.string(),
   date: z.string(),
   timezone: z.string(),
+  // Mid-term vote (2-4 weeks horizon).
   action: actionCategorySchema,
   action_label: z.string(),
   direction_green_count: z.number().int().nonnegative(),
@@ -36,6 +37,13 @@ export const tickerSignalResponseSchema = z.object({
   timing_modifier: timingModifierSchema,
   timing_badge: z.string().nullable(),
   show_timing_modifier: z.boolean(),
+  // Short-term vote (3-5 days horizon, v2 Phase 1). UI renders side by
+  // side with the mid-term verdict so the operator can spot tactical
+  // setups (e.g. mid=持有 + short=🟢 買入 on an oversold-bounce day).
+  action_short: actionCategorySchema,
+  action_short_label: z.string(),
+  direction_short_green_count: z.number().int().nonnegative(),
+  direction_short_red_count: z.number().int().nonnegative(),
   entry_tiers: entryTiersSchema,
   stop_loss: z.string().nullable(),
   market_posture_at_compute: marketPostureSchema,
