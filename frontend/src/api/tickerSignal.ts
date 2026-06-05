@@ -40,10 +40,14 @@ export const tickerSignalResponseSchema = z.object({
   // Short-term vote (3-5 days horizon, v2 Phase 1). UI renders side by
   // side with the mid-term verdict so the operator can spot tactical
   // setups (e.g. mid=持有 + short=🟢 買入 on an oversold-bounce day).
-  action_short: actionCategorySchema,
-  action_short_label: z.string(),
-  direction_short_green_count: z.number().int().nonnegative(),
-  direction_short_red_count: z.number().int().nonnegative(),
+  //
+  // Fields are optional + default for the same "frontend ahead of
+  // backend" scenario as the market posture schema (see comment
+  // there). Once the backend catches up the real verdict propagates.
+  action_short: actionCategorySchema.optional().default('watch'),
+  action_short_label: z.string().optional().default('觀望'),
+  direction_short_green_count: z.number().int().nonnegative().optional().default(0),
+  direction_short_red_count: z.number().int().nonnegative().optional().default(0),
   entry_tiers: entryTiersSchema,
   stop_loss: z.string().nullable(),
   market_posture_at_compute: marketPostureSchema,
