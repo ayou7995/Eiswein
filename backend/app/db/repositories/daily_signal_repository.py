@@ -34,6 +34,7 @@ class DailySignalRow(TypedDict):
     detail: dict[str, Any]
     indicator_version: str
     computed_at: datetime
+    data_as_of: date | None
 
 
 def result_to_row(
@@ -46,6 +47,9 @@ def result_to_row(
     ``value`` is stored as :class:`Decimal` so numeric comparisons in
     SQL stay exact; ``Decimal(str(float))`` preserves the repr
     precision yfinance serves rather than the binary float value.
+    ``data_as_of`` is the date of the underlying input data the
+    indicator consumed — when < trade_date the result was computed
+    from an older bar (FRED publication lag, yfinance partial fetch, etc.)
     """
     value = None if result.value is None else Decimal(str(result.value))
     return DailySignalRow(
@@ -59,6 +63,7 @@ def result_to_row(
         detail=dict(result.detail),
         indicator_version=result.indicator_version,
         computed_at=result.computed_at,
+        data_as_of=result.data_as_of,
     )
 
 
@@ -81,6 +86,7 @@ class DailySignalRepository:
                 "detail": stmt.excluded.detail,
                 "indicator_version": stmt.excluded.indicator_version,
                 "computed_at": stmt.excluded.computed_at,
+                "data_as_of": stmt.excluded.data_as_of,
             },
         )
         self._session.execute(stmt)

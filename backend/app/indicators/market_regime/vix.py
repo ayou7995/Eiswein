@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import percentile_in_window
+from app.indicators._helpers import frame_as_of, percentile_in_window
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -56,9 +56,12 @@ def compute_vix(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     vix = context.macro_frames.get(_MACRO_SERIES)
     if vix is None or vix.empty or "value" not in vix.columns:
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(vix)
     series = vix["value"].astype("float64").dropna()
     if len(series) < _TREND_WINDOW + 1:
-        return insufficient_result(NAME, detail={"bars": len(series)})
+        return insufficient_result(
+            NAME, detail={"bars": len(series)}, data_as_of=data_as_of
+        )
 
     level = float(series.iloc[-1])
     prior = float(series.iloc[-(_TREND_WINDOW + 1)])
@@ -84,6 +87,7 @@ def compute_vix(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
             "threshold_elevated_high": _ELEVATED_HIGH,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

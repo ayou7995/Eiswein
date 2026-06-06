@@ -14,6 +14,12 @@ export const prosConsItemSchema = z.object({
   detail: z.record(z.unknown()),
   indicator_name: z.string(),
   timeframe: z.enum(['short', 'mid', 'long']),
+  // Actual underlying-data date (YYYY-MM-DD). When < the snapshot's
+  // date the indicator was computed from older bars (FRED publication
+  // lag, yfinance partial fetch, etc.) — UI surfaces this as a
+  // 「資料截至 X」 pill so today's number isn't mistaken for today's data.
+  // Optional + nullable: legacy DailySignal rows have no value.
+  data_as_of: z.string().nullable().optional(),
 });
 
 export type ProsConsItem = z.infer<typeof prosConsItemSchema>;

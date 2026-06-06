@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import bollinger_bands, last_float
+from app.indicators._helpers import bollinger_bands, frame_as_of, last_float
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -33,8 +33,11 @@ def compute_bollinger(frame: pd.DataFrame, context: IndicatorContext) -> Indicat
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)
     close = frame["close"]
+    data_as_of = frame_as_of(frame)
     if len(close) < _LENGTH + 1:
-        return insufficient_result(NAME, detail={"bars": len(close)})
+        return insufficient_result(
+            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
+        )
 
     bands = bollinger_bands(close, length=_LENGTH)
     upper = last_float(bands.upper)
@@ -43,7 +46,7 @@ def compute_bollinger(frame: pd.DataFrame, context: IndicatorContext) -> Indicat
     price = last_float(close)
 
     if upper is None or middle is None or lower is None or price is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     signal, short_label = _classify(price=price, upper=upper, lower=lower, middle=middle)
     band_width = upper - lower if upper > lower else 0.0
@@ -64,6 +67,7 @@ def compute_bollinger(frame: pd.DataFrame, context: IndicatorContext) -> Indicat
             "band_width": band_width,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

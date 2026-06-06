@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float, wilder_rsi
+from app.indicators._helpers import frame_as_of, last_float, wilder_rsi
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -42,13 +42,16 @@ def compute_rsi(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
         return insufficient_result(NAME)
 
     close = frame["close"].astype("float64")
+    data_as_of = frame_as_of(frame)
     if len(close) < _MIN_DAILY_BARS:
-        return insufficient_result(NAME, detail={"bars": len(close)})
+        return insufficient_result(
+            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
+        )
 
     daily_rsi = wilder_rsi(close, _LENGTH)
     daily_value = last_float(daily_rsi)
     if daily_value is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     weekly_value: float | None = None
     if len(close) >= _MIN_WEEKLY_BARS:
@@ -70,6 +73,7 @@ def compute_rsi(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
             "weekly_rsi": weekly_value,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

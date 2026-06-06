@@ -15,11 +15,12 @@ inversion" callout (consumer in Phase 4).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -50,6 +51,9 @@ def compute_yield_spread(frame: pd.DataFrame, context: IndicatorContext) -> Indi
     if joined.empty:
         return insufficient_result(NAME)
 
+    # Cross-source min: as-of date is the older of the two Treasury series.
+    data_as_of = _min_date(frame_as_of(ten), frame_as_of(two))
+
     spread = joined["ten"] - joined["two"]
     current = float(spread.iloc[-1])
     signal, short_label = _classify(current)
@@ -68,7 +72,16 @@ def compute_yield_spread(frame: pd.DataFrame, context: IndicatorContext) -> Indi
             "recent_inversion_transition": recent_inversion,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
+
+
+def _min_date(a: date | None, b: date | None) -> date | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
 
 
 def _classify(spread: float) -> tuple[SignalToneLiteral, str]:

@@ -31,7 +31,13 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from app.indicators._helpers import bollinger_bands, keltner_channels, linreg_slope, sma
+from app.indicators._helpers import (
+    bollinger_bands,
+    frame_as_of,
+    keltner_channels,
+    linreg_slope,
+    sma,
+)
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -60,8 +66,11 @@ def compute_ttm_squeeze(
     required = {"high", "low", "close"}
     if not required.issubset(frame.columns):
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(frame)
     if len(frame) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(frame)})
+        return insufficient_result(
+            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
+        )
 
     high = frame["high"].astype("float64")
     low = frame["low"].astype("float64")
@@ -109,6 +118,7 @@ def compute_ttm_squeeze(
             "length": _LENGTH,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

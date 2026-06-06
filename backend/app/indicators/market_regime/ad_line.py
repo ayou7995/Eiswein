@@ -27,9 +27,10 @@ Signal rules (last 20 trading bars):
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -55,15 +56,20 @@ def compute_ad_line(_frame: object, context: IndicatorContext) -> IndicatorResul
         return insufficient_result(NAME)
     if spx is None or spx.empty or "close" not in spx.columns:
         return insufficient_result(NAME)
+    # Cross-source min: breadth and SPY can lag independently — we're
+    # only as fresh as whichever finished updating later.
+    data_as_of = _min_date(frame_as_of(breadth), frame_as_of(spx))
     if len(breadth) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(breadth)})
+        return insufficient_result(
+            NAME, detail={"bars": len(breadth)}, data_as_of=data_as_of
+        )
 
     ad_line = breadth["ad_line"]
     ad_slope = _normalized_slope(ad_line.iloc[-_LOOKBACK:])
     spx_close = spx["close"].astype("float64")
     spx_slope = _normalized_slope(spx_close.iloc[-_LOOKBACK:])
     if ad_slope is None or spx_slope is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     current_advances = int(breadth["advances"].iloc[-1])
     current_declines = int(breadth["declines"].iloc[-1])
@@ -89,7 +95,16 @@ def compute_ad_line(_frame: object, context: IndicatorContext) -> IndicatorResul
             "lookback": _LOOKBACK,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
+
+
+def _min_date(a: date | None, b: date | None) -> date | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
 
 
 def _normalized_slope(series: pd.Series) -> float | None:

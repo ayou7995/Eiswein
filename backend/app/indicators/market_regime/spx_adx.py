@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float, wilder_adx
+from app.indicators._helpers import frame_as_of, last_float, wilder_adx
 from app.indicators.base import IndicatorResult, insufficient_result
 from app.indicators.timing.adx import (
     _NO_TREND_THRESHOLD,
@@ -57,15 +57,18 @@ def compute_spx_adx(frame: pd.DataFrame, context: IndicatorContext) -> Indicator
     required = {"high", "low", "close"}
     if not required.issubset(spx.columns):
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(spx)
     if len(spx) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(spx)})
+        return insufficient_result(
+            NAME, detail={"bars": len(spx)}, data_as_of=data_as_of
+        )
 
     result = wilder_adx(spx["high"], spx["low"], spx["close"], length=_LENGTH)
     adx_value = last_float(result.adx)
     plus_di = last_float(result.plus_di)
     minus_di = last_float(result.minus_di)
     if adx_value is None or plus_di is None or minus_di is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     slope = _adx_slope(result.adx, _SLOPE_LOOKBACK)
     direction = "up" if plus_di > minus_di else "down"
@@ -88,4 +91,5 @@ def compute_spx_adx(frame: pd.DataFrame, context: IndicatorContext) -> Indicator
             "strong_trend_threshold": _STRONG_TREND_THRESHOLD,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )

@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -58,8 +59,11 @@ def compute_cho(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     required = {"high", "low", "close", "volume"}
     if not required.issubset(frame.columns):
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(frame)
     if len(frame) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(frame)})
+        return insufficient_result(
+            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
+        )
 
     high = frame["high"].astype("float64")
     low = frame["low"].astype("float64")
@@ -69,7 +73,7 @@ def compute_cho(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     cho_series = _chaikin_oscillator(high, low, close, volume, fast=_FAST, slow=_SLOW)
     cho_value = float(cho_series.iloc[-1]) if not pd.isna(cho_series.iloc[-1]) else None
     if cho_value is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     cleaned = cho_series.dropna()
     prior_value = float(cleaned.iloc[-2]) if len(cleaned) >= 2 else cho_value
@@ -103,6 +107,7 @@ def compute_cho(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
             "slow": _SLOW,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

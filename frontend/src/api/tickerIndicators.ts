@@ -12,6 +12,8 @@ export const indicatorResultSchema = z.object({
   short_label: z.string(),
   detail: z.record(z.unknown()),
   indicator_version: z.string(),
+  // Actual underlying-data date. < snapshot date when upstream lagged.
+  data_as_of: z.string().nullable().optional(),
 });
 
 export type IndicatorResult = z.infer<typeof indicatorResultSchema>;

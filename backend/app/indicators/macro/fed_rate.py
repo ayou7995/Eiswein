@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -37,18 +38,22 @@ def compute_fed_rate(frame: pd.DataFrame, context: IndicatorContext) -> Indicato
     series_frame = context.macro_frames.get(_MACRO_SERIES)
     if series_frame is None or series_frame.empty or "value" not in series_frame.columns:
         return insufficient_result(NAME)
+    # FEDFUNDS publishes MONTHLY — data_as_of is typically 1-30 days old.
+    data_as_of = frame_as_of(series_frame)
 
     # FEDFUNDS is published monthly — normalize to a date-indexed series.
     series = series_frame["value"].astype("float64").dropna().sort_index()
     if series.empty:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     current = float(series.iloc[-1])
     latest_ts = pd.Timestamp(series.index[-1])
     cutoff = latest_ts - pd.Timedelta(days=_DELTA_DAYS)
     historical = series.loc[series.index <= cutoff]
     if historical.empty:
-        return insufficient_result(NAME, detail={"reason": "no_history_for_delta"})
+        return insufficient_result(
+            NAME, detail={"reason": "no_history_for_delta"}, data_as_of=data_as_of
+        )
 
     prior = float(historical.iloc[-1])
     delta = current - prior
@@ -67,6 +72,7 @@ def compute_fed_rate(frame: pd.DataFrame, context: IndicatorContext) -> Indicato
             "delta_30d": delta,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

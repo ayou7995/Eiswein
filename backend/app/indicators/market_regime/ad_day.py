@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -39,9 +40,12 @@ def compute_ad_day(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
     required = {"open", "close", "volume"}
     if not required.issubset(frame.columns):
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(frame)
     # Need prior-day volume for the first window bar → +1.
     if len(frame) < _WINDOW + 1:
-        return insufficient_result(NAME, detail={"bars": len(frame)})
+        return insufficient_result(
+            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
+        )
 
     window = frame.tail(_WINDOW + 1).copy()
     close = window["close"].astype("float64")
@@ -76,6 +80,7 @@ def compute_ad_day(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
             "window_days": _WINDOW,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import detect_ma_crosses, last_float, sma
+from app.indicators._helpers import detect_ma_crosses, frame_as_of, last_float, sma
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -31,8 +31,11 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)
     close = frame["close"]
+    data_as_of = frame_as_of(frame)
     if len(close) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(close)})
+        return insufficient_result(
+            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
+        )
 
     ma50_series = sma(close, 50)
     ma200_series = sma(close, 200)
@@ -41,7 +44,7 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
     ma200 = last_float(ma200_series)
 
     if price is None or ma50 is None or ma200 is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     signal, short_label = _classify(price=price, ma50=ma50, ma200=ma200)
     golden_cross, death_cross = detect_ma_crosses(ma50_series, ma200_series)
@@ -61,6 +64,7 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
             "death_cross_10d": death_cross,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

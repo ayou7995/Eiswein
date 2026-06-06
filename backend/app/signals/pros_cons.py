@@ -94,6 +94,7 @@ def build_pros_cons_items(
                 detail=dict(result.detail),
                 indicator_name=result.name,
                 timeframe=INDICATOR_TIMEFRAMES[name],
+                data_as_of=result.data_as_of,
             )
         )
     return items

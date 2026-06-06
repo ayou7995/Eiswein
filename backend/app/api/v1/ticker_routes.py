@@ -93,6 +93,11 @@ class IndicatorResultResponse(BaseModel):
     short_label: str
     detail: dict[str, object]
     indicator_version: str
+    # v2 (2026-06): actual date of underlying input data. May be < the
+    # snapshot date when an upstream source (FRED, yfinance, breadth)
+    # hasn't published today's bar — UI surfaces this as a staleness
+    # pill. Null for legacy rows and unknown-input fallbacks.
+    data_as_of: date | None = None
 
 
 class TickerIndicatorsResponse(BaseModel):
@@ -140,6 +145,7 @@ def get_ticker_indicators(
             short_label=r.short_label,
             detail=_safe_detail(dict(r.detail or {})),
             indicator_version=r.indicator_version,
+            data_as_of=r.data_as_of,
         )
         for r in stored
     }
@@ -189,6 +195,9 @@ class ProsConsItemResponse(BaseModel):
     detail: dict[str, object]
     indicator_name: str
     timeframe: str
+    # v2 (2026-06): actual underlying-data date. < snapshot date when
+    # FRED / yfinance / breadth lagged; UI shows a staleness pill.
+    data_as_of: date | None = None
 
 
 class ComposedSignalResponse(BaseModel):
@@ -257,6 +266,7 @@ def get_ticker_signal(
             detail=dict(r.detail or {}),
             computed_at=r.computed_at,
             indicator_version=r.indicator_version,
+            data_as_of=r.data_as_of,
         )
         for r in indicator_rows
     }
@@ -361,6 +371,7 @@ def _to_wire_pros_cons(item: ProsConsItem) -> ProsConsItemResponse:
         detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
         timeframe=item.timeframe,
+        data_as_of=item.data_as_of,
     )
 
 

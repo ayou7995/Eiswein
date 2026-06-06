@@ -73,6 +73,7 @@ import { computeYBounds } from '../lib/yAxisAutoFit';
 import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
 import { IndicatorIndexBar } from '../components/IndicatorIndexBar';
 import { RelatedIndicatorsRow } from '../components/RelatedIndicatorsRow';
+import { StalenessPill } from '../components/StalenessPill';
 import { useSystemInfo } from '../hooks/useSettings';
 import { SignalAccuracySection } from '../components/SignalAccuracySection';
 import {
@@ -329,6 +330,7 @@ export function TickerDetailPage(): JSX.Element {
         symbol={symbol}
         indicators={indicators}
         prosConsItems={signal?.pros_cons ?? []}
+        snapshotDate={indicatorsQuery.data?.date ?? null}
         isLoading={indicatorsQuery.isLoading}
         pending={pendingIndicators}
         error={!pendingIndicators ? indicatorsError : null}
@@ -341,6 +343,7 @@ export function TickerDetailPage(): JSX.Element {
         symbol={symbol}
         indicators={indicators}
         prosConsItems={signal?.pros_cons ?? []}
+        snapshotDate={indicatorsQuery.data?.date ?? null}
         isLoading={indicatorsQuery.isLoading}
         pending={pendingIndicators}
         error={null}
@@ -353,6 +356,7 @@ export function TickerDetailPage(): JSX.Element {
         symbol={symbol}
         indicators={indicators}
         prosConsItems={signal?.pros_cons ?? []}
+        snapshotDate={indicatorsQuery.data?.date ?? null}
         isLoading={indicatorsQuery.isLoading}
         pending={pendingIndicators}
         error={null}
@@ -443,6 +447,7 @@ interface IndicatorGroupProps {
   symbol: string;
   indicators: Record<string, IndicatorResult> | null;
   prosConsItems: readonly import('../api/prosCons').ProsConsItem[];
+  snapshotDate: string | null;
   isLoading: boolean;
   pending: boolean;
   error: Error | null;
@@ -455,6 +460,7 @@ function IndicatorGroup({
   symbol,
   indicators,
   prosConsItems,
+  snapshotDate,
   isLoading,
   pending,
   error,
@@ -499,6 +505,7 @@ function IndicatorGroup({
                 indicatorKey={key}
                 result={result}
                 prosConsItems={prosConsItems}
+                snapshotDate={snapshotDate}
               />
             );
           })}
@@ -573,6 +580,7 @@ interface IndicatorCardProps {
   indicatorKey: string;
   result: IndicatorResult;
   prosConsItems: readonly import('../api/prosCons').ProsConsItem[];
+  snapshotDate: string | null;
 }
 
 function IndicatorCard({
@@ -580,6 +588,7 @@ function IndicatorCard({
   indicatorKey,
   result,
   prosConsItems,
+  snapshotDate,
 }: IndicatorCardProps): JSX.Element {
   const seriesName = INDICATOR_SERIES_NAME[indicatorKey];
   const macroSeriesName = MACRO_SERIES_NAME[indicatorKey];
@@ -610,6 +619,12 @@ function IndicatorCard({
           ariaLabel={`${title}：${result.short_label}`}
         />
         <TimeframeChip indicatorName={indicatorKey} />
+        {snapshotDate && (
+          <StalenessPill
+            dataAsOf={result.data_as_of}
+            snapshotDate={snapshotDate}
+          />
+        )}
         <span className="text-sm text-stone-600">
           {isPriceVsMa ? (
             <MaPositionHeadlineExplainable

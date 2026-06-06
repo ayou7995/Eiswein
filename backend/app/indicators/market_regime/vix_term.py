@@ -22,10 +22,10 @@ day or the start of a vol cascade — the curve shape disambiguates).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float
+from app.indicators._helpers import frame_as_of, last_float
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -59,13 +59,17 @@ def compute_vix_term(_frame: object, context: IndicatorContext) -> IndicatorResu
         return insufficient_result(NAME)
     if "value" not in vix_frame.columns or "value" not in vix3m_frame.columns:
         return insufficient_result(NAME)
+    # Cross-source min: as-of date is whichever FRED series last published.
+    data_as_of = _min_date(frame_as_of(vix_frame), frame_as_of(vix3m_frame))
     if len(vix_frame) < _MIN_BARS or len(vix3m_frame) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars_vix": len(vix_frame)})
+        return insufficient_result(
+            NAME, detail={"bars_vix": len(vix_frame)}, data_as_of=data_as_of
+        )
 
     vix_value = last_float(vix_frame["value"])
     vix3m_value = last_float(vix3m_frame["value"])
     if vix_value is None or vix3m_value is None or vix3m_value <= 0:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     ratio = vix_value / vix3m_value
     signal, short_label = _classify(ratio=ratio, vix=vix_value, vix3m=vix3m_value)
@@ -84,7 +88,16 @@ def compute_vix_term(_frame: object, context: IndicatorContext) -> IndicatorResu
             "inversion_threshold": _INVERSION_THRESHOLD,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
+
+
+def _min_date(a: date | None, b: date | None) -> date | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
 
 
 def _classify(*, ratio: float, vix: float, vix3m: float) -> tuple[SignalToneLiteral, str]:

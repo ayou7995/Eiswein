@@ -10,6 +10,7 @@ import {
 } from '../api/marketIndicatorSeries';
 import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
 import { computeYBounds } from '../lib/yAxisAutoFit';
+import { StalenessPill } from './StalenessPill';
 import { IndicatorRangeSelector } from './IndicatorRangeSelector';
 import { LoadingSpinner } from './LoadingSpinner';
 import { TimeframeChip } from './TimeframeChip';
@@ -140,12 +141,16 @@ export interface MarketRegimeIndicatorListProps {
   // indicator_name differs from the chart-endpoint slug (e.g. macro 'dxy'
   // → chart 'dxy_trend'). Defaults to identity-via-enum-validation.
   resolveChartName?: ChartNameResolver;
+  // The market snapshot's trade_date — used by the per-row StalenessPill
+  // to detect when an indicator's underlying data lags the snapshot.
+  snapshotDate?: string | null;
 }
 
 export function MarketRegimeIndicatorList({
   items,
   emptyMessage = '資料不足以判斷',
   resolveChartName = parseChartName,
+  snapshotDate = null,
 }: MarketRegimeIndicatorListProps): JSX.Element {
   if (items.length === 0) {
     return (
@@ -162,6 +167,7 @@ export function MarketRegimeIndicatorList({
           key={item.indicator_name}
           item={item}
           resolveChartName={resolveChartName}
+          snapshotDate={snapshotDate}
         />
       ))}
     </ul>
@@ -171,9 +177,14 @@ export function MarketRegimeIndicatorList({
 interface RegimeRowProps {
   item: ProsConsItem;
   resolveChartName: ChartNameResolver;
+  snapshotDate: string | null;
 }
 
-function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
+function RegimeRow({
+  item,
+  resolveChartName,
+  snapshotDate,
+}: RegimeRowProps): JSX.Element {
   // Indicator details are always shown inline — no collapse mechanism.
   // Charts load eagerly on mount via ``useMarketIndicatorSeries`` inside
   // ``RegimeChartSection``; with 4-6 cards per page the parallel queries
@@ -251,6 +262,12 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           )}
         </span>
         <TimeframeChip timeframe={item.timeframe} />
+        {snapshotDate && (
+          <StalenessPill
+            dataAsOf={item.data_as_of}
+            snapshotDate={snapshotDate}
+          />
+        )}
       </header>
       <div className="flex flex-col gap-2 border-t border-stone-200 bg-stone-50 p-3">
         {chartName !== null && <RegimeChartSection name={chartName} />}

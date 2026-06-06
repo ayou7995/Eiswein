@@ -131,6 +131,9 @@ class ProsConsItemResponse(BaseModel):
     detail: dict[str, object]
     indicator_name: str
     timeframe: str
+    # v2 (2026-06): actual underlying-data date. < snapshot date when
+    # FRED / yfinance / breadth lagged; UI shows a staleness pill.
+    data_as_of: date | None = None
 
 
 class MarketPostureResponse(BaseModel):
@@ -242,6 +245,7 @@ def _load_regime_results(
             detail=dict(row.detail or {}),
             computed_at=row.computed_at,
             indicator_version=row.indicator_version,
+            data_as_of=row.data_as_of,
         )
     return results
 
@@ -279,6 +283,7 @@ def _to_wire(item: ProsConsItem) -> ProsConsItemResponse:
         detail=_safe_detail(dict(item.detail)),
         indicator_name=item.indicator_name,
         timeframe=item.timeframe,
+        data_as_of=item.data_as_of,
     )
 
 

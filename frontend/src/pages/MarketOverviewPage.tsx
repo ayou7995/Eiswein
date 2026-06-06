@@ -300,18 +300,21 @@ function RegimeIndicatorsGrid(): JSX.Element {
         title="短期市場態勢 (天)"
         subtitle="VIX 恐慌 · 25 日 A/D — 反映今日盤勢冷熱"
         items={shortItems}
+        snapshotDate={data?.date ?? null}
       />
       <RegimeSection
         idPrefix="regime"
         title="中期市場態勢 (週)"
         subtitle="SPX 50/200 均線 — 趨勢健康度"
         items={midItems}
+        snapshotDate={data?.date ?? null}
       />
       <RegimeSection
         idPrefix="regime"
         title="長期市場態勢 (月)"
         subtitle="10Y-2Y 殖利率差 — 衰退領先指標"
         items={longItems}
+        snapshotDate={data?.date ?? null}
       />
     </div>
   );
@@ -334,6 +337,7 @@ interface RegimeSectionProps {
   title: string;
   subtitle: string;
   items: readonly ProsConsItem[];
+  snapshotDate?: string | null;
 }
 
 function RegimeSection({
@@ -341,6 +345,7 @@ function RegimeSection({
   title,
   subtitle,
   items,
+  snapshotDate = null,
 }: RegimeSectionProps): JSX.Element {
   if (items.length === 0) return <></>;
   const headingId = `${idPrefix}-heading`;
@@ -355,7 +360,7 @@ function RegimeSection({
         </h2>
         <p className="text-xs text-stone-500">{subtitle}</p>
       </header>
-      <MarketRegimeIndicatorList items={items} />
+      <MarketRegimeIndicatorList items={items} snapshotDate={snapshotDate} />
     </section>
   );
 }

@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float
+from app.indicators._helpers import frame_as_of, last_float
 from app.indicators._helpers import macd as compute_macd_series
 from app.indicators.base import (
     IndicatorResult,
@@ -38,8 +38,11 @@ def compute_macd(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorRes
     if frame is None or frame.empty or "close" not in frame.columns:
         return insufficient_result(NAME)
     close = frame["close"]
+    data_as_of = frame_as_of(frame)
     if len(close) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(close)})
+        return insufficient_result(
+            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
+        )
 
     result = compute_macd_series(close)
     macd_value = last_float(result.macd_line)
@@ -47,7 +50,7 @@ def compute_macd(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorRes
     histogram_value = last_float(result.histogram)
 
     if macd_value is None or signal_value is None or histogram_value is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     cross = _detect_recent_cross(result.macd_line, result.signal_line, _CROSS_LOOKBACK)
     signal, short_label = _classify(cross=cross, histogram=histogram_value)
@@ -66,6 +69,7 @@ def compute_macd(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorRes
             "cross_lookback_bars": _CROSS_LOOKBACK,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

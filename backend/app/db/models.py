@@ -30,6 +30,7 @@ All user-owned tables carry `user_id` FK (A3). Prices use `Decimal`
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from datetime import date as date_type
 from decimal import Decimal
 from typing import Any
 
@@ -434,6 +435,12 @@ class DailySignal(Base):
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
+    # v2 (2026-06): actual date of underlying input data the indicator
+    # consumed. < ``date`` means the result was carry-forwarded from an
+    # older FRED / yfinance / breadth bar — UI surfaces this as a
+    # "資料截至 X" pill. Nullable so legacy rows + fallback results
+    # without known frame dates can write NULL.
+    data_as_of: Mapped[date_type | None] = mapped_column(Date, nullable=True)
 
 
 class TickerSnapshot(Base):

@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -38,8 +39,11 @@ def compute_volume_anomaly(frame: pd.DataFrame, context: IndicatorContext) -> In
         return insufficient_result(NAME)
     if not {"close", "volume"}.issubset(frame.columns):
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(frame)
     if len(frame) < _WINDOW + 2:
-        return insufficient_result(NAME, detail={"bars": len(frame)})
+        return insufficient_result(
+            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
+        )
 
     volume = frame["volume"].astype("float64")
     close = frame["close"].astype("float64")
@@ -73,6 +77,7 @@ def compute_volume_anomaly(frame: pd.DataFrame, context: IndicatorContext) -> In
             "price_change_pct": price_change_pct,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

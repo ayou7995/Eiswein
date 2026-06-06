@@ -28,7 +28,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.indicators._helpers import last_float, true_range, wilder_atr
+from app.indicators._helpers import frame_as_of, last_float, true_range, wilder_atr
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -56,14 +56,17 @@ def compute_atr(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     required = {"high", "low", "close"}
     if not required.issubset(frame.columns):
         return insufficient_result(NAME)
+    data_as_of = frame_as_of(frame)
     if len(frame) < _MIN_BARS:
-        return insufficient_result(NAME, detail={"bars": len(frame)})
+        return insufficient_result(
+            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
+        )
 
     atr_series = wilder_atr(frame["high"], frame["low"], frame["close"], length=_LENGTH)
     atr_value = last_float(atr_series)
     last_close = last_float(frame["close"])
     if atr_value is None or last_close is None or last_close <= 0:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     atr_pct = (atr_value / last_close) * 100.0
 
@@ -89,6 +92,7 @@ def compute_atr(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
             "elevated_threshold_pct": _ELEVATED_THRESHOLD_PCT,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 

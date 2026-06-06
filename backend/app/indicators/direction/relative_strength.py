@@ -12,9 +12,10 @@ Signal table:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from app.indicators._helpers import frame_as_of
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -38,13 +39,17 @@ def compute_relative_strength(frame: pd.DataFrame, context: IndicatorContext) ->
     spx = context.spx_frame
     if spx is None or spx.empty or "close" not in spx.columns:
         return insufficient_result(NAME, detail={"reason": "spx_frame_missing"})
+    # Cross-source: we're only as fresh as the worse-lagged input.
+    data_as_of = _min_date(frame_as_of(frame), frame_as_of(spx))
     if len(frame) < _WINDOW + 1 or len(spx) < _WINDOW + 1:
-        return insufficient_result(NAME, detail={"bars": len(frame)})
+        return insufficient_result(
+            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
+        )
 
     ticker_return = _cumulative_return(frame["close"])
     spx_return = _cumulative_return(spx["close"])
     if ticker_return is None or spx_return is None:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     diff = ticker_return - spx_return
     signal, short_label = _classify(diff)
@@ -61,7 +66,16 @@ def compute_relative_strength(frame: pd.DataFrame, context: IndicatorContext) ->
             "diff": diff,
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
+
+
+def _min_date(a: date | None, b: date | None) -> date | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
 
 
 def _cumulative_return(close: pd.Series) -> float | None:

@@ -15,7 +15,7 @@ v1.1.0 rules" without retroactively rewriting history.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -59,6 +59,19 @@ class IndicatorResult(BaseModel):
     ``value`` is the headline number (None if data insufficient).
     ``detail`` holds raw numeric breakdown for the expand-on-tap UI.
     ``data_sufficient=False`` forces signal=neutral per C10.
+
+    ``data_as_of`` is the **actual date of the underlying data** that
+    drove this result, which may lag the snapshot's trade_date when an
+    upstream source (FRED, yfinance, watchlist breadth) hasn't published
+    the latest bar yet. None means "unknown" — used by helpers that
+    don't know their input window (insufficient/error fallbacks) and by
+    historical rows from before the field was introduced. When ``data_as_of``
+    is older than the snapshot ``date``, the UI surfaces a "資料截至 X"
+    pill so the operator isn't fooled into believing today's number is
+    actually today's data. See ``compute_ad_line`` for cross-source min:
+    when an indicator reads multiple frames, ``data_as_of`` is the
+    earliest "last update" across them — we're only as fresh as our
+    worst-lagged input.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -71,6 +84,7 @@ class IndicatorResult(BaseModel):
     detail: dict[str, Any] = Field(default_factory=dict)
     computed_at: datetime
     indicator_version: str = INDICATOR_VERSION
+    data_as_of: date | None = None
 
 
 class Indicator(ABC):
@@ -96,8 +110,15 @@ def insufficient_result(
     name: str,
     *,
     detail: dict[str, Any] | None = None,
+    data_as_of: date | None = None,
 ) -> IndicatorResult:
-    """Shortcut for ``data_sufficient=False`` results (C10)."""
+    """Shortcut for ``data_sufficient=False`` results (C10).
+
+    ``data_as_of`` is optional because some insufficient cases happen
+    BEFORE we know the frame's last date (empty frame, missing column).
+    When the indicator has a partial frame and knows the last date,
+    passing it preserves honest provenance even on insufficient results.
+    """
     return IndicatorResult(
         name=name,
         value=None,
@@ -106,6 +127,7 @@ def insufficient_result(
         short_label=INSUFFICIENT_DATA_LABEL,
         detail=detail or {},
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 
@@ -126,4 +148,5 @@ def error_result(name: str, *, error_class: str) -> IndicatorResult:
         short_label=COMPUTE_ERROR_LABEL,
         detail={"error_class": error_class},
         computed_at=datetime.now(UTC),
+        data_as_of=None,
     )

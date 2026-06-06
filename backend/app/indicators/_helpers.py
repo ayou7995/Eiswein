@@ -12,6 +12,7 @@ below via recursive EMA.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import NamedTuple, cast
 
 import numpy as np
@@ -274,6 +275,25 @@ def linreg_slope(series: pd.Series, *, length: int) -> pd.Series:
         pd.Series,
         series.astype("float64").rolling(length, min_periods=length).apply(_slope, raw=True),
     )
+
+
+def frame_as_of(frame: pd.DataFrame | None) -> date | None:
+    """Return the date of the last row in ``frame``, or None if empty.
+
+    Centralised here so every compute function uses the same convention:
+    "the data this indicator just consumed is as fresh as the last
+    row's index date." Combined with ``min`` across multiple frames it
+    composes naturally for cross-source indicators (relative_strength,
+    ad_line) — we're only as fresh as our worst-lagged input.
+    """
+    if frame is None or len(frame) == 0:
+        return None
+    last_idx = frame.index[-1]
+    if hasattr(last_idx, "date"):
+        result = last_idx.date()
+        if isinstance(result, date):
+            return result
+    return None
 
 
 def last_float(series: pd.Series) -> float | None:

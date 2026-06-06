@@ -83,6 +83,10 @@ class ProsConsItem:
     # Lets the UI render a chip telling the user which horizon this
     # signal is talking about (e.g. "短期" for RSI, "長期" for DXY).
     timeframe: TimeframeLiteral
+    # Actual date of the underlying data the indicator consumed. Surfaced
+    # to the UI as a "資料截至 X" pill when < snapshot date. None for
+    # legacy rows / unknown-input fallbacks.
+    data_as_of: date | None = None
 
 
 # ---- Entry tiers / Composed signal ---------------------------------------

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from app.indicators._helpers import sma
+from app.indicators._helpers import frame_as_of, sma
 from app.indicators.base import (
     IndicatorResult,
     SignalTone,
@@ -39,15 +39,20 @@ def compute_dxy(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     dxy = context.macro_frames.get(_MACRO_SERIES)
     if dxy is None or dxy.empty or "value" not in dxy.columns:
         return insufficient_result(NAME)
+    # FRED publishes DTWEXBGS WEEKLY (Friday). data_as_of is often days
+    # behind today — the freshness pill is critical for this indicator.
+    data_as_of = frame_as_of(dxy)
 
     series = dxy["value"].astype("float64").dropna()
     # Need 20-bar SMA + 5 more bars for the streak comparison.
     if len(series) < _SMA_WINDOW + _STREAK + 1:
-        return insufficient_result(NAME, detail={"bars": len(series)})
+        return insufficient_result(
+            NAME, detail={"bars": len(series)}, data_as_of=data_as_of
+        )
 
     ma = sma(series, _SMA_WINDOW).dropna()
     if len(ma) < _STREAK + 1:
-        return insufficient_result(NAME)
+        return insufficient_result(NAME, data_as_of=data_as_of)
 
     tail = ma.tail(_STREAK + 1)
     diffs = tail.diff().dropna()
@@ -71,6 +76,7 @@ def compute_dxy(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
             "ma20_change_last_5d": float(tail.iloc[-1] - tail.iloc[0]),
         },
         computed_at=datetime.now(UTC),
+        data_as_of=data_as_of,
     )
 
 
