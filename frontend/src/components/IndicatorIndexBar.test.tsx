@@ -25,9 +25,9 @@ describe('IndicatorIndexBar', () => {
     render(<IndicatorIndexBar items={items} titleFor={(n) => n.toUpperCase()} />);
     const labels = screen.getAllByText(/短期|中期|長期/);
     // Order must be short → mid → long irrespective of input order.
-    expect(labels[0].textContent).toBe('短期');
-    expect(labels[1].textContent).toBe('中期');
-    expect(labels[2].textContent).toBe('長期');
+    expect(labels[0]!.textContent).toBe('短期');
+    expect(labels[1]!.textContent).toBe('中期');
+    expect(labels[2]!.textContent).toBe('長期');
   });
 
   it('omits a row when no items match that timeframe', () => {

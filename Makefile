@@ -117,6 +117,16 @@ backfill:
 		echo "Backfill window is now $$TARGET trading days."; \
 		echo "Watch \`make logs\` for daily_update_complete with non-zero gaps_filled_rows."
 
+# One-shot: recompute v2 Phase 2/3/4 indicators (ADX/ATR/TTM/CHO/SPX ADX/
+# VIX Term/AD Line) for the last N trading days so historical daily_signal
+# rows aren't sparse. Safe to re-run — rows are UPSERTed.
+# Usage: make backfill-new-indicators              # 90 days
+#        make backfill-new-indicators DAYS=180     # 180 days
+backfill-new-indicators:
+	@TARGET=$${DAYS:-90}; \
+		echo "==> Backfilling new indicators for last $$TARGET calendar days..."; \
+		cd backend && .venv/bin/python ../scripts/backfill_new_indicators.py --days $$TARGET
+
 # ---------- Dev targets ----------------------------------------------------
 
 deps-update:

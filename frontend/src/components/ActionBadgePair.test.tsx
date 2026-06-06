@@ -102,13 +102,13 @@ describe('ActionBadgePair', () => {
     const tallies = screen.getAllByTestId('action-vote-tally');
     expect(tallies).toHaveLength(2);
     // Mid: 3 green + 1 red + 1 neutral = total 5.
-    expect(tallies[0].textContent).toContain('3🟢');
-    expect(tallies[0].textContent).toContain('1🔴');
-    expect(tallies[0].textContent).toContain('1⚪');
+    expect(tallies[0]!.textContent).toContain('3🟢');
+    expect(tallies[0]!.textContent).toContain('1🔴');
+    expect(tallies[0]!.textContent).toContain('1⚪');
     // Short: 2 green + 2 red + 1 neutral.
-    expect(tallies[1].textContent).toContain('2🟢');
-    expect(tallies[1].textContent).toContain('2🔴');
-    expect(tallies[1].textContent).toContain('1⚪');
+    expect(tallies[1]!.textContent).toContain('2🟢');
+    expect(tallies[1]!.textContent).toContain('2🔴');
+    expect(tallies[1]!.textContent).toContain('1⚪');
   });
 
   it('does not let the neutral count go negative if green+red exceeds total', () => {
@@ -123,6 +123,6 @@ describe('ActionBadgePair', () => {
       />,
     );
     const tallies = screen.getAllByTestId('action-vote-tally');
-    expect(tallies[0].textContent).toContain('0⚪');
+    expect(tallies[0]!.textContent).toContain('0⚪');
   });
 });
