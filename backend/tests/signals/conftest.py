@@ -41,22 +41,22 @@ def make_result() -> Callable[..., IndicatorResult]:
 
 
 def build_direction_results(greens: int, reds: int, yellows: int = 0) -> dict[str, IndicatorResult]:
-    """Construct a 4-indicator direction dict with the specified vote counts.
+    """Construct a 5-indicator direction dict with the specified vote counts.
 
-    Any remaining slots (to reach 4) are filled with YELLOW (neutral
-    vote). Intended for the decision-table parametrized tests —
-    ``classify_direction`` only cares about GREEN/RED counts.
+    Any remaining slots (to reach 5) are filled with YELLOW (neutral
+    vote). v2 Phase 3 added CHO as the 5th member of the mid-term
+    direction vote.
     """
-    names = ["price_vs_ma", "rsi", "volume_anomaly", "relative_strength"]
-    if greens + reds + yellows > 4:
-        msg = "green + red + yellow votes exceed 4"
+    names = ["price_vs_ma", "rsi", "volume_anomaly", "relative_strength", "cho"]
+    if greens + reds + yellows > 5:
+        msg = "green + red + yellow votes exceed 5"
         raise ValueError(msg)
 
     results: dict[str, IndicatorResult] = {}
     signals: list[str] = (
         [SignalTone.GREEN] * greens + [SignalTone.RED] * reds + [SignalTone.YELLOW] * yellows
     )
-    while len(signals) < 4:
+    while len(signals) < 5:
         signals.append(SignalTone.YELLOW)
     for name, sig in zip(names, signals, strict=True):
         results[name] = _make_result(name, sig)  # type: ignore[arg-type]

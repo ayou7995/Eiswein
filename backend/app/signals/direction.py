@@ -35,20 +35,28 @@ from app.signals.types import ActionCategory
 # ``orchestrator``) so this module stays free of indicator-impl imports —
 # it's a pure classifier that only reads result dicts by key.
 DIRECTION_INDICATOR_NAMES: Final[frozenset[str]] = frozenset(
-    {"price_vs_ma", "rsi", "volume_anomaly", "relative_strength"}
+    # v2 Phase 3 (2026-06): CHO added as a 5th mid-term direction vote —
+    # accumulation / distribution accelerator (Sherry's "big players" lens).
+    {"price_vs_ma", "rsi", "volume_anomaly", "relative_strength", "cho"}
 )
 
 
+# 5-vote decision table (Phase 3 — was 4-vote in Phase 1).
+# Proportionally widened so the action ladder stays intuitive:
+#   5/5 green        → STRONG_BUY
+#   4 green          → BUY
+#   3 green          → HOLD
+#   mixed            → WATCH
+#   majority red     → REDUCE
+#   5/5 red          → EXIT
 # (min_green, max_green, min_red, max_red, action)
-# Scanned in order: higher-conviction rows (more GREEN / more RED) come
-# first. No row for (2🟢, 2🔴) — that falls through to WATCH below.
 _DIRECTION_TABLE: Final[tuple[tuple[int, int, int, int, ActionCategory], ...]] = (
-    (4, 4, 0, 0, ActionCategory.STRONG_BUY),
-    (3, 3, 0, 1, ActionCategory.BUY),
-    (2, 2, 0, 1, ActionCategory.HOLD),
-    (1, 2, 1, 2, ActionCategory.WATCH),
-    (0, 1, 2, 3, ActionCategory.REDUCE),
-    (0, 0, 4, 4, ActionCategory.EXIT),
+    (5, 5, 0, 0, ActionCategory.STRONG_BUY),
+    (4, 4, 0, 1, ActionCategory.BUY),
+    (3, 3, 0, 1, ActionCategory.HOLD),
+    (1, 3, 1, 2, ActionCategory.WATCH),
+    (0, 1, 3, 4, ActionCategory.REDUCE),
+    (0, 0, 5, 5, ActionCategory.EXIT),
 )
 
 

@@ -39,21 +39,28 @@ from app.indicators.base import IndicatorResult, SignalTone
 from app.signals.types import ActionCategory
 
 DIRECTION_SHORT_INDICATOR_NAMES: Final[frozenset[str]] = frozenset(
-    {"rsi", "macd", "bollinger", "volume_anomaly"}
+    # v2 Phase 3 (2026-06): TTM Squeeze added — the breakout-direction
+    # gauge. The table below is a 5-vote scale (was 4-vote in Phase 1).
+    {"rsi", "macd", "bollinger", "volume_anomaly", "ttm_squeeze"}
 )
 
 
-# Same decision-table shape as mid-term (see ``direction.py``); identical
-# vote count (4), identical thresholds. Re-declared here so the short
-# classifier stays independently auditable — when the table changes for
-# mid-term, the short one needs a deliberate decision to match or diverge.
+# 5-vote decision table (Phase 3). Proportionally widened from the
+# 4-vote shape so the rough action ladder is preserved:
+#   ≥80% green       → STRONG_BUY
+#    60-79% green    → BUY
+#    50-59% green    → HOLD
+#    mixed / near-tied → WATCH
+#    majority red     → REDUCE
+#    100% red         → EXIT
+# Tuple order: (min_green, max_green, min_red, max_red, action).
 _DIRECTION_SHORT_TABLE: Final[tuple[tuple[int, int, int, int, ActionCategory], ...]] = (
-    (4, 4, 0, 0, ActionCategory.STRONG_BUY),
-    (3, 3, 0, 1, ActionCategory.BUY),
-    (2, 2, 0, 1, ActionCategory.HOLD),
-    (1, 2, 1, 2, ActionCategory.WATCH),
-    (0, 1, 2, 3, ActionCategory.REDUCE),
-    (0, 0, 4, 4, ActionCategory.EXIT),
+    (5, 5, 0, 0, ActionCategory.STRONG_BUY),
+    (4, 4, 0, 1, ActionCategory.BUY),
+    (3, 3, 0, 1, ActionCategory.HOLD),
+    (1, 3, 1, 2, ActionCategory.WATCH),
+    (0, 1, 3, 4, ActionCategory.REDUCE),
+    (0, 0, 5, 5, ActionCategory.EXIT),
 )
 
 

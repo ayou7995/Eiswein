@@ -41,11 +41,14 @@ INDICATOR_TIMEFRAMES: Final[dict[str, Timeframe]] = {
     "vix": "short",
     "yield_spread": "long",
     "spx_adx": "mid",
-    # Timing (2 + 2 in v2 Phase 2)
+    # Timing (2 + 2 in v2 Phase 2, + 1 in Phase 3)
     "macd": "short",
     "bollinger": "short",
     "adx": "mid",
     "atr": "short",
+    "ttm_squeeze": "short",
+    # Phase 3 direction add (mid-term accumulation/distribution)
+    "cho": "mid",
     # Macro (2)
     "dxy": "long",
     "fed_rate": "long",

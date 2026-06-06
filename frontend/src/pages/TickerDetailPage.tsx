@@ -51,6 +51,14 @@ import {
   AtrEnhancedDetail,
   AtrHeadlineExplainable,
 } from '../components/AtrEnhancedDetail';
+import {
+  TtmSqueezeEnhancedDetail,
+  TtmSqueezeHeadlineExplainable,
+} from '../components/TtmSqueezeEnhancedDetail';
+import {
+  ChoEnhancedDetail,
+  ChoHeadlineExplainable,
+} from '../components/ChoEnhancedDetail';
 import { DxyEnhancedDetail } from '../components/DxyEnhancedDetail';
 import { FedRateEnhancedDetail } from '../components/FedRateEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
@@ -95,6 +103,8 @@ const SHORT_TERM_INDICATORS = [
   // ATR-based stop-loss. Sits in short because it answers "is today's
   // move unusual vs the last 14 bars?".
   'atr',
+  // v2 Phase 3: TTM Squeeze fires breakout direction over 3-5 days.
+  'ttm_squeeze',
 ];
 const MID_TERM_INDICATORS = [
   'price_vs_ma',
@@ -103,6 +113,8 @@ const MID_TERM_INDICATORS = [
   // (RSI / BB / MACD) should be trusted right now. > 25 + rising →
   // trend in play, ignore mean-reversion. < 20 → choppy, trust them.
   'adx',
+  // v2 Phase 3: CHO is the Sherry "big players accumulating" gauge.
+  'cho',
 ];
 const LONG_TERM_INDICATORS = ['dxy', 'fed_rate'];
 
@@ -118,6 +130,9 @@ const INDICATOR_TITLES: Record<string, string> = {
   // also feeds the stop-loss distance.
   adx: 'ADX (趨勢強度)',
   atr: 'ATR (波動率)',
+  // v2 Phase 3 — TTM Squeeze + CHO.
+  ttm_squeeze: 'TTM Squeeze (壓縮點火)',
+  cho: 'Chaikin (大戶吃貨)',
   dxy: 'DXY (美元指數)',
   fed_rate: 'Fed 利率',
 };
@@ -137,6 +152,8 @@ const INDICATOR_SERIES_NAME: Record<string, IndicatorSeriesName> = {
   relative_strength: 'relative_strength',
   adx: 'adx',
   atr: 'atr',
+  ttm_squeeze: 'ttm_squeeze',
+  cho: 'cho',
 };
 
 // Macro indicators come from the market-indicator series endpoints (shared
@@ -215,6 +232,33 @@ const ATR_THRESHOLDS: ReadonlyArray<BoundedLineThreshold> = [
   { value: 1.5, label: '平靜 (<1.5%)', color: '#059669', fillBetween: 'below' },
   { value: 3.5, label: '偏高 (≥3.5%)', color: '#e11d48', fillBetween: 'above' },
 ];
+
+const TTM_MOMENTUM_LINES: ReadonlyArray<MultiLineDefinition> = [
+  { key: 'momentum', label: '動能 % of close', color: '#0284c7', width: 2 },
+];
+
+const TTM_MOMENTUM_HISTOGRAM: MultiLineHistogram = {
+  key: 'momentum',
+  positiveColor: '#059669',
+  negativeColor: '#e11d48',
+};
+
+const CHO_LINES: ReadonlyArray<MultiLineDefinition> = [
+  { key: 'cho', label: 'CHO', color: '#1c1917', width: 2 },
+];
+
+function formatMagnitude(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '−' : '';
+  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(1)}k`;
+  return `${sign}${abs.toFixed(2)}`;
+}
+
+function formatPercent(value: number): string {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
 
 export function TickerDetailPage(): JSX.Element {
   const { symbol: rawSymbol } = useParams<{ symbol: string }>();
@@ -490,6 +534,18 @@ const ATR_HEADLINE_LABELS = {
     '此燈號是「波動度尺規」— 告訴你這支股票現在每日真實震幅是大是小。ATR 不分多空，RED 不是「賣出」，而是「波動偏高，部位要縮、停損要緊」。Eiswein 用 close − 2 × ATR 算停損距離，比固定 % 停損更尊重每支股票自己的個性。',
 };
 
+const TTM_SQUEEZE_HEADLINE_LABELS = {
+  ruleTitle: 'TTM Squeeze 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是短期 5-vote 中的「波動率壓縮 → 爆發方向」投票。Carter 的 TTM 系統把波動率視為彈簧 — 壓縮越久，爆發越大。Squeeze 醞釀期黃燈、爆發方向決定綠紅。配合 RSI / MACD 看一致性。',
+};
+
+const CHO_HEADLINE_LABELS = {
+  ruleTitle: 'Chaikin Oscillator 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是中期 5-vote 中的「累積/分配加速度」投票。對應 Sherry 的「大戶吃貨綠燈群聚」概念 — CHO 由量加權，難以人為操縱。需要 2-4 週累積後才會出現結構性訊號，所以不能單獨用作短期進出依據。',
+};
+
 interface IndicatorCardProps {
   symbol: string;
   indicatorKey: string;
@@ -512,6 +568,8 @@ function IndicatorCard({
   const isBollinger = indicatorKey === 'bollinger';
   const isAdx = indicatorKey === 'adx';
   const isAtr = indicatorKey === 'atr';
+  const isTtmSqueeze = indicatorKey === 'ttm_squeeze';
+  const isCho = indicatorKey === 'cho';
   const isDxy = indicatorKey === 'dxy';
   const isFedRate = indicatorKey === 'fed_rate';
 
@@ -576,6 +634,18 @@ function IndicatorCard({
               detail={result.detail}
               labels={ATR_HEADLINE_LABELS}
             />
+          ) : isTtmSqueeze ? (
+            <TtmSqueezeHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={TTM_SQUEEZE_HEADLINE_LABELS}
+            />
+          ) : isCho ? (
+            <ChoHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={CHO_HEADLINE_LABELS}
+            />
           ) : (
             result.short_label
           )}
@@ -612,6 +682,10 @@ function IndicatorCard({
         <AdxEnhancedDetail detail={result.detail} />
       ) : isAtr ? (
         <AtrEnhancedDetail detail={result.detail} />
+      ) : isTtmSqueeze ? (
+        <TtmSqueezeEnhancedDetail detail={result.detail} />
+      ) : isCho ? (
+        <ChoEnhancedDetail detail={result.detail} />
       ) : isDxy ? (
         <DxyEnhancedDetail detail={result.detail} />
       ) : isFedRate ? (
@@ -842,6 +916,30 @@ function IndicatorChart({ data, ariaLabel }: IndicatorChartProps): JSX.Element {
         />
       );
     }
+    case 'ttm_squeeze': {
+      const series: ReadonlyArray<MultiLineSeriesRow> = data.series.map((row) => ({
+        date: row.date,
+        momentum: row.momentum,
+      }));
+      return (
+        <IndicatorMultiLine
+          series={series}
+          lines={TTM_MOMENTUM_LINES}
+          histogram={TTM_MOMENTUM_HISTOGRAM}
+          priceFormatter={formatPercent}
+          ariaLabel={ariaLabel}
+        />
+      );
+    }
+    case 'cho':
+      return (
+        <IndicatorMultiLine
+          series={data.series}
+          lines={CHO_LINES}
+          priceFormatter={formatMagnitude}
+          ariaLabel={ariaLabel}
+        />
+      );
   }
 }
 

@@ -20,6 +20,7 @@ import pandas as pd
 import structlog
 
 from app.indicators.base import IndicatorResult, error_result
+from app.indicators.direction.cho import compute_cho
 from app.indicators.direction.price_vs_ma import compute_price_vs_ma
 from app.indicators.direction.relative_strength import compute_relative_strength
 from app.indicators.direction.rsi import compute_rsi
@@ -35,6 +36,7 @@ from app.indicators.timing.adx import compute_adx
 from app.indicators.timing.atr import compute_atr
 from app.indicators.timing.bollinger import compute_bollinger
 from app.indicators.timing.macd import compute_macd
+from app.indicators.timing.ttm_squeeze import compute_ttm_squeeze
 
 if TYPE_CHECKING:
     from app.indicators.context import IndicatorContext
@@ -59,6 +61,11 @@ _PER_TICKER: dict[str, IndicatorFunc] = {
     # stop-loss sizing + the "today's move unusual?" headline.
     "adx": compute_adx,
     "atr": compute_atr,
+    # v2 Phase 3 (2026-06): TTM Squeeze joins the short-term vote as
+    # the breakout-direction gauge; CHO joins the mid-term vote as the
+    # accumulation/distribution accelerator (Sherry-style 大戶吃貨 read).
+    "ttm_squeeze": compute_ttm_squeeze,
+    "cho": compute_cho,
     "dxy": compute_dxy,
     "fed_rate": compute_fed_rate,
 }

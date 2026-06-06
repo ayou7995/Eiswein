@@ -225,6 +225,57 @@ def wilder_adx(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 
     return ADXResult(atr=atr, plus_di=plus_di, minus_di=minus_di, adx=adx)
 
 
+class KeltnerResult(NamedTuple):
+    upper: pd.Series
+    middle: pd.Series
+    lower: pd.Series
+
+
+def keltner_channels(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    *,
+    length: int = 20,
+    atr_mult: float = 1.5,
+) -> KeltnerResult:
+    """Keltner Channels: EMA(close, length) ± atr_mult × ATR(length).
+
+    Chester Keltner's 1960 formulation (re-popularised by Linda Bradford
+    Raschke). Used here as the TTM Squeeze's outer envelope — when
+    Bollinger Bands compress *inside* Keltner Channels, volatility is
+    coiled and a breakout is statistically imminent.
+    """
+    close_f = close.astype("float64")
+    middle = close_f.ewm(span=length, adjust=False).mean()
+    atr = wilder_atr(high, low, close, length=length)
+    upper = middle + atr_mult * atr
+    lower = middle - atr_mult * atr
+    return KeltnerResult(upper=upper, middle=middle, lower=lower)
+
+
+def linreg_slope(series: pd.Series, *, length: int) -> pd.Series:
+    """Rolling ``length``-period linear regression slope.
+
+    Output is the slope coefficient of an OLS fit y = a + b·x where
+    x is the bar index 0..length-1 and y is the trailing ``length``
+    values of the input. Used by TTM Squeeze to read a smooth momentum
+    histogram off the de-midpoint'd close.
+    """
+    x = np.arange(length, dtype=float)
+    x_mean = x.mean()
+    x_var = float(((x - x_mean) ** 2).sum())
+
+    def _slope(window: np.ndarray[tuple[int, ...], np.dtype[np.float64]]) -> float:
+        y_mean = window.mean()
+        return float(((x - x_mean) * (window - y_mean)).sum() / x_var)
+
+    return cast(
+        pd.Series,
+        series.astype("float64").rolling(length, min_periods=length).apply(_slope, raw=True),
+    )
+
+
 def last_float(series: pd.Series) -> float | None:
     """Return the last non-NaN value as a plain float, else None."""
     if series.empty:

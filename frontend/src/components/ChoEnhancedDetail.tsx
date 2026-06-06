@@ -1,0 +1,185 @@
+import { z } from 'zod';
+import { Explainable, RuleTable } from './Explainable';
+
+const choDetailSchema = z.object({
+  cho: z.number(),
+  prior: z.number(),
+  slope_5d: z.number().nullable().optional(),
+  flat_threshold: z.number(),
+  volume_scale: z.number(),
+  fast: z.number().optional().default(3),
+  slow: z.number().optional().default(10),
+});
+
+// CHO is volume-weighted (cumsum × EMA differential), so raw values for
+// actively-traded tickers naturally sit in the millions. Showing
+// "-11,849,513" forces the operator to count zeroes; "-11.85M" is the
+// universally-recognised compact form.
+function formatCho(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value >= 0 ? '+' : '−';
+  const v = abs;
+  if (v >= 1e9) return `${sign}${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${sign}${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${sign}${(v / 1e3).toFixed(2)}k`;
+  return `${sign}${v.toFixed(2)}`;
+}
+
+export interface ChoHeadlineLabels {
+  ruleTitle: string;
+  ruleNote: string;
+}
+
+export function ChoHeadlineExplainable({
+  shortLabel,
+  detail,
+  labels,
+}: {
+  shortLabel: string;
+  detail: Record<string, unknown>;
+  labels: ChoHeadlineLabels;
+}): JSX.Element {
+  const parsed = choDetailSchema.safeParse(detail);
+  if (!parsed.success) return <span>{shortLabel}</span>;
+  const d = parsed.data;
+  const rising = d.cho > d.prior;
+  return (
+    <Explainable
+      title={labels.ruleTitle}
+      explanation={
+        <RuleTable
+          preface="Chaikin Oscillator (Marc Chaikin) 衡量「大戶吃貨/出貨的加速度」。底層是 A/D Line (累積分配線) — 每根 K 線的 close 落在 H-L 區間哪個位置,乘上量。CHO = EMA(AD, 3) − EMA(AD, 10),類似 MACD 但作用在資金流上。正值且加速 = 機構在加碼吃貨;負值且加速 = 機構在倒貨。對應 Sherry 的「綠燈群聚」概念。"
+          rows={[
+            {
+              condition: 'CHO > 0 且高於前一日',
+              result: '🟢 買盤加速 — 中期 5-vote 投綠票',
+              current: d.cho > 0 && rising,
+            },
+            {
+              condition: 'CHO < 0 且低於前一日',
+              result: '🔴 賣盤加速 — 中期 5-vote 投紅票',
+              current: d.cho < 0 && !rising,
+            },
+            {
+              condition: `|CHO| < ${d.flat_threshold.toFixed(1)} (接近零線)`,
+              result: '🟡 中性 — 大戶觀望',
+              current: Math.abs(d.cho) < d.flat_threshold,
+            },
+            {
+              condition: '同號但減速 (吃貨/倒貨力道在退)',
+              result: '🟡 動能減弱 — 不投綠/紅票',
+              current:
+                Math.abs(d.cho) >= d.flat_threshold &&
+                ((d.cho > 0 && !rising) || (d.cho < 0 && rising)),
+            },
+          ]}
+          currentValueText={`你目前: CHO ${formatCho(d.cho)} (前日 ${formatCho(d.prior)}) · 差距 ${formatCho(d.cho - d.prior)}`}
+          note={labels.ruleNote}
+        />
+      }
+    >
+      {shortLabel}
+    </Explainable>
+  );
+}
+
+export function ChoEnhancedDetail({
+  detail,
+}: {
+  detail: Record<string, unknown>;
+}): JSX.Element | null {
+  const parsed = choDetailSchema.safeParse(detail);
+  if (!parsed.success) return null;
+  const d = parsed.data;
+  const rising = d.cho > d.prior;
+  const accumulating = d.cho > 0 && rising;
+  const distributing = d.cho < 0 && !rising;
+  return (
+    <div className="flex flex-col gap-3 px-3 py-3 text-sm">
+      <PhasePill
+        accumulating={accumulating}
+        distributing={distributing}
+        nearZero={Math.abs(d.cho) < d.flat_threshold}
+        cho={d.cho}
+        rising={rising}
+      />
+      <SlopeContext detail={d} />
+    </div>
+  );
+}
+
+function PhasePill({
+  accumulating,
+  distributing,
+  nearZero,
+  cho,
+  rising,
+}: {
+  accumulating: boolean;
+  distributing: boolean;
+  nearZero: boolean;
+  cho: number;
+  rising: boolean;
+}): JSX.Element {
+  let tone: string;
+  let label: string;
+  if (accumulating) {
+    tone = 'border-signal-green/40 bg-signal-green/10 text-signal-green';
+    label = '🟢 機構吃貨加速 (Sherry 綠燈)';
+  } else if (distributing) {
+    tone = 'border-signal-red/40 bg-signal-red/10 text-signal-red';
+    label = '🔴 機構倒貨加速 (Sherry 紅燈)';
+  } else if (nearZero) {
+    tone = 'border-stone-200 bg-stone-50 text-stone-700';
+    label = '⚪ 接近零線 — 大戶觀望';
+  } else {
+    tone = 'border-amber-400/40 bg-amber-50 text-amber-700';
+    label = `🟡 ${cho > 0 ? '買盤' : '賣盤'}${rising ? '加速' : '減速'} — 訊號不夠強`;
+  }
+  return (
+    <section
+      aria-label="累積/分配階段"
+      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${tone}`}
+    >
+      <Explainable
+        title="累積 vs 分配的解讀"
+        explanation={
+          <p className="leading-relaxed text-stone-700">
+            CHO 正值 = 過去 10 天的累積買盤強過分配賣盤;負值反之。
+            「加速」= 今日 CHO 比昨天更正/更負,代表力道在擴大。
+            Sherry 系統的「綠燈群聚」就是這個概念 — 連續多日的機構吃貨。
+          </p>
+        }
+      >
+        <span className="font-medium">{label}</span>
+      </Explainable>
+    </section>
+  );
+}
+
+function SlopeContext({
+  detail,
+}: {
+  detail: z.infer<typeof choDetailSchema>;
+}): JSX.Element {
+  return (
+    <section
+      aria-label="CHO 數值"
+      className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
+    >
+      <h3 className="text-stone-500">CHO 數值（EMA{detail.fast} − EMA{detail.slow} on AD Line）</h3>
+      <p className="text-stone-700">
+        今日{' '}
+        <span className="font-mono text-stone-900">{formatCho(detail.cho)}</span>
+        ,昨日 <span className="font-mono">{formatCho(detail.prior)}</span>,
+        差距{' '}
+        <span className="font-mono">{formatCho(detail.cho - detail.prior)}</span>
+        。
+      </p>
+      <p className="text-stone-500">
+        因 CHO 隨成交量規模浮動,「接近零」的閾值會自動依股票成交量量級調整 —
+        AAPL 跟 KO 用同一條規則仍然公平。
+      </p>
+    </section>
+  );
+}

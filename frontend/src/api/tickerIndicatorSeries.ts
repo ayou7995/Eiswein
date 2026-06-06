@@ -10,6 +10,8 @@ export const indicatorSeriesNameSchema = z.enum([
   'relative_strength',
   'adx',
   'atr',
+  'ttm_squeeze',
+  'cho',
 ]);
 export type IndicatorSeriesName = z.infer<typeof indicatorSeriesNameSchema>;
 
@@ -207,6 +209,39 @@ const atrResponseSchema = z.object({
   }),
 });
 
+const ttmSqueezeResponseSchema = z.object({
+  symbol: z.string(),
+  indicator: z.literal('ttm_squeeze'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      momentum: z.number().nullable(),
+      squeeze_on: z.boolean(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    squeeze_on: z.boolean(),
+    momentum: z.number().nullable(),
+  }),
+});
+
+const choResponseSchema = z.object({
+  symbol: z.string(),
+  indicator: z.literal('cho'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      cho: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    cho: z.number().nullable(),
+    prior: z.number().nullable(),
+  }),
+});
+
 export const indicatorSeriesResponseSchema = z.discriminatedUnion('indicator', [
   priceVsMaResponseSchema,
   rsiResponseSchema,
@@ -216,6 +251,8 @@ export const indicatorSeriesResponseSchema = z.discriminatedUnion('indicator', [
   relativeStrengthResponseSchema,
   adxResponseSchema,
   atrResponseSchema,
+  ttmSqueezeResponseSchema,
+  choResponseSchema,
 ]);
 
 export type IndicatorSeriesResponse = z.infer<
@@ -235,6 +272,8 @@ export type RelativeStrengthSeriesResponse = z.infer<
 >;
 export type AdxSeriesResponse = z.infer<typeof adxResponseSchema>;
 export type AtrSeriesResponse = z.infer<typeof atrResponseSchema>;
+export type TtmSqueezeSeriesResponse = z.infer<typeof ttmSqueezeResponseSchema>;
+export type ChoSeriesResponse = z.infer<typeof choResponseSchema>;
 
 export function getIndicatorSeries(
   symbol: string,

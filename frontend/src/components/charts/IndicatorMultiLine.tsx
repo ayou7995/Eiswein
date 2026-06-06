@@ -50,6 +50,11 @@ export interface IndicatorMultiLineProps {
   readonly histogram?: MultiLineHistogram;
   readonly height?: number;
   readonly ariaLabel: string;
+  // Optional axis-label formatter. Defaults to lightweight-charts'
+  // built-in numeric formatter; CHO (volume-weighted, raw values in
+  // millions) and similar indicators pass a k/M/B formatter so the
+  // right-axis ticks stay readable.
+  readonly priceFormatter?: (price: number) => string;
 }
 
 function toUtcTimestamp(dateString: string): UTCTimestamp {
@@ -120,6 +125,7 @@ export function IndicatorMultiLine({
   histogram,
   height = 220,
   ariaLabel,
+  priceFormatter,
 }: IndicatorMultiLineProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -155,6 +161,9 @@ export function IndicatorMultiLine({
       crosshair: { mode: 0 },
       handleScale: false,
       handleScroll: false,
+      ...(priceFormatter !== undefined
+        ? { localization: { priceFormatter } }
+        : {}),
     });
     chartRef.current = chart;
 
@@ -222,7 +231,7 @@ export function IndicatorMultiLine({
       bandLowerRef.current = null;
       histogramRef.current = null;
     };
-  }, [height, lines, shadedBand, histogram]);
+  }, [height, lines, shadedBand, histogram, priceFormatter]);
 
   useEffect(() => {
     if (!mounted) return;

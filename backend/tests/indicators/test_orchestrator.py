@@ -28,6 +28,10 @@ def test_compute_all_returns_all_expected_names(
         # v2 Phase 2 additions: ADX trend-strength + ATR volatility scale.
         "adx",
         "atr",
+        # v2 Phase 3 additions: TTM Squeeze (breakout direction) + CHO
+        # (Chaikin accumulation/distribution accelerator).
+        "ttm_squeeze",
+        "cho",
         "dxy",
         "fed_rate",
     }
@@ -73,9 +77,9 @@ def test_compute_all_isolates_broken_indicator(
     assert results["rsi"].data_sufficient is False
     assert results["rsi"].short_label == "計算錯誤"
     assert results["rsi"].detail == {"error_class": "ValueError"}
-    # Every other indicator is present and computed. (8 originals + 2
-    # new Phase 2 entries = 10.)
-    assert len(results) == 10
+    # Every other indicator is present and computed. (8 originals
+    # + Phase 2 adx/atr + Phase 3 ttm_squeeze/cho = 12.)
+    assert len(results) == 12
     # A neighboring indicator (price_vs_ma) still ran fine.
     assert results["price_vs_ma"].data_sufficient is True
 

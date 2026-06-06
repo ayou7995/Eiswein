@@ -47,6 +47,8 @@ export const INDICATOR_TIMEFRAMES: Record<string, Timeframe> = {
   bollinger: 'short',
   adx: 'mid',
   atr: 'short',
+  ttm_squeeze: 'short',
+  cho: 'mid',
   dxy: 'long',
   fed_rate: 'long',
 };

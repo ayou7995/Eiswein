@@ -811,3 +811,55 @@ def test_atr_series_shape(
     assert current["band"] in {"calm", "elevated", "high", "unknown"}
     assert body["thresholds"] == {"calm": 1.5, "elevated": 3.5}
 
+
+
+def test_ttm_squeeze_series_shape(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols={"AAPL"})
+    _login(client, test_password)
+    _seed_watchlist(session_factory, symbol="AAPL")
+    with session_factory() as session:
+        _seed_synthetic_prices(session, symbol="AAPL", end=date.today(), days=260)
+        session.commit()
+
+    resp = client.get("/api/v1/ticker/AAPL/indicator/ttm_squeeze/series")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["indicator"] == "ttm_squeeze"
+    assert len(body["series"]) == 60
+    point = body["series"][-1]
+    assert "momentum" in point
+    assert "squeeze_on" in point
+    assert isinstance(point["squeeze_on"], bool)
+    current = body["current"]
+    assert isinstance(current["squeeze_on"], bool)
+    summary = body["summary_zh"]
+    assert "壓縮中" in summary or "釋放" in summary or "中性" in summary
+
+
+def test_cho_series_shape(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols={"AAPL"})
+    _login(client, test_password)
+    _seed_watchlist(session_factory, symbol="AAPL")
+    with session_factory() as session:
+        _seed_synthetic_prices(session, symbol="AAPL", end=date.today(), days=260)
+        session.commit()
+
+    resp = client.get("/api/v1/ticker/AAPL/indicator/cho/series")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["indicator"] == "cho"
+    assert len(body["series"]) == 60
+    point = body["series"][-1]
+    assert "cho" in point
+    current = body["current"]
+    assert "cho" in current and "prior" in current

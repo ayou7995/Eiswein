@@ -29,6 +29,8 @@ import pandas as pd
 
 from app.indicators._helpers import (
     bollinger_bands,
+    keltner_channels,
+    linreg_slope,
     macd,
     sma,
     wilder_adx,
@@ -59,6 +61,8 @@ IndicatorNameLiteral = Literal[
     "relative_strength",
     "adx",
     "atr",
+    "ttm_squeeze",
+    "cho",
 ]
 
 # Whitelist for the URL slug. The Bollinger indicator is named
@@ -76,6 +80,8 @@ SUPPORTED_INDICATORS: Final[frozenset[str]] = frozenset(
         "relative_strength",
         "adx",
         "atr",
+        "ttm_squeeze",
+        "cho",
     }
 )
 
@@ -998,6 +1004,158 @@ def _atr_summary(*, atr_pct: float | None, band: _AtrBand) -> str:
 # DM then on DX itself); ATR needs length+1 bars.
 ADX_MIN_BARS: Final[int] = SERIES_DAYS + 2 * _ADX_LENGTH
 ATR_MIN_BARS: Final[int] = SERIES_DAYS + _ATR_LENGTH
+
+
+# --- TTM Squeeze (Phase 3) ------------------------------------------------
+# Output series carries the squeeze flag + momentum value per bar so the
+# chart can render the canonical TTM histogram (4-tone momentum bars) with
+# squeeze-on/off ticks beneath. Math primitives reused from _helpers so
+# the per-snapshot badge value and the rolling chart match exactly.
+
+_TTM_LENGTH: Final[int] = 20
+_TTM_BB_STD: Final[float] = 2.0
+_TTM_KC_ATR_MULT: Final[float] = 1.5
+TTM_MIN_BARS: Final[int] = SERIES_DAYS + 2 * _TTM_LENGTH
+
+
+def build_ttm_squeeze_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """TTM Squeeze rolling chart payload.
+
+    Returns the momentum value, squeeze flag, and the BB/KC band edges
+    per bar in the trailing ``days`` window so the chart can colour the
+    histogram bars (canonical 4-tone Carter scheme) and show the squeeze
+    on/off ticks along the time axis.
+    """
+    high = frame["high"].astype("float64")
+    low = frame["low"].astype("float64")
+    close = frame["close"].astype("float64")
+
+    bb = bollinger_bands(close, length=_TTM_LENGTH, std_mult=_TTM_BB_STD)
+    kc = keltner_channels(high, low, close, length=_TTM_LENGTH, atr_mult=_TTM_KC_ATR_MULT)
+    squeeze = (bb.upper < kc.upper) & (bb.lower > kc.lower)
+
+    highest = high.rolling(_TTM_LENGTH, min_periods=_TTM_LENGTH).max()
+    lowest = low.rolling(_TTM_LENGTH, min_periods=_TTM_LENGTH).min()
+    midpoint = (highest + lowest + sma(close, _TTM_LENGTH)) / 3.0
+    # Normalise to "% of close" so the chart is comparable across tickers —
+    # see ``timing/ttm_squeeze.py`` for the same normalisation on the badge.
+    momentum = (linreg_slope(close - midpoint, length=_TTM_LENGTH) / close) * 100.0
+
+    tail_squeeze = squeeze.iloc[-days:]
+    tail_momentum = momentum.iloc[-days:]
+
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "momentum": _round_or_none(m),
+            "squeeze_on": bool(s),
+        }
+        for idx, m, s in zip(tail_squeeze.index, tail_momentum, tail_squeeze, strict=True)
+    ]
+
+    current_squeeze_on = bool(tail_squeeze.iloc[-1])
+    current_momentum = _safe_float(tail_momentum.iloc[-1])
+    summary = _ttm_summary(squeeze_on=current_squeeze_on, momentum=current_momentum)
+
+    return {
+        "symbol": symbol,
+        "indicator": "ttm_squeeze",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "squeeze_on": current_squeeze_on,
+            "momentum": _round_or_none(current_momentum),
+        },
+    }
+
+
+def _ttm_summary(*, squeeze_on: bool, momentum: float | None) -> str:
+    if momentum is None:
+        return "TTM 資料不足"
+    if squeeze_on:
+        return f"壓縮中（mom {momentum:+.2f}）"
+    if momentum > 0:
+        return f"已釋放向上（mom {momentum:+.2f}）"
+    if momentum < 0:
+        return f"已釋放向下（mom {momentum:+.2f}）"
+    return f"中性（mom {momentum:+.2f}）"
+
+
+# --- Chaikin Oscillator (Phase 3) -----------------------------------------
+_CHO_FAST: Final[int] = 3
+_CHO_SLOW: Final[int] = 10
+CHO_MIN_BARS: Final[int] = SERIES_DAYS + _CHO_SLOW + 5
+
+
+def build_cho_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """Chaikin Oscillator series + zh-TW summary."""
+    high = frame["high"].astype("float64")
+    low = frame["low"].astype("float64")
+    close = frame["close"].astype("float64")
+    volume = frame["volume"].astype("float64")
+
+    rng = (high - low).replace(0, float("nan"))
+    mfm = ((close - low) - (high - close)) / rng
+    mfm = mfm.fillna(0.0)
+    money_flow_volume = mfm * volume
+    ad_line = money_flow_volume.cumsum()
+    cho_series = ad_line.ewm(span=_CHO_FAST, adjust=False).mean() - ad_line.ewm(
+        span=_CHO_SLOW, adjust=False
+    ).mean()
+
+    tail = cho_series.iloc[-days:]
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "cho": _round_or_none(v, ndigits=2),
+        }
+        for idx, v in zip(tail.index, tail, strict=True)
+    ]
+
+    current_cho = _safe_float(tail.iloc[-1])
+    prior_cho = _safe_float(tail.iloc[-2]) if len(tail) >= 2 else None
+    summary = _cho_summary(cho=current_cho, prior=prior_cho)
+
+    return {
+        "symbol": symbol,
+        "indicator": "cho",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "cho": _round_or_none(current_cho, ndigits=2),
+            "prior": _round_or_none(prior_cho, ndigits=2),
+        },
+    }
+
+
+def _cho_summary(*, cho: float | None, prior: float | None) -> str:
+    if cho is None:
+        return "CHO 資料不足"
+    cho_label = _format_cho_magnitude(cho)
+    if prior is None:
+        return f"CHO {cho_label}"
+    arrow = "↑" if cho > prior else "↓" if cho < prior else "→"
+    side = "買盤" if cho > 0 else "賣盤"
+    # 1k is the natural "noise floor" for CHO since it's a volume-weighted
+    # difference of EMAs — even thinly-traded tickers cross above 1k.
+    if abs(cho) < 1_000:
+        return f"CHO 接近零線 ({cho_label} {arrow})"
+    return f"{side}主導 (CHO {cho_label} {arrow})"
+
+
+def _format_cho_magnitude(value: float) -> str:
+    abs_v = abs(value)
+    if abs_v >= 1e9:
+        return f"{value / 1e9:+.2f}B"
+    if abs_v >= 1e6:
+        return f"{value / 1e6:+.2f}M"
+    if abs_v >= 1e3:
+        return f"{value / 1e3:+.2f}k"
+    return f"{value:+.2f}"
 
 
 # --- shared helpers -------------------------------------------------------

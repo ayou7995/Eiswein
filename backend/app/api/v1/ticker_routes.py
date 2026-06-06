@@ -37,18 +37,22 @@ from app.api.dependencies import (
 from app.api.v1._indicator_series import (
     ADX_MIN_BARS,
     ATR_MIN_BARS,
+    CHO_MIN_BARS,
     RELATIVE_STRENGTH_MIN_BARS,
     SERIES_DAYS,
     SUPPORTED_INDICATORS,
+    TTM_MIN_BARS,
     VOLUME_ANOMALY_MIN_BARS,
     build_adx_payload,
     build_atr_payload,
     build_bollinger_payload,
+    build_cho_payload,
     build_close_frame,
     build_macd_payload,
     build_price_vs_ma_payload,
     build_relative_strength_payload,
     build_rsi_payload,
+    build_ttm_squeeze_payload,
     build_volume_anomaly_payload,
 )
 from app.api.v1.watchlist_routes import validate_symbol_or_raise
@@ -731,6 +735,49 @@ class AtrSeriesResponse(BaseModel):
     thresholds: AtrThresholds
 
 
+class TtmSqueezePoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    momentum: float | None
+    squeeze_on: bool
+
+
+class TtmSqueezeCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    squeeze_on: bool
+    momentum: float | None
+
+
+class TtmSqueezeSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    symbol: str
+    indicator: Literal["ttm_squeeze"]
+    series: list[TtmSqueezePoint]
+    summary_zh: str
+    current: TtmSqueezeCurrent
+
+
+class ChoSeriesPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    cho: float | None
+
+
+class ChoSeriesCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    cho: float | None
+    prior: float | None
+
+
+class ChoSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    symbol: str
+    indicator: Literal["cho"]
+    series: list[ChoSeriesPoint]
+    summary_zh: str
+    current: ChoSeriesCurrent
+
+
 IndicatorSeriesResponse = (
     PriceVsMaSeriesResponse
     | RsiSeriesResponse
@@ -740,6 +787,8 @@ IndicatorSeriesResponse = (
     | RelativeStrengthSeriesResponse
     | AdxSeriesResponse
     | AtrSeriesResponse
+    | TtmSqueezeSeriesResponse
+    | ChoSeriesResponse
 )
 
 
@@ -852,6 +901,30 @@ def get_ticker_indicator_series(
                 },
             )
         return AtrSeriesResponse.model_validate(build_atr_payload(validated, frame, window))
+    if name == "ttm_squeeze":
+        ttm_min = window + (TTM_MIN_BARS - SERIES_DAYS)
+        if len(frame) < ttm_min:
+            raise NotFoundError(
+                details={
+                    "symbol": validated,
+                    "indicator": name,
+                    "reason": "insufficient_history",
+                },
+            )
+        return TtmSqueezeSeriesResponse.model_validate(
+            build_ttm_squeeze_payload(validated, frame, window)
+        )
+    if name == "cho":
+        cho_min = window + (CHO_MIN_BARS - SERIES_DAYS)
+        if len(frame) < cho_min:
+            raise NotFoundError(
+                details={
+                    "symbol": validated,
+                    "indicator": name,
+                    "reason": "insufficient_history",
+                },
+            )
+        return ChoSeriesResponse.model_validate(build_cho_payload(validated, frame, window))
     # relative_strength: SUPPORTED_INDICATORS already gates this branch.
     # Loads SPY independently — SPY does not need to be on the user's
     # watchlist, only present in daily_price.
