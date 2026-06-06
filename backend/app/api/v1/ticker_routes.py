@@ -35,10 +35,14 @@ from app.api.dependencies import (
     get_watchlist_repository,
 )
 from app.api.v1._indicator_series import (
+    ADX_MIN_BARS,
+    ATR_MIN_BARS,
     RELATIVE_STRENGTH_MIN_BARS,
     SERIES_DAYS,
     SUPPORTED_INDICATORS,
     VOLUME_ANOMALY_MIN_BARS,
+    build_adx_payload,
+    build_atr_payload,
     build_bollinger_payload,
     build_close_frame,
     build_macd_payload,
@@ -662,6 +666,71 @@ class RelativeStrengthSeriesResponse(BaseModel):
     current: RelativeStrengthCurrent
 
 
+class AdxSeriesPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    adx: float | None
+    plus_di: float | None
+    minus_di: float | None
+
+
+class AdxSeriesCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    adx: float | None
+    plus_di: float | None
+    minus_di: float | None
+    zone: Literal["choppy", "ambiguous", "trending", "unknown"]
+    direction: Literal["up", "down", "unknown"]
+
+
+class AdxThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    no_trend: float
+    trend: float
+
+
+class AdxSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    symbol: str
+    indicator: Literal["adx"]
+    series: list[AdxSeriesPoint]
+    summary_zh: str
+    current: AdxSeriesCurrent
+    thresholds: AdxThresholds
+
+
+class AtrSeriesPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    close: float | None
+    atr: float | None
+    atr_pct: float | None
+
+
+class AtrSeriesCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    close: float | None
+    atr: float | None
+    atr_pct: float | None
+    band: Literal["calm", "elevated", "high", "unknown"]
+
+
+class AtrThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    calm: float
+    elevated: float
+
+
+class AtrSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    symbol: str
+    indicator: Literal["atr"]
+    series: list[AtrSeriesPoint]
+    summary_zh: str
+    current: AtrSeriesCurrent
+    thresholds: AtrThresholds
+
+
 IndicatorSeriesResponse = (
     PriceVsMaSeriesResponse
     | RsiSeriesResponse
@@ -669,6 +738,8 @@ IndicatorSeriesResponse = (
     | BollingerSeriesResponse
     | VolumeAnomalySeriesResponse
     | RelativeStrengthSeriesResponse
+    | AdxSeriesResponse
+    | AtrSeriesResponse
 )
 
 
@@ -759,6 +830,28 @@ def get_ticker_indicator_series(
         return VolumeAnomalySeriesResponse.model_validate(
             build_volume_anomaly_payload(validated, frame, window)
         )
+    if name == "adx":
+        adx_min = window + (ADX_MIN_BARS - SERIES_DAYS)
+        if len(frame) < adx_min:
+            raise NotFoundError(
+                details={
+                    "symbol": validated,
+                    "indicator": name,
+                    "reason": "insufficient_history",
+                },
+            )
+        return AdxSeriesResponse.model_validate(build_adx_payload(validated, frame, window))
+    if name == "atr":
+        atr_min = window + (ATR_MIN_BARS - SERIES_DAYS)
+        if len(frame) < atr_min:
+            raise NotFoundError(
+                details={
+                    "symbol": validated,
+                    "indicator": name,
+                    "reason": "insufficient_history",
+                },
+            )
+        return AtrSeriesResponse.model_validate(build_atr_payload(validated, frame, window))
     # relative_strength: SUPPORTED_INDICATORS already gates this branch.
     # Loads SPY independently — SPY does not need to be on the user's
     # watchlist, only present in daily_price.

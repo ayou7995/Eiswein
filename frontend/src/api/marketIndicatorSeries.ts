@@ -8,6 +8,7 @@ export const marketIndicatorSeriesNameSchema = z.enum([
   'ad_day',
   'dxy',
   'fed_rate',
+  'spx_adx',
 ]);
 export type MarketIndicatorSeriesName = z.infer<typeof marketIndicatorSeriesNameSchema>;
 
@@ -149,6 +150,30 @@ const fedFundsResponseSchema = z.object({
   }),
 });
 
+const spxAdxResponseSchema = z.object({
+  indicator: z.literal('spx_adx'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      adx: z.number().nullable(),
+      plus_di: z.number().nullable(),
+      minus_di: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    adx: z.number().nullable(),
+    plus_di: z.number().nullable(),
+    minus_di: z.number().nullable(),
+    zone: z.enum(['choppy', 'ambiguous', 'trending', 'unknown']),
+    direction: z.enum(['up', 'down', 'unknown']),
+  }),
+  thresholds: z.object({
+    no_trend: z.number(),
+    trend: z.number(),
+  }),
+});
+
 export const marketIndicatorSeriesResponseSchema = z.discriminatedUnion('indicator', [
   spxMaResponseSchema,
   vixResponseSchema,
@@ -156,6 +181,7 @@ export const marketIndicatorSeriesResponseSchema = z.discriminatedUnion('indicat
   adDayResponseSchema,
   dxyTrendResponseSchema,
   fedFundsResponseSchema,
+  spxAdxResponseSchema,
 ]);
 
 export type MarketIndicatorSeriesResponse = z.infer<typeof marketIndicatorSeriesResponseSchema>;
@@ -165,6 +191,7 @@ export type YieldSpreadSeriesResponse = z.infer<typeof yieldSpreadResponseSchema
 export type AdDaySeriesResponse = z.infer<typeof adDayResponseSchema>;
 export type DxyTrendSeriesResponse = z.infer<typeof dxyTrendResponseSchema>;
 export type FedFundsSeriesResponse = z.infer<typeof fedFundsResponseSchema>;
+export type SpxAdxSeriesResponse = z.infer<typeof spxAdxResponseSchema>;
 
 // Range options mapped to trading days. Server validates 21 ≤ days ≤ 1260
 // for the ``days`` param; the ``ALL`` button instead sends ``?range=all``
@@ -191,6 +218,7 @@ export const DEFAULT_RANGE_BY_INDICATOR: Record<MarketIndicatorSeriesName, Marke
   ad_day: '1M',
   // Mid-term trend
   spx_ma: '3M',
+  spx_adx: '3M',
   // Long-term macro
   yield_spread: '1Y',
   dxy: '1Y',

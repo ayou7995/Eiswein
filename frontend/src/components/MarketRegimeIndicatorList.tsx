@@ -40,6 +40,10 @@ import {
   FedRateEnhancedDetail,
   FedRateHeadlineExplainable,
 } from './FedRateEnhancedDetail';
+import {
+  AdxEnhancedDetail,
+  AdxHeadlineExplainable,
+} from './AdxEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
@@ -75,6 +79,12 @@ const FED_RATE_HEADLINE_LABELS = {
   ruleTitle: 'Fed 利率紅黃綠燈規則',
   ruleNote:
     'Fed Funds Rate 是聯邦基金利率。「總經背景」之一，不投市場態勢票。降息提升風險資產估值（對股市友善），升息相反。',
+};
+
+const SPX_ADX_HEADLINE_LABELS = {
+  ruleTitle: 'SPX ADX 趨勢強度紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「大盤趨勢強度濾鏡」— ADX ≥ 25 = 大盤有真正趨勢、可信 Price vs MA / MACD;< 20 = 大盤盤整、改信 RSI / BB 等均值回歸訊號。中期 posture 投票時做為「該不該信」的背景權重。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -196,6 +206,12 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
               detail={item.detail}
               labels={FED_RATE_HEADLINE_LABELS}
             />
+          ) : item.indicator_name === 'spx_adx' ? (
+            <AdxHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={SPX_ADX_HEADLINE_LABELS}
+            />
           ) : (
             item.short_label
           )}
@@ -216,6 +232,8 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           <DxyEnhancedDetail detail={item.detail} />
         ) : item.indicator_name === 'fed_rate' ? (
           <FedRateEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'spx_adx' ? (
+          <AdxEnhancedDetail detail={item.detail} />
         ) : (
           detailEntries.length > 0 && (
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-stone-700">
@@ -360,6 +378,35 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
   }
   if (response.indicator === 'ad_day') {
     return <AdDayCandleClassificationChart response={response} />;
+  }
+  if (response.indicator === 'spx_adx') {
+    return (
+      <IndicatorBoundedLine
+        series={response.series}
+        lines={[
+          { key: 'adx', label: 'ADX', color: '#e2e8f0' },
+          { key: 'plus_di', label: '+DI', color: '#22c55e' },
+          { key: 'minus_di', label: '-DI', color: '#ef4444' },
+        ]}
+        thresholds={[
+          {
+            value: response.thresholds.no_trend,
+            label: '盤整 (<20)',
+            color: '#a1a1aa',
+            fillBetween: 'below',
+          },
+          {
+            value: response.thresholds.trend,
+            label: '強趨勢 (≥25)',
+            color: '#22c55e',
+            fillBetween: 'above',
+          },
+        ]}
+        yAxisMin={0}
+        yAxisMax={60}
+        ariaLabel="SPX ADX 60 日走勢"
+      />
+    );
   }
   // Discriminated-union exhaustiveness — should be unreachable.
   return null;

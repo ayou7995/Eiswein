@@ -43,6 +43,14 @@ import {
   BollingerEnhancedDetail,
   BollingerHeadlineExplainable,
 } from '../components/BollingerEnhancedDetail';
+import {
+  AdxEnhancedDetail,
+  AdxHeadlineExplainable,
+} from '../components/AdxEnhancedDetail';
+import {
+  AtrEnhancedDetail,
+  AtrHeadlineExplainable,
+} from '../components/AtrEnhancedDetail';
 import { DxyEnhancedDetail } from '../components/DxyEnhancedDetail';
 import { FedRateEnhancedDetail } from '../components/FedRateEnhancedDetail';
 import { useTickerSignal } from '../hooks/useTickerSignal';
@@ -127,6 +135,8 @@ const INDICATOR_SERIES_NAME: Record<string, IndicatorSeriesName> = {
   bollinger: 'bollinger',
   volume_anomaly: 'volume_anomaly',
   relative_strength: 'relative_strength',
+  adx: 'adx',
+  atr: 'atr',
 };
 
 // Macro indicators come from the market-indicator series endpoints (shared
@@ -184,6 +194,26 @@ const RELATIVE_STRENGTH_LINES: ReadonlyArray<MultiLineDefinition> = [
     style: 'dashed',
     width: 1,
   },
+];
+
+const ADX_LINES: ReadonlyArray<BoundedLineDefinition> = [
+  { key: 'adx', label: 'ADX', color: '#1c1917' },
+  { key: 'plus_di', label: '+DI', color: '#059669' },
+  { key: 'minus_di', label: '-DI', color: '#e11d48' },
+];
+
+const ADX_THRESHOLDS: ReadonlyArray<BoundedLineThreshold> = [
+  { value: 20, label: '盤整 (<20)', color: '#a8a29e', fillBetween: 'below' },
+  { value: 25, label: '強趨勢 (≥25)', color: '#059669', fillBetween: 'above' },
+];
+
+const ATR_LINES: ReadonlyArray<BoundedLineDefinition> = [
+  { key: 'atr_pct', label: 'ATR %', color: '#1c1917' },
+];
+
+const ATR_THRESHOLDS: ReadonlyArray<BoundedLineThreshold> = [
+  { value: 1.5, label: '平靜 (<1.5%)', color: '#059669', fillBetween: 'below' },
+  { value: 3.5, label: '偏高 (≥3.5%)', color: '#e11d48', fillBetween: 'above' },
 ];
 
 export function TickerDetailPage(): JSX.Element {
@@ -448,6 +478,18 @@ const BOLLINGER_HEADLINE_LABELS = {
     '此燈號是時機指標 2 項中的「波動位置」項。通道是 mean-reversion 工具：價格突破 ±2σ 統計上會回歸，但**強趨勢可以沿著上/下軌走多日**（"riding the band"）。所以單獨看會誤判，要配合 RSI 和成交量一起判讀。',
 };
 
+const ADX_HEADLINE_LABELS = {
+  ruleTitle: 'ADX 趨勢強度紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「趨勢強度濾鏡」— 告訴你現在的方向訊號（Price vs MA / RSI 等）有沒有趨勢可言。ADX < 25 = 盤整，方向類指標的真實性被打折；ADX ≥ 25 = 真有趨勢、可信。+DI / -DI 之差告訴你趨勢偏多還是偏空。ADX 走弱（slope < -0.5）= 趨勢開始減速，黃燈警示。',
+};
+
+const ATR_HEADLINE_LABELS = {
+  ruleTitle: 'ATR 波動度紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「波動度尺規」— 告訴你這支股票現在每日真實震幅是大是小。ATR 不分多空，RED 不是「賣出」，而是「波動偏高，部位要縮、停損要緊」。Eiswein 用 close − 2 × ATR 算停損距離，比固定 % 停損更尊重每支股票自己的個性。',
+};
+
 interface IndicatorCardProps {
   symbol: string;
   indicatorKey: string;
@@ -468,6 +510,8 @@ function IndicatorCard({
   const isRelativeStrength = indicatorKey === 'relative_strength';
   const isMacd = indicatorKey === 'macd';
   const isBollinger = indicatorKey === 'bollinger';
+  const isAdx = indicatorKey === 'adx';
+  const isAtr = indicatorKey === 'atr';
   const isDxy = indicatorKey === 'dxy';
   const isFedRate = indicatorKey === 'fed_rate';
 
@@ -520,6 +564,18 @@ function IndicatorCard({
               detail={result.detail}
               labels={BOLLINGER_HEADLINE_LABELS}
             />
+          ) : isAdx ? (
+            <AdxHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={ADX_HEADLINE_LABELS}
+            />
+          ) : isAtr ? (
+            <AtrHeadlineExplainable
+              shortLabel={result.short_label}
+              detail={result.detail}
+              labels={ATR_HEADLINE_LABELS}
+            />
           ) : (
             result.short_label
           )}
@@ -552,6 +608,10 @@ function IndicatorCard({
         <MacdEnhancedDetail detail={result.detail} />
       ) : isBollinger ? (
         <BollingerEnhancedDetail detail={result.detail} />
+      ) : isAdx ? (
+        <AdxEnhancedDetail detail={result.detail} />
+      ) : isAtr ? (
+        <AtrEnhancedDetail detail={result.detail} />
       ) : isDxy ? (
         <DxyEnhancedDetail detail={result.detail} />
       ) : isFedRate ? (
@@ -746,6 +806,38 @@ function IndicatorChart({ data, ariaLabel }: IndicatorChartProps): JSX.Element {
         <IndicatorMultiLine
           series={series}
           lines={RELATIVE_STRENGTH_LINES}
+          ariaLabel={ariaLabel}
+        />
+      );
+    }
+    case 'adx':
+      return (
+        <IndicatorBoundedLine
+          series={data.series}
+          lines={ADX_LINES}
+          thresholds={ADX_THRESHOLDS}
+          yAxisMin={0}
+          yAxisMax={60}
+          ariaLabel={ariaLabel}
+        />
+      );
+    case 'atr': {
+      // ATR % rarely exceeds 6 % for blue chips but penny-stock plays
+      // (LAC, etc.) routinely sit at 8-12 %. Floor the y-axis at 6 so the
+      // 1.5 / 3.5 threshold bands stay visually prominent for normal stocks,
+      // then auto-extend to cover the actual max when the data overflows.
+      const maxAtrPct = data.series.reduce(
+        (acc, row) => (row.atr_pct !== null ? Math.max(acc, row.atr_pct) : acc),
+        0,
+      );
+      const yAxisMax = Math.max(6, Math.ceil(maxAtrPct * 1.15));
+      return (
+        <IndicatorBoundedLine
+          series={data.series}
+          lines={ATR_LINES}
+          thresholds={ATR_THRESHOLDS}
+          yAxisMin={0}
+          yAxisMax={yAxisMax}
           ariaLabel={ariaLabel}
         />
       );

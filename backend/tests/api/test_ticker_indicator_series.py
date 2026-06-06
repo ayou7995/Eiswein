@@ -735,3 +735,79 @@ def test_range_all_returns_full_five_year_window(
     resp = client.get("/api/v1/ticker/AAPL/indicator/price_vs_ma/series?range=all")
     assert resp.status_code == 200
     assert len(resp.json()["series"]) == 1260
+
+def test_adx_series_shape(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols={"AAPL"})
+    _login(client, test_password)
+    _seed_watchlist(session_factory, symbol="AAPL")
+    with session_factory() as session:
+        _seed_synthetic_prices(session, symbol="AAPL", end=date.today(), days=260)
+        session.commit()
+
+    resp = client.get("/api/v1/ticker/AAPL/indicator/adx/series")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["indicator"] == "adx"
+    assert len(body["series"]) == 60
+    point = body["series"][-1]
+    assert "adx" in point
+    assert "plus_di" in point
+    assert "minus_di" in point
+    current = body["current"]
+    assert current["zone"] in {"choppy", "ambiguous", "trending", "unknown"}
+    assert current["direction"] in {"up", "down", "unknown"}
+    assert body["thresholds"] == {"no_trend": 20.0, "trend": 25.0}
+
+
+def test_adx_uptrend_classifies_trending_with_plus_di_dominant(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols={"AAPL"})
+    _login(client, test_password)
+    _seed_watchlist(session_factory, symbol="AAPL")
+    with session_factory() as session:
+        _seed_uptrend_prices(session, symbol="AAPL", end=date.today(), days=260)
+        session.commit()
+
+    resp = client.get("/api/v1/ticker/AAPL/indicator/adx/series")
+    body = resp.json()
+    current = body["current"]
+    assert current["direction"] == "up"
+    assert current["zone"] in {"trending", "ambiguous"}
+    assert "SPX" not in body["summary_zh"]
+
+
+def test_atr_series_shape(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols={"AAPL"})
+    _login(client, test_password)
+    _seed_watchlist(session_factory, symbol="AAPL")
+    with session_factory() as session:
+        _seed_synthetic_prices(session, symbol="AAPL", end=date.today(), days=260)
+        session.commit()
+
+    resp = client.get("/api/v1/ticker/AAPL/indicator/atr/series")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["indicator"] == "atr"
+    assert len(body["series"]) == 60
+    point = body["series"][-1]
+    assert "close" in point
+    assert "atr" in point
+    assert "atr_pct" in point
+    current = body["current"]
+    assert current["band"] in {"calm", "elevated", "high", "unknown"}
+    assert body["thresholds"] == {"calm": 1.5, "elevated": 3.5}
+

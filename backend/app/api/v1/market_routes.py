@@ -38,11 +38,13 @@ from app.api.v1._market_series import (
     DXY_MIN_BARS,
     FED_FUNDS_MACRO_SERIES,
     SERIES_DAYS,
+    SPX_ADX_MIN_BARS,
     SUPPORTED_MARKET_INDICATORS,
     build_ad_day_payload,
     build_dxy_payload,
     build_fed_rate_payload,
     build_macro_value_series,
+    build_spx_adx_payload,
     build_spx_ma_payload,
     build_spy_frame,
     build_vix_payload,
@@ -97,6 +99,7 @@ _DEFAULT_DAYS: dict[str, int] = {
     "yield_spread": 252,
     "dxy": SERIES_DAYS,
     "fed_rate": 365,
+    "spx_adx": SERIES_DAYS,
 }
 
 router = APIRouter(tags=["market"])
@@ -205,11 +208,13 @@ def _load_regime_results(
 ) -> dict[str, IndicatorResult]:
     """Reconstruct IndicatorResult objects from DailySignal rows.
 
-    Only the 4 regime indicator names are included — DailySignal holds
-    all signals for the SPY "carrier" symbol on this date, including
-    per-ticker direction/timing/macro indicators (if SPY is also on the
-    watchlist), so we filter.
+    Includes the 4 voting regime indicators plus ``spx_adx`` — ADX is
+    a context modifier rather than a vote (per the v2 Phase 2 spec) but
+    it needs to surface in the MarketOverview pros_cons list under the
+    MID timeframe so the UI can render its card alongside ``spx_ma``.
+    Voting still happens against ``REGIME_INDICATOR_NAMES`` upstream.
     """
+    display_names = REGIME_INDICATOR_NAMES | {"spx_adx"}
     rows = signals_repo.get_latest_for_symbol(_SPX_SYMBOL)
     results: dict[str, IndicatorResult] = {}
     for row in rows:
@@ -217,7 +222,7 @@ def _load_regime_results(
             # Shouldn't happen (get_latest_for_symbol returns single
             # latest date) but we guard so drift is visible.
             continue
-        if row.indicator_name not in REGIME_INDICATOR_NAMES:
+        if row.indicator_name not in display_names:
             continue
         results[row.indicator_name] = IndicatorResult(
             name=row.indicator_name,
@@ -452,6 +457,38 @@ class FedRateSeriesResponse(BaseModel):
     current: FedRateCurrent
 
 
+class SpxAdxPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    adx: float | None
+    plus_di: float | None
+    minus_di: float | None
+
+
+class SpxAdxCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    adx: float | None
+    plus_di: float | None
+    minus_di: float | None
+    zone: Literal["choppy", "ambiguous", "trending", "unknown"]
+    direction: Literal["up", "down", "unknown"]
+
+
+class SpxAdxThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    no_trend: float
+    trend: float
+
+
+class SpxAdxSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    indicator: Literal["spx_adx"]
+    series: list[SpxAdxPoint]
+    summary_zh: str
+    current: SpxAdxCurrent
+    thresholds: SpxAdxThresholds
+
+
 MarketIndicatorSeriesResponse = (
     SpxMaSeriesResponse
     | VixSeriesResponse
@@ -459,6 +496,7 @@ MarketIndicatorSeriesResponse = (
     | AdDaySeriesResponse
     | DxySeriesResponse
     | FedRateSeriesResponse
+    | SpxAdxSeriesResponse
 )
 
 
@@ -551,6 +589,15 @@ def get_market_indicator_series(
         if dxy_series.empty or len(dxy_series.dropna()) < DXY_MIN_BARS:
             raise _insufficient(name)
         return DxySeriesResponse.model_validate(build_dxy_payload(dxy_series, window))
+
+    if name == "spx_adx":
+        end = date.today()
+        start = end - timedelta(days=_spy_lookback_for(window))
+        rows = prices.get_range(_SPX_SYMBOL, start=start, end=end)
+        frame = build_spy_frame(rows)
+        if frame.empty or len(frame) < SPX_ADX_MIN_BARS:
+            raise _insufficient(name)
+        return SpxAdxSeriesResponse.model_validate(build_spx_adx_payload(frame, window))
 
     # fed_rate: SUPPORTED_MARKET_INDICATORS already gates this branch.
     fed_series = build_macro_value_series(macro.get_all_for_series(FED_FUNDS_MACRO_SERIES))

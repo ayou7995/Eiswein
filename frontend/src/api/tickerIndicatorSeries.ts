@@ -8,6 +8,8 @@ export const indicatorSeriesNameSchema = z.enum([
   'bollinger',
   'volume_anomaly',
   'relative_strength',
+  'adx',
+  'atr',
 ]);
 export type IndicatorSeriesName = z.infer<typeof indicatorSeriesNameSchema>;
 
@@ -156,6 +158,55 @@ const relativeStrengthResponseSchema = z.object({
   }),
 });
 
+const adxResponseSchema = z.object({
+  symbol: z.string(),
+  indicator: z.literal('adx'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      adx: z.number().nullable(),
+      plus_di: z.number().nullable(),
+      minus_di: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    adx: z.number().nullable(),
+    plus_di: z.number().nullable(),
+    minus_di: z.number().nullable(),
+    zone: z.enum(['choppy', 'ambiguous', 'trending', 'unknown']),
+    direction: z.enum(['up', 'down', 'unknown']),
+  }),
+  thresholds: z.object({
+    no_trend: z.number(),
+    trend: z.number(),
+  }),
+});
+
+const atrResponseSchema = z.object({
+  symbol: z.string(),
+  indicator: z.literal('atr'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      close: z.number().nullable(),
+      atr: z.number().nullable(),
+      atr_pct: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    close: z.number().nullable(),
+    atr: z.number().nullable(),
+    atr_pct: z.number().nullable(),
+    band: z.enum(['calm', 'elevated', 'high', 'unknown']),
+  }),
+  thresholds: z.object({
+    calm: z.number(),
+    elevated: z.number(),
+  }),
+});
+
 export const indicatorSeriesResponseSchema = z.discriminatedUnion('indicator', [
   priceVsMaResponseSchema,
   rsiResponseSchema,
@@ -163,6 +214,8 @@ export const indicatorSeriesResponseSchema = z.discriminatedUnion('indicator', [
   bollingerBandsResponseSchema,
   volumeAnomalyResponseSchema,
   relativeStrengthResponseSchema,
+  adxResponseSchema,
+  atrResponseSchema,
 ]);
 
 export type IndicatorSeriesResponse = z.infer<
@@ -180,6 +233,8 @@ export type VolumeAnomalySeriesResponse = z.infer<
 export type RelativeStrengthSeriesResponse = z.infer<
   typeof relativeStrengthResponseSchema
 >;
+export type AdxSeriesResponse = z.infer<typeof adxResponseSchema>;
+export type AtrSeriesResponse = z.infer<typeof atrResponseSchema>;
 
 export function getIndicatorSeries(
   symbol: string,

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Final, Literal
 
 import pandas as pd
 
-from app.indicators._helpers import percentile_in_window, sma
+from app.indicators._helpers import percentile_in_window, sma, wilder_adx
 
 if TYPE_CHECKING:
     from app.db.models import DailyPrice, MacroIndicator
@@ -42,7 +42,9 @@ _VIX_PERCENTILE_WINDOW: Final[int] = 252
 _AD_25D_WINDOW: Final[int] = 25
 _AD_5D_WINDOW: Final[int] = 5
 
-MarketIndicatorNameLiteral = Literal["spx_ma", "vix", "yield_spread", "ad_day", "dxy", "fed_rate"]
+MarketIndicatorNameLiteral = Literal[
+    "spx_ma", "vix", "yield_spread", "ad_day", "dxy", "fed_rate", "spx_adx"
+]
 
 # Whitelist for the URL slug. Mirrors the NAME constants exported
 # by ``app.indicators.market_regime`` (4) and ``app.indicators.macro`` (2);
@@ -51,7 +53,7 @@ MarketIndicatorNameLiteral = Literal["spx_ma", "vix", "yield_spread", "ad_day", 
 # canonical NAME constants — the FRED series IDs ``DTWEXBGS`` /
 # ``FEDFUNDS`` live behind those slugs in the macro_indicator table.
 SUPPORTED_MARKET_INDICATORS: Final[frozenset[str]] = frozenset(
-    {"spx_ma", "vix", "yield_spread", "ad_day", "dxy", "fed_rate"}
+    {"spx_ma", "vix", "yield_spread", "ad_day", "dxy", "fed_rate", "spx_adx"}
 )
 
 
@@ -866,6 +868,109 @@ def _fed_rate_summary(
 
     label = "升息" if delta_30d > 0 else "降息"
     return f"{head}，30 日內{label} {abs(delta_30d):.2f}%"
+
+
+# --- spx_adx --------------------------------------------------------------
+# Same ADX system as the per-ticker ``adx`` series, just fed SPY OHLC
+# so the resulting line gauges the strength of the broad-market trend
+# (≥ 25 trending = trust regime votes; < 20 choppy = mean-revert
+# regime).
+
+_SPX_ADX_LENGTH: Final[int] = 14
+_SPX_ADX_NO_TREND_THRESHOLD: Final[float] = 20.0
+_SPX_ADX_TREND_THRESHOLD: Final[float] = 25.0
+SPX_ADX_MIN_BARS: Final[int] = SERIES_DAYS + 2 * _SPX_ADX_LENGTH
+
+
+def build_spx_adx_payload(frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+    """``spx_adx`` series + zh-TW one-liner mirroring the per-ticker shape."""
+    result = wilder_adx(
+        frame["high"], frame["low"], frame["close"], length=_SPX_ADX_LENGTH
+    )
+
+    tail_adx = result.adx.iloc[-days:]
+    tail_plus = result.plus_di.iloc[-days:]
+    tail_minus = result.minus_di.iloc[-days:]
+
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "adx": _round_or_none(adx_value),
+            "plus_di": _round_or_none(plus),
+            "minus_di": _round_or_none(minus),
+        }
+        for idx, adx_value, plus, minus in zip(
+            tail_adx.index, tail_adx, tail_plus, tail_minus, strict=True
+        )
+    ]
+
+    current_adx = _safe_float(tail_adx.iloc[-1])
+    current_plus = _safe_float(tail_plus.iloc[-1])
+    current_minus = _safe_float(tail_minus.iloc[-1])
+    zone = _spx_adx_zone(current_adx)
+    direction = _spx_adx_direction(current_plus, current_minus)
+    summary = _spx_adx_summary(adx=current_adx, zone=zone, direction=direction)
+
+    return {
+        "indicator": "spx_adx",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "adx": _round_or_none(current_adx),
+            "plus_di": _round_or_none(current_plus),
+            "minus_di": _round_or_none(current_minus),
+            "zone": zone,
+            "direction": direction,
+        },
+        "thresholds": {
+            "no_trend": _SPX_ADX_NO_TREND_THRESHOLD,
+            "trend": _SPX_ADX_TREND_THRESHOLD,
+        },
+    }
+
+
+_SpxAdxZone = Literal["choppy", "ambiguous", "trending", "unknown"]
+_SpxAdxDirection = Literal["up", "down", "unknown"]
+
+
+def _spx_adx_zone(value: float | None) -> _SpxAdxZone:
+    if value is None:
+        return "unknown"
+    if value < _SPX_ADX_NO_TREND_THRESHOLD:
+        return "choppy"
+    if value < _SPX_ADX_TREND_THRESHOLD:
+        return "ambiguous"
+    return "trending"
+
+
+def _spx_adx_direction(plus: float | None, minus: float | None) -> _SpxAdxDirection:
+    if plus is None or minus is None:
+        return "unknown"
+    return "up" if plus >= minus else "down"
+
+
+_SPX_ADX_ZONE_LABEL_ZH: Final[dict[_SpxAdxZone, str]] = {
+    "choppy": "盤整",
+    "ambiguous": "未明朗",
+    "trending": "強趨勢",
+    "unknown": "資料不足",
+}
+
+_SPX_ADX_DIRECTION_LABEL_ZH: Final[dict[_SpxAdxDirection, str]] = {
+    "up": "多頭佔優",
+    "down": "空頭佔優",
+    "unknown": "方向未明",
+}
+
+
+def _spx_adx_summary(
+    *, adx: float | None, zone: _SpxAdxZone, direction: _SpxAdxDirection
+) -> str:
+    if adx is None:
+        return "ADX 資料不足"
+    zone_label = _SPX_ADX_ZONE_LABEL_ZH[zone]
+    direction_label = _SPX_ADX_DIRECTION_LABEL_ZH[direction]
+    return f"SPX ADX {adx:.1f} {zone_label} · {direction_label}"
 
 
 # --- shared helpers -------------------------------------------------------

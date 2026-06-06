@@ -27,7 +27,14 @@ from typing import TYPE_CHECKING, Final, Literal
 
 import pandas as pd
 
-from app.indicators._helpers import bollinger_bands, macd, sma, wilder_rsi
+from app.indicators._helpers import (
+    bollinger_bands,
+    macd,
+    sma,
+    wilder_adx,
+    wilder_atr,
+    wilder_rsi,
+)
 
 if TYPE_CHECKING:
     from app.db.models import DailyPrice
@@ -44,7 +51,14 @@ _RSI_DELTA_DAYS: Final[int] = 14
 _BB_BAND_WIDTH_LOOKBACK_DAYS: Final[int] = 5
 
 IndicatorNameLiteral = Literal[
-    "price_vs_ma", "rsi", "macd", "bollinger", "volume_anomaly", "relative_strength"
+    "price_vs_ma",
+    "rsi",
+    "macd",
+    "bollinger",
+    "volume_anomaly",
+    "relative_strength",
+    "adx",
+    "atr",
 ]
 
 # Whitelist for the URL slug. The Bollinger indicator is named
@@ -60,6 +74,8 @@ SUPPORTED_INDICATORS: Final[frozenset[str]] = frozenset(
         "bollinger",
         "volume_anomaly",
         "relative_strength",
+        "adx",
+        "atr",
     }
 )
 
@@ -788,6 +804,200 @@ def _relative_strength_summary(*, diff_60d: float) -> str:
         # U+2212 MINUS SIGN, per spec.
         return f"60 天落後大盤 \u2212{pct:.1f}%"
     return "60 天與大盤同步"
+
+
+# --- ADX ------------------------------------------------------------------
+# Strict Wilder 14-period — same constants used by the per-snapshot
+# ``timing/adx.py``. We re-derive +DI/-DI/ADX off the full-history
+# OHLC so the rolling chart matches the badge value bit-for-bit.
+
+_ADX_LENGTH: Final[int] = 14
+_ADX_NO_TREND_THRESHOLD: Final[float] = 20.0
+_ADX_TREND_THRESHOLD: Final[float] = 25.0
+
+
+def build_adx_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """``adx`` series + zh-TW one-liner.
+
+    Returns ADX, +DI, -DI on every bar in the trailing ``days`` window
+    plus the current zone label (盤整 / 未明朗 / 強趨勢) and direction
+    (多頭佔優 / 空頭佔優).
+    """
+    result = wilder_adx(frame["high"], frame["low"], frame["close"], length=_ADX_LENGTH)
+
+    tail_adx = result.adx.iloc[-days:]
+    tail_plus = result.plus_di.iloc[-days:]
+    tail_minus = result.minus_di.iloc[-days:]
+
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "adx": _round_or_none(adx_value),
+            "plus_di": _round_or_none(plus),
+            "minus_di": _round_or_none(minus),
+        }
+        for idx, adx_value, plus, minus in zip(
+            tail_adx.index, tail_adx, tail_plus, tail_minus, strict=True
+        )
+    ]
+
+    current_adx = _safe_float(tail_adx.iloc[-1])
+    current_plus = _safe_float(tail_plus.iloc[-1])
+    current_minus = _safe_float(tail_minus.iloc[-1])
+    zone = _adx_zone(current_adx)
+    direction = _adx_direction(current_plus, current_minus)
+    summary = _adx_summary(adx=current_adx, zone=zone, direction=direction)
+
+    return {
+        "symbol": symbol,
+        "indicator": "adx",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "adx": _round_or_none(current_adx),
+            "plus_di": _round_or_none(current_plus),
+            "minus_di": _round_or_none(current_minus),
+            "zone": zone,
+            "direction": direction,
+        },
+        "thresholds": {
+            "no_trend": _ADX_NO_TREND_THRESHOLD,
+            "trend": _ADX_TREND_THRESHOLD,
+        },
+    }
+
+
+_AdxZone = Literal["choppy", "ambiguous", "trending", "unknown"]
+_AdxDirection = Literal["up", "down", "unknown"]
+
+
+def _adx_zone(value: float | None) -> _AdxZone:
+    if value is None:
+        return "unknown"
+    if value < _ADX_NO_TREND_THRESHOLD:
+        return "choppy"
+    if value < _ADX_TREND_THRESHOLD:
+        return "ambiguous"
+    return "trending"
+
+
+def _adx_direction(plus: float | None, minus: float | None) -> _AdxDirection:
+    if plus is None or minus is None:
+        return "unknown"
+    return "up" if plus >= minus else "down"
+
+
+_ADX_ZONE_LABEL_ZH: Final[dict[_AdxZone, str]] = {
+    "choppy": "盤整",
+    "ambiguous": "未明朗",
+    "trending": "強趨勢",
+    "unknown": "資料不足",
+}
+
+_ADX_DIRECTION_LABEL_ZH: Final[dict[_AdxDirection, str]] = {
+    "up": "多頭佔優",
+    "down": "空頭佔優",
+    "unknown": "方向未明",
+}
+
+
+def _adx_summary(*, adx: float | None, zone: _AdxZone, direction: _AdxDirection) -> str:
+    if adx is None:
+        return "ADX 資料不足"
+    zone_label = _ADX_ZONE_LABEL_ZH[zone]
+    direction_label = _ADX_DIRECTION_LABEL_ZH[direction]
+    return f"ADX {adx:.1f} {zone_label} · {direction_label}"
+
+
+# --- ATR ------------------------------------------------------------------
+# 14-day Wilder ATR rendered alongside the close price so the chart
+# shows volatility in absolute terms (the legend tags it as ATR%).
+
+_ATR_LENGTH: Final[int] = 14
+_ATR_CALM_THRESHOLD_PCT: Final[float] = 1.5
+_ATR_ELEVATED_THRESHOLD_PCT: Final[float] = 3.5
+
+
+def build_atr_payload(
+    symbol: str, frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """``atr`` series + zh-TW one-liner."""
+    atr_full = wilder_atr(frame["high"], frame["low"], frame["close"], length=_ATR_LENGTH)
+    close_full = frame["close"].astype("float64")
+
+    tail_close = close_full.iloc[-days:]
+    tail_atr = atr_full.iloc[-days:]
+    tail_pct = (tail_atr / tail_close) * 100.0
+
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "close": _round_or_none(c),
+            "atr": _round_or_none(atr_value),
+            "atr_pct": _round_or_none(pct),
+        }
+        for idx, c, atr_value, pct in zip(
+            tail_close.index, tail_close, tail_atr, tail_pct, strict=True
+        )
+    ]
+
+    current_close = _safe_float(tail_close.iloc[-1])
+    current_atr = _safe_float(tail_atr.iloc[-1])
+    current_pct = _safe_float(tail_pct.iloc[-1])
+    band = _atr_band(current_pct)
+    summary = _atr_summary(atr_pct=current_pct, band=band)
+
+    return {
+        "symbol": symbol,
+        "indicator": "atr",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "close": _round_or_none(current_close),
+            "atr": _round_or_none(current_atr),
+            "atr_pct": _round_or_none(current_pct),
+            "band": band,
+        },
+        "thresholds": {
+            "calm": _ATR_CALM_THRESHOLD_PCT,
+            "elevated": _ATR_ELEVATED_THRESHOLD_PCT,
+        },
+    }
+
+
+_AtrBand = Literal["calm", "elevated", "high", "unknown"]
+
+
+def _atr_band(pct: float | None) -> _AtrBand:
+    if pct is None:
+        return "unknown"
+    if pct < _ATR_CALM_THRESHOLD_PCT:
+        return "calm"
+    if pct < _ATR_ELEVATED_THRESHOLD_PCT:
+        return "elevated"
+    return "high"
+
+
+_ATR_BAND_LABEL_ZH: Final[dict[_AtrBand, str]] = {
+    "calm": "波動平靜",
+    "elevated": "波動正常偏上",
+    "high": "波動偏高",
+    "unknown": "資料不足",
+}
+
+
+def _atr_summary(*, atr_pct: float | None, band: _AtrBand) -> str:
+    if atr_pct is None:
+        return "ATR 資料不足"
+    return f"{_ATR_BAND_LABEL_ZH[band]} ({atr_pct:.1f}%)"
+
+
+# Trailing-bar floors: ADX needs ~2× length to settle (Wilder smoothing on
+# DM then on DX itself); ATR needs length+1 bars.
+ADX_MIN_BARS: Final[int] = SERIES_DAYS + 2 * _ADX_LENGTH
+ATR_MIN_BARS: Final[int] = SERIES_DAYS + _ATR_LENGTH
 
 
 # --- shared helpers -------------------------------------------------------

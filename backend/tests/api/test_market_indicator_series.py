@@ -871,3 +871,33 @@ def test_range_all_rejects_unknown_value(
     _login(client, test_password)
     resp = client.get("/api/v1/market/indicator/vix/series?range=bogus")
     assert resp.status_code == 422
+
+
+
+def test_spx_adx_series_shape(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols={"SPY"})
+    _login(client, test_password)
+    with session_factory() as session:
+        _seed_synthetic_spy(session, end=date.today(), days=260)
+        session.commit()
+
+    resp = client.get("/api/v1/market/indicator/spx_adx/series")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["indicator"] == "spx_adx"
+    assert len(body["series"]) == 60
+    point = body["series"][-1]
+    assert "adx" in point
+    assert "plus_di" in point
+    assert "minus_di" in point
+    current = body["current"]
+    assert current["zone"] in {"choppy", "ambiguous", "trending", "unknown"}
+    assert current["direction"] in {"up", "down", "unknown"}
+    assert body["thresholds"] == {"no_trend": 20.0, "trend": 25.0}
+    assert "SPX ADX" in body["summary_zh"]
+
