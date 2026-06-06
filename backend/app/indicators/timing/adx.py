@@ -2,17 +2,21 @@
 
 ADX answers a different question from MACD / RSI / Bollinger: not
 "which way is the market going?", but "how strongly is it going there
-at all?". This is the missing piece that turns the existing 12 indicators
-from "all firing at once" into "selectively trustworthy":
+at all?". It's an INDEPENDENT mid-term indicator — read alongside the
+other indicator cards rather than as a modifier on them. The earlier
+v2 plan sketched a "context modifier" role where weak ADX would mute
+other badges visually; that design was dropped in favour of letting
+the operator read each card on its own merits.
 
-* ``ADX < 20``  → choppy / sideways — trust mean-reversion signals
-  (RSI 30/70, Bollinger touch), distrust trend-following crossovers.
-* ``20 ≤ ADX < 25``  → emerging trend — neither side gets full weight.
-* ``25 ≤ ADX < 40``  → strong trend — trust trend signals (MACD,
-  Price vs MA), distrust mean-reversion (RSI 80 ≠ "sell" in a
-  STRONG_BUY tape).
-* ``ADX ≥ 40`` → very strong trend — late stages, breakouts are
-  often the last bar before exhaustion.
+Reading the bands:
+
+* ``ADX < 20``  → choppy / sideways. Common interpretation: mean-reversion
+  setups (RSI 30/70, Bollinger touches) tend to work better than
+  trend-follow signals here. But that's *operator judgement*, not an
+  algorithmic gate — ADX itself just labels the regime.
+* ``20 ≤ ADX < 25``  → emerging trend, ambiguous.
+* ``25 ≤ ADX < 40``  → strong trend in play.
+* ``ADX ≥ 40`` → very strong trend, often late stages.
 
 Wilder's framing: ADX never tells you direction. To get direction
 you look at ``+DI vs -DI`` (which side is on top). We surface those

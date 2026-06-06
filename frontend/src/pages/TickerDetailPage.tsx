@@ -69,6 +69,7 @@ import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
 import { IndicatorRangeSelector } from '../components/IndicatorRangeSelector';
 import { TimeframeChip } from '../components/TimeframeChip';
 import { INDICATOR_TIMEFRAMES } from '../lib/timeframes';
+import { computeYBounds } from '../lib/yAxisAutoFit';
 import { SignalAccuracySection } from '../components/SignalAccuracySection';
 import {
   MARKET_INDICATOR_RANGES,
@@ -109,9 +110,8 @@ const SHORT_TERM_INDICATORS = [
 const MID_TERM_INDICATORS = [
   'price_vs_ma',
   'relative_strength',
-  // v2 Phase 2: ADX tells the operator whether the short-term signals
-  // (RSI / BB / MACD) should be trusted right now. > 25 + rising →
-  // trend in play, ignore mean-reversion. < 20 → choppy, trust them.
+  // v2 Phase 2: ADX is an INDEPENDENT mid-term trend-strength gauge —
+  // read alongside the other mid indicators, NOT a modifier on them.
   'adx',
   // v2 Phase 3: CHO is the Sherry "big players accumulating" gauge.
   'cho',
@@ -125,9 +125,9 @@ const INDICATOR_TITLES: Record<string, string> = {
   relative_strength: '相對強度',
   macd: 'MACD',
   bollinger: 'Bollinger Bands',
-  // v2 Phase 2 — ADX answers "is the current trend strong enough to
-  // trust trend signals?"; ATR is the per-stock volatility scale that
-  // also feeds the stop-loss distance.
+  // v2 Phase 2 — ADX reads trend strength as an independent gauge; ATR
+  // is the per-stock volatility scale that also feeds the stop-loss
+  // distance.
   adx: 'ADX (趨勢強度)',
   atr: 'ATR (波動率)',
   // v2 Phase 3 — TTM Squeeze + CHO.
@@ -525,7 +525,7 @@ const BOLLINGER_HEADLINE_LABELS = {
 const ADX_HEADLINE_LABELS = {
   ruleTitle: 'ADX 趨勢強度紅黃綠燈規則',
   ruleNote:
-    '此燈號是「趨勢強度濾鏡」— 告訴你現在的方向訊號（Price vs MA / RSI 等）有沒有趨勢可言。ADX < 25 = 盤整，方向類指標的真實性被打折；ADX ≥ 25 = 真有趨勢、可信。+DI / -DI 之差告訴你趨勢偏多還是偏空。ADX 走弱（slope < -0.5）= 趨勢開始減速，黃燈警示。',
+    '此燈號是獨立的「中期趨勢強度」讀數,跟其他指標分開讀。ADX < 25 = 盤整,ADX ≥ 25 = 趨勢明朗。+DI / -DI 之差告訴你趨勢偏多還是偏空(獨立資訊,不投票)。ADX 走弱（slope < -0.5）= 趨勢開始減速,黃燈警示。',
 };
 
 const ATR_HEADLINE_LABELS = {
@@ -828,17 +828,25 @@ function IndicatorChart({ data, ariaLabel }: IndicatorChartProps): JSX.Element {
           ariaLabel={ariaLabel}
         />
       );
-    case 'rsi':
+    case 'rsi': {
+      // Auto-fit within RSI's hard 0/100 domain so a stock that's spent
+      // the whole window in 40-60 doesn't render with 80% of vertical
+      // space empty.
+      const { yMin, yMax } = computeYBounds(data.series, ['daily', 'weekly'], {
+        softMin: 0,
+        softMax: 100,
+      });
       return (
         <IndicatorBoundedLine
           series={data.series}
           lines={RSI_LINES}
           thresholds={RSI_THRESHOLDS}
-          yAxisMin={0}
-          yAxisMax={100}
+          yAxisMin={yMin}
+          yAxisMax={yMax}
           ariaLabel={ariaLabel}
         />
       );
+    }
     case 'macd':
       return (
         <IndicatorMultiLine
@@ -884,34 +892,40 @@ function IndicatorChart({ data, ariaLabel }: IndicatorChartProps): JSX.Element {
         />
       );
     }
-    case 'adx':
+    case 'adx': {
+      // ADX is naturally 0-100 but most stocks live below 50. Floor at 0
+      // (semantic minimum), let the upper bound follow the actual peak so
+      // a stock that never crosses 25 doesn't waste 60% of the chart.
+      const { yMin, yMax } = computeYBounds(
+        data.series,
+        ['adx', 'plus_di', 'minus_di'],
+        { softMin: 0 },
+      );
       return (
         <IndicatorBoundedLine
           series={data.series}
           lines={ADX_LINES}
           thresholds={ADX_THRESHOLDS}
-          yAxisMin={0}
-          yAxisMax={60}
+          yAxisMin={yMin}
+          yAxisMax={yMax}
           ariaLabel={ariaLabel}
         />
       );
+    }
     case 'atr': {
-      // ATR % rarely exceeds 6 % for blue chips but penny-stock plays
-      // (LAC, etc.) routinely sit at 8-12 %. Floor the y-axis at 6 so the
-      // 1.5 / 3.5 threshold bands stay visually prominent for normal stocks,
-      // then auto-extend to cover the actual max when the data overflows.
-      const maxAtrPct = data.series.reduce(
-        (acc, row) => (row.atr_pct !== null ? Math.max(acc, row.atr_pct) : acc),
-        0,
-      );
-      const yAxisMax = Math.max(6, Math.ceil(maxAtrPct * 1.15));
+      // ATR % naturally ≥ 0. Let the percentile auto-fit handle the
+      // ceiling — blue chips render around 1-3 %, penny stocks 8-12 %,
+      // both well-fitted without manual heuristics.
+      const { yMin, yMax } = computeYBounds(data.series, ['atr_pct'], {
+        softMin: 0,
+      });
       return (
         <IndicatorBoundedLine
           series={data.series}
           lines={ATR_LINES}
           thresholds={ATR_THRESHOLDS}
-          yAxisMin={0}
-          yAxisMax={yAxisMax}
+          yAxisMin={yMin}
+          yAxisMax={yMax}
           ariaLabel={ariaLabel}
         />
       );

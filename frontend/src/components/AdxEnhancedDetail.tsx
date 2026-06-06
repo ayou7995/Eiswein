@@ -78,11 +78,11 @@ export function AdxHeadlineExplainable({
       title={labels.ruleTitle}
       explanation={
         <RuleTable
-          preface="ADX (Wilder 1978) 衡量趨勢「強度」而非方向。+DI / -DI 各自計算正/負動能,DX = |+DI − -DI| / (+DI + -DI),ADX = 14 期 Wilder 平滑 DX。方向看 +DI vs -DI 誰大;強度看 ADX 本身。ADX ≥ 25 + 不下滑時相信趨勢訊號(MACD、Price vs MA);< 20 時相信均值回歸訊號(RSI、Bollinger)。"
+          preface="ADX (Wilder 1978) 衡量趨勢「強度」而非方向。+DI / -DI 各自計算正/負動能,DX = |+DI − -DI| / (+DI + -DI),ADX = 14 期 Wilder 平滑 DX。方向看 +DI vs -DI 誰大;強度看 ADX 本身。ADX 是「獨立的中期趨勢強度指標」— 跟其他指標分開讀,不是修飾器。"
           rows={[
             {
               condition: `ADX ≥ ${d.trend_threshold} 且未明顯下滑`,
-              result: '🟢 強趨勢(信 MACD/MA)',
+              result: '🟢 強趨勢',
               current: d.adx >= d.trend_threshold && (d.slope_5d ?? 0) >= -0.5,
             },
             {
@@ -97,7 +97,7 @@ export function AdxHeadlineExplainable({
             },
             {
               condition: `ADX < ${d.no_trend_threshold}`,
-              result: '🟡 盤整(信 RSI/BB)',
+              result: '🟡 盤整',
               current: d.adx < d.no_trend_threshold,
             },
           ]}

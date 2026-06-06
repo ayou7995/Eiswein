@@ -58,9 +58,10 @@ _PER_TICKER: dict[str, IndicatorFunc] = {
     "relative_strength": compute_relative_strength,
     "macd": compute_macd,
     "bollinger": compute_bollinger,
-    # v2 Phase 2 (2026-06): ADX as a mid-term trust modifier on the
-    # other direction signals; ATR as the volatility gauge that feeds
-    # stop-loss sizing + the "today's move unusual?" headline.
+    # v2 Phase 2 (2026-06): ADX as an INDEPENDENT mid-term trend-strength
+    # gauge — the earlier "modifier on other signals" idea was dropped.
+    # ATR is the volatility scale that feeds stop-loss sizing + the
+    # "today's move unusual?" headline.
     "adx": compute_adx,
     "atr": compute_atr,
     # v2 Phase 3 (2026-06): TTM Squeeze joins the short-term vote as
@@ -77,9 +78,10 @@ _MARKET_REGIME: dict[str, IndicatorFunc] = {
     "ad_day": compute_ad_day,
     "vix": compute_vix,
     "yield_spread": compute_yield_spread,
-    # v2 Phase 2: market-wide trend strength. Pairs with spx_ma (which
-    # gives direction) — when SPX is above 200MA and SPX ADX > 25 the
-    # trend is real; SPX above 200MA but ADX < 20 means we're drifting.
+    # v2 Phase 2: market-wide trend strength. An INDEPENDENT regime
+    # gauge read alongside spx_ma — operator combines them informally
+    # ("SPX above 200MA + SPX ADX 30 = trending up with conviction")
+    # but neither modifies the other's signal tone.
     "spx_adx": compute_spx_adx,
     # v2 Phase 4: VIX term structure (spot vs 3M) for short-term stress
     # signal; cumulative watchlist A/D Line for breadth-vs-SPX divergence.

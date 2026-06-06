@@ -104,6 +104,9 @@ function TodayBreadth({
       <p className="text-stone-500">
         計算範圍是「所有使用者 watchlist 的並集」,所以是個人化的、Eiswein 專屬的廣度信號。
       </p>
+      <p className="text-amber-700">
+        ⚠ 加入/移除 watchlist 標的會回溯重算 — 兩個時間點截圖的 AD Line 不一定能對齊。
+      </p>
     </section>
   );
 }

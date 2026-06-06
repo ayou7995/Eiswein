@@ -2,9 +2,11 @@
 
 Per-ticker ADX is great for one stock; for the market as a whole the
 same formula on SPY's OHLCV tells the operator whether the indices are
-trending or chopping. Combined with the existing SPX 50/200 MA (which
-tells you *direction*), this answers "is the trend SPX is in actually
-strong enough to bet on?"
+trending or chopping. SPX ADX is an INDEPENDENT mid-term market-regime
+indicator — read alongside SPX 50/200 MA (which gives direction) rather
+than as a modifier on other regime cards. Operator interpretation:
+SPX ADX ≥ 25 + SPX above 200 MA = trending up with conviction; SPX
+ADX < 20 = drifting regardless of direction.
 
 Signal table matches the per-ticker one (see ``timing/adx.py``); SPX
 ADX never gets a RED because direction isn't its job. We pass through

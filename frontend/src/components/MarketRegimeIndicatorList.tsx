@@ -9,6 +9,7 @@ import {
   type MarketIndicatorSeriesResponse,
 } from '../api/marketIndicatorSeries';
 import { useMarketIndicatorSeries } from '../hooks/useMarketIndicatorSeries';
+import { computeYBounds } from '../lib/yAxisAutoFit';
 import { IndicatorRangeSelector } from './IndicatorRangeSelector';
 import { LoadingSpinner } from './LoadingSpinner';
 import { TimeframeChip } from './TimeframeChip';
@@ -92,7 +93,7 @@ const FED_RATE_HEADLINE_LABELS = {
 const SPX_ADX_HEADLINE_LABELS = {
   ruleTitle: 'SPX ADX 趨勢強度紅黃綠燈規則',
   ruleNote:
-    '此燈號是「大盤趨勢強度濾鏡」— ADX ≥ 25 = 大盤有真正趨勢、可信 Price vs MA / MACD;< 20 = 大盤盤整、改信 RSI / BB 等均值回歸訊號。中期 posture 投票時做為「該不該信」的背景權重。',
+    '此燈號是獨立的「大盤趨勢強度」讀數,跟 SPX 50/200 MA(方向)互補但不修飾彼此。SPX ADX ≥ 25 + SPX 站上 200MA = 上升趨勢有量、值得參與;SPX ADX < 20 = 大盤盤整,持倉先觀望。+DI / -DI 顯示偏多或偏空。',
 };
 
 const VIX_TERM_HEADLINE_LABELS = {
@@ -104,7 +105,7 @@ const VIX_TERM_HEADLINE_LABELS = {
 const AD_LINE_HEADLINE_LABELS = {
   ruleTitle: '觀察名單 A/D Line 紅黃綠燈規則',
   ruleNote:
-    '此燈號是「廣度健康度檢查」— 個人化版本的 NYSE 廣度指標,範圍是所有使用者 watchlist 的並集。窄漲 (SPX 上但 AD Line 下) = 警示;同步上升 = 健康行情。Eiswein 不投正式 posture 票,但作為「該不該信中期看漲訊號」的補強。',
+    '此燈號是「廣度健康度檢查」— 個人化版本的 NYSE 廣度指標,範圍是所有使用者 watchlist 的並集。窄漲 (SPX 上但 AD Line 下) = 警示;同步上升 = 健康行情。不投正式 posture 票。⚠ 加入/移除 watchlist 標的會回溯改變歷史值 — 兩個不同時間點的截圖不一定能對得起來。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -357,6 +358,14 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
     );
   }
   if (response.indicator === 'vix') {
+    // VIX naturally ≥ 0 but historical spikes hit 82 (2020-03). The
+    // percentile auto-fit caps the upper bound on the 98th percentile of
+    // the visible window so a single panic day doesn't squash the rest
+    // of the chart, but it still extends past the old 50 cap when the
+    // selected window contains a real volatility regime.
+    const { yMin, yMax } = computeYBounds(response.series, ['level'], {
+      softMin: 0,
+    });
     return (
       <IndicatorBoundedLine
         series={response.series}
@@ -380,8 +389,8 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
             fillBetween: 'above',
           },
         ]}
-        yAxisMin={0}
-        yAxisMax={50}
+        yAxisMin={yMin}
+        yAxisMax={yMax}
         ariaLabel="VIX 60 日走勢"
       />
     );
@@ -416,6 +425,11 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
     return <AdDayCandleClassificationChart response={response} />;
   }
   if (response.indicator === 'spx_adx') {
+    const { yMin, yMax } = computeYBounds(
+      response.series,
+      ['adx', 'plus_di', 'minus_di'],
+      { softMin: 0 },
+    );
     return (
       <IndicatorBoundedLine
         series={response.series}
@@ -438,13 +452,19 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
             fillBetween: 'above',
           },
         ]}
-        yAxisMin={0}
-        yAxisMax={60}
+        yAxisMin={yMin}
+        yAxisMax={yMax}
         ariaLabel="SPX ADX 60 日走勢"
       />
     );
   }
   if (response.indicator === 'vix_term') {
+    // VIX/VIX3M historically rangebound 0.7-1.0 in calm regimes; spikes
+    // past 1.5 during 2020-03 and 2023-10 stress events. Auto-fit so
+    // those structural inversions remain visible on long ranges.
+    const { yMin, yMax } = computeYBounds(response.series, ['ratio'], {
+      softMin: 0,
+    });
     return (
       <IndicatorBoundedLine
         series={response.series}
@@ -463,8 +483,8 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
             fillBetween: 'above',
           },
         ]}
-        yAxisMin={0.5}
-        yAxisMax={1.3}
+        yAxisMin={yMin}
+        yAxisMax={yMax}
         ariaLabel="VIX 期限結構比 60 日走勢"
       />
     );
