@@ -100,11 +100,13 @@ def indicator_context_factory() -> Callable[..., IndicatorContext]:
         today: date | None = None,
         spx_frame: pd.DataFrame | None = None,
         macro_frames: dict[str, pd.DataFrame] | None = None,
+        watchlist_breadth: pd.DataFrame | None = None,
     ) -> IndicatorContext:
         return IndicatorContext(
             today=today or date(2024, 12, 31),
             spx_frame=spx_frame,
             macro_frames=macro_frames or {},
+            watchlist_breadth=watchlist_breadth,
         )
 
     return _factory

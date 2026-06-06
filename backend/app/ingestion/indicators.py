@@ -24,6 +24,7 @@ from app.db.repositories.daily_signal_repository import (
     result_to_row,
 )
 from app.db.repositories.macro_repository import MacroRepository
+from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.indicators.base import INDICATOR_VERSION, IndicatorResult
 from app.indicators.context import IndicatorContext
 from app.indicators.orchestrator import compute_all, compute_market_regime
@@ -35,7 +36,14 @@ logger = structlog.get_logger("eiswein.ingestion.indicators")
 
 _SPX_SYMBOL = "SPY"
 # Macro series consumed by indicator modules.
-_MACRO_SERIES: tuple[str, ...] = ("VIXCLS", "DGS10", "DGS2", "DTWEXBGS", "FEDFUNDS")
+_MACRO_SERIES: tuple[str, ...] = (
+    "VIXCLS",
+    "VXVCLS",
+    "DGS10",
+    "DGS2",
+    "DTWEXBGS",
+    "FEDFUNDS",
+)
 
 
 def build_context(
@@ -57,6 +65,7 @@ def build_context(
         frame = _load_macro_frame(macro, series_id, as_of=today)
         if frame is not None:
             macro_frames[series_id] = frame
+    watchlist_breadth = _build_watchlist_breadth(db, prices, today)
     # Defensive deep copies so a misbehaving indicator that does an
     # in-place pandas operation (e.g. inplace=True, .iloc[...] = ...)
     # can't corrupt the shared context for later indicators in the
@@ -67,7 +76,55 @@ def build_context(
         indicator_version=INDICATOR_VERSION,
         spx_frame=spx_frame.copy(deep=True) if spx_frame is not None else None,
         macro_frames={k: v.copy(deep=True) for k, v in macro_frames.items()},
+        watchlist_breadth=watchlist_breadth.copy(deep=True)
+        if watchlist_breadth is not None
+        else None,
     )
+
+
+def _build_watchlist_breadth(
+    db: Session,
+    prices: DailyPriceRepository,
+    today: date,
+) -> pd.DataFrame | None:
+    """Aggregate the watchlist's daily advances / declines into an AD Line.
+
+    Sums per-symbol close > prior_close into ``advances`` and close <
+    prior_close into ``declines`` for each trading day in the past 2
+    years. Cumulative sum of (advances - declines) gives the watchlist
+    AD Line — same shape as NYSE breadth, scoped to the operator's
+    actually-tracked universe.
+
+    Returns ``None`` when the watchlist is empty (e.g. fresh install
+    before any symbols are added) — the consuming indicator emits
+    ``data_sufficient=False`` in that case.
+    """
+    symbols = list(WatchlistRepository(db).distinct_symbols_across_users())
+    if not symbols:
+        return None
+
+    start = (pd.Timestamp(today) - pd.DateOffset(years=2)).date()
+    direction_series: list[pd.Series] = []
+    for sym in symbols:
+        rows = prices.get_range(sym, start=start, end=today)
+        if len(rows) < 2:
+            continue
+        s = pd.Series(
+            [float(r.close) for r in rows],
+            index=pd.DatetimeIndex([pd.Timestamp(r.date) for r in rows]),
+            dtype="float64",
+        ).sort_index()
+        direction_series.append(s.diff().rename(sym))
+
+    if not direction_series:
+        return None
+
+    combined = pd.concat(direction_series, axis=1)
+    advances = (combined > 0).sum(axis=1).rename("advances")
+    declines = (combined < 0).sum(axis=1).rename("declines")
+    net = (advances - declines).rename("net")
+    ad_line = net.cumsum().rename("ad_line")
+    return pd.concat([advances, declines, net, ad_line], axis=1)
 
 
 def compute_and_persist(

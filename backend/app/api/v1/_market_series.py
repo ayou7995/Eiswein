@@ -43,7 +43,15 @@ _AD_25D_WINDOW: Final[int] = 25
 _AD_5D_WINDOW: Final[int] = 5
 
 MarketIndicatorNameLiteral = Literal[
-    "spx_ma", "vix", "yield_spread", "ad_day", "dxy", "fed_rate", "spx_adx"
+    "spx_ma",
+    "vix",
+    "yield_spread",
+    "ad_day",
+    "dxy",
+    "fed_rate",
+    "spx_adx",
+    "vix_term",
+    "ad_line",
 ]
 
 # Whitelist for the URL slug. Mirrors the NAME constants exported
@@ -53,7 +61,17 @@ MarketIndicatorNameLiteral = Literal[
 # canonical NAME constants — the FRED series IDs ``DTWEXBGS`` /
 # ``FEDFUNDS`` live behind those slugs in the macro_indicator table.
 SUPPORTED_MARKET_INDICATORS: Final[frozenset[str]] = frozenset(
-    {"spx_ma", "vix", "yield_spread", "ad_day", "dxy", "fed_rate", "spx_adx"}
+    {
+        "spx_ma",
+        "vix",
+        "yield_spread",
+        "ad_day",
+        "dxy",
+        "fed_rate",
+        "spx_adx",
+        "vix_term",
+        "ad_line",
+    }
 )
 
 
@@ -971,6 +989,132 @@ def _spx_adx_summary(
     zone_label = _SPX_ADX_ZONE_LABEL_ZH[zone]
     direction_label = _SPX_ADX_DIRECTION_LABEL_ZH[direction]
     return f"SPX ADX {adx:.1f} {zone_label} · {direction_label}"
+
+
+# --- vix_term (Phase 4) ---------------------------------------------------
+_VIX_CONTANGO_THRESHOLD: Final[float] = 0.95
+_VIX_INVERSION_THRESHOLD: Final[float] = 1.0
+VIX_TERM_MIN_BARS: Final[int] = 30
+
+
+def build_vix_term_payload(
+    vix_series: pd.Series, vix3m_series: pd.Series, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """VIX vs VIX3M rolling-ratio payload.
+
+    Outputs both raw level series so the chart can overlay them, plus the
+    ratio so the divergence is visually obvious.
+    """
+    joined = pd.concat([vix_series.rename("vix"), vix3m_series.rename("vix3m")], axis=1)
+    joined = joined.dropna()
+    tail = joined.iloc[-days:]
+    ratio = tail["vix"] / tail["vix3m"]
+
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "vix": _round_or_none(_safe_float(row["vix"])),
+            "vix3m": _round_or_none(_safe_float(row["vix3m"])),
+            "ratio": _round_or_none(_safe_float(ratio.loc[idx])),
+        }
+        for idx, row in tail.iterrows()
+    ]
+
+    current_vix = _safe_float(tail["vix"].iloc[-1])
+    current_vix3m = _safe_float(tail["vix3m"].iloc[-1])
+    current_ratio = _safe_float(ratio.iloc[-1])
+    zone = _vix_term_zone(current_ratio)
+    summary = _vix_term_summary(ratio=current_ratio, vix=current_vix, vix3m=current_vix3m)
+
+    return {
+        "indicator": "vix_term",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "vix": _round_or_none(current_vix),
+            "vix3m": _round_or_none(current_vix3m),
+            "ratio": _round_or_none(current_ratio),
+            "zone": zone,
+        },
+        "thresholds": {
+            "contango": _VIX_CONTANGO_THRESHOLD,
+            "inversion": _VIX_INVERSION_THRESHOLD,
+        },
+    }
+
+
+_VixTermZone = Literal["contango", "flat", "inverted", "unknown"]
+
+
+def _vix_term_zone(ratio: float | None) -> _VixTermZone:
+    if ratio is None:
+        return "unknown"
+    if ratio < _VIX_CONTANGO_THRESHOLD:
+        return "contango"
+    if ratio < _VIX_INVERSION_THRESHOLD:
+        return "flat"
+    return "inverted"
+
+
+def _vix_term_summary(
+    *, ratio: float | None, vix: float | None, vix3m: float | None
+) -> str:
+    if ratio is None or vix is None or vix3m is None:
+        return "VIX 期限結構資料不足"
+    if ratio >= _VIX_INVERSION_THRESHOLD:
+        return f"倒掛 (VIX {vix:.1f} ≥ VIX3M {vix3m:.1f})"
+    if ratio < _VIX_CONTANGO_THRESHOLD:
+        return f"深度 contango (比 {ratio:.2f})"
+    return f"接近平坦 (比 {ratio:.2f})"
+
+
+# --- ad_line (Phase 4) ----------------------------------------------------
+_AD_LINE_LOOKBACK: Final[int] = 20
+AD_LINE_MIN_BARS: Final[int] = _AD_LINE_LOOKBACK + 5
+
+
+def build_ad_line_payload(breadth: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+    """Watchlist AD Line rolling payload + zh-TW divergence summary."""
+    tail = breadth.iloc[-days:]
+    series = [
+        {
+            "date": _index_to_date(idx),
+            "ad_line": _round_or_none(_safe_float(row["ad_line"])),
+            "net": int(row["net"]) if not _is_nan(row["net"]) else None,
+            "advances": int(row["advances"]) if not _is_nan(row["advances"]) else None,
+            "declines": int(row["declines"]) if not _is_nan(row["declines"]) else None,
+        }
+        for idx, row in tail.iterrows()
+    ]
+
+    ad_tail = breadth["ad_line"].iloc[-_AD_LINE_LOOKBACK:].dropna()
+    if len(ad_tail) >= 2:
+        first = float(ad_tail.iloc[0])
+        last = float(ad_tail.iloc[-1])
+        ad_slope = (last - first) / len(ad_tail)
+    else:
+        ad_slope = 0.0
+
+    current_ad = _safe_float(breadth["ad_line"].iloc[-1])
+    current_net = int(breadth["net"].iloc[-1]) if not _is_nan(breadth["net"].iloc[-1]) else 0
+    summary = _ad_line_summary(slope=ad_slope, net=current_net)
+
+    return {
+        "indicator": "ad_line",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "ad_line": _round_or_none(current_ad),
+            "net": current_net,
+            "slope_20d": _round_or_none(ad_slope, ndigits=2),
+        },
+    }
+
+
+def _ad_line_summary(*, slope: float, net: int) -> str:
+    direction = "上升" if slope > 0 else "下降" if slope < 0 else "盤整"
+    sign = "+" if net > 0 else ""
+    return f"觀察名單 AD Line 過去 20 日{direction} (今日淨 {sign}{net})"
 
 
 # --- shared helpers -------------------------------------------------------

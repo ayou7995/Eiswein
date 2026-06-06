@@ -35,12 +35,14 @@ INDICATOR_TIMEFRAMES: Final[dict[str, Timeframe]] = {
     "rsi": "short",
     "volume_anomaly": "short",
     "relative_strength": "mid",
-    # Market regime (4 + 1 in v2 Phase 2)
+    # Market regime (4 + 1 in v2 Phase 2 + 2 in v2 Phase 4)
     "spx_ma": "mid",
     "ad_day": "short",
     "vix": "short",
     "yield_spread": "long",
     "spx_adx": "mid",
+    "vix_term": "short",
+    "ad_line": "mid",
     # Timing (2 + 2 in v2 Phase 2, + 1 in Phase 3)
     "macd": "short",
     "bollinger": "short",

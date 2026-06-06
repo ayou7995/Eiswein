@@ -44,6 +44,14 @@ import {
   AdxEnhancedDetail,
   AdxHeadlineExplainable,
 } from './AdxEnhancedDetail';
+import {
+  VixTermEnhancedDetail,
+  VixTermHeadlineExplainable,
+} from './VixTermEnhancedDetail';
+import {
+  AdLineEnhancedDetail,
+  AdLineHeadlineExplainable,
+} from './AdLineEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
@@ -85,6 +93,18 @@ const SPX_ADX_HEADLINE_LABELS = {
   ruleTitle: 'SPX ADX 趨勢強度紅黃綠燈規則',
   ruleNote:
     '此燈號是「大盤趨勢強度濾鏡」— ADX ≥ 25 = 大盤有真正趨勢、可信 Price vs MA / MACD;< 20 = 大盤盤整、改信 RSI / BB 等均值回歸訊號。中期 posture 投票時做為「該不該信」的背景權重。',
+};
+
+const VIX_TERM_HEADLINE_LABELS = {
+  ruleTitle: 'VIX 期限結構紅黃綠燈規則',
+  ruleNote:
+    '此燈號是短期 posture 投票成員之一。比 VIX 絕對值更敏感於市場結構性轉變 — VIX 22 可能是平日震盪,但若同時 VIX > VIX3M,代表「現在恐慌已強過 3 個月遠期」,通常是真正壓力的開端。',
+};
+
+const AD_LINE_HEADLINE_LABELS = {
+  ruleTitle: '觀察名單 A/D Line 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「廣度健康度檢查」— 個人化版本的 NYSE 廣度指標,範圍是所有使用者 watchlist 的並集。窄漲 (SPX 上但 AD Line 下) = 警示;同步上升 = 健康行情。Eiswein 不投正式 posture 票,但作為「該不該信中期看漲訊號」的補強。',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -212,6 +232,18 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
               detail={item.detail}
               labels={SPX_ADX_HEADLINE_LABELS}
             />
+          ) : item.indicator_name === 'vix_term' ? (
+            <VixTermHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={VIX_TERM_HEADLINE_LABELS}
+            />
+          ) : item.indicator_name === 'ad_line' ? (
+            <AdLineHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={AD_LINE_HEADLINE_LABELS}
+            />
           ) : (
             item.short_label
           )}
@@ -234,6 +266,10 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
           <FedRateEnhancedDetail detail={item.detail} />
         ) : item.indicator_name === 'spx_adx' ? (
           <AdxEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'vix_term' ? (
+          <VixTermEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'ad_line' ? (
+          <AdLineEnhancedDetail detail={item.detail} />
         ) : (
           detailEntries.length > 0 && (
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-stone-700">
@@ -405,6 +441,40 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
         yAxisMin={0}
         yAxisMax={60}
         ariaLabel="SPX ADX 60 日走勢"
+      />
+    );
+  }
+  if (response.indicator === 'vix_term') {
+    return (
+      <IndicatorBoundedLine
+        series={response.series}
+        lines={[{ key: 'ratio', label: 'VIX / VIX3M', color: '#1c1917' }]}
+        thresholds={[
+          {
+            value: response.thresholds.contango,
+            label: 'contango (<0.95)',
+            color: '#22c55e',
+            fillBetween: 'below',
+          },
+          {
+            value: response.thresholds.inversion,
+            label: '倒掛 (≥1.0)',
+            color: '#ef4444',
+            fillBetween: 'above',
+          },
+        ]}
+        yAxisMin={0.5}
+        yAxisMax={1.3}
+        ariaLabel="VIX 期限結構比 60 日走勢"
+      />
+    );
+  }
+  if (response.indicator === 'ad_line') {
+    return (
+      <IndicatorMultiLine
+        series={response.series}
+        lines={[{ key: 'ad_line', label: '累積 AD Line', color: '#0284c7', width: 2 }]}
+        ariaLabel="觀察名單 AD Line 60 日走勢"
       />
     );
   }

@@ -901,3 +901,30 @@ def test_spx_adx_series_shape(
     assert body["thresholds"] == {"no_trend": 20.0, "trend": 25.0}
     assert "SPX ADX" in body["summary_zh"]
 
+
+
+def test_vix_term_returns_404_when_history_too_short(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols=set())
+    _login(client, test_password)
+    # No macro rows persisted → 404 insufficient_history.
+    resp = client.get("/api/v1/market/indicator/vix_term/series")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["details"]["reason"] == "insufficient_history"
+
+
+def test_ad_line_returns_404_when_no_watchlist(
+    client: TestClient,
+    test_password: str,
+    app: FastAPI,
+    session_factory: sessionmaker[Session],
+) -> None:
+    _install_empty_datasource(app, symbols=set())
+    _login(client, test_password)
+    resp = client.get("/api/v1/market/indicator/ad_line/series")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["details"]["reason"] == "insufficient_history"

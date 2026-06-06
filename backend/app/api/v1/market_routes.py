@@ -21,6 +21,7 @@ requires runtime annotations (Phase 1 lesson).
 from datetime import date, datetime, timedelta
 from typing import Literal, cast
 
+import pandas as pd
 import structlog
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
@@ -32,15 +33,19 @@ from app.api.dependencies import (
     get_macro_repository,
     get_market_posture_streak_repository,
     get_market_snapshot_repository,
+    get_watchlist_repository,
 )
 from app.api.v1._market_series import (
+    AD_LINE_MIN_BARS,
     DXY_MACRO_SERIES,
     DXY_MIN_BARS,
     FED_FUNDS_MACRO_SERIES,
     SERIES_DAYS,
     SPX_ADX_MIN_BARS,
     SUPPORTED_MARKET_INDICATORS,
+    VIX_TERM_MIN_BARS,
     build_ad_day_payload,
+    build_ad_line_payload,
     build_dxy_payload,
     build_fed_rate_payload,
     build_macro_value_series,
@@ -48,6 +53,7 @@ from app.api.v1._market_series import (
     build_spx_ma_payload,
     build_spy_frame,
     build_vix_payload,
+    build_vix_term_payload,
     build_yield_spread_payload,
 )
 from app.db.repositories.daily_price_repository import DailyPriceRepository
@@ -57,6 +63,7 @@ from app.db.repositories.market_posture_streak_repository import (
     MarketPostureStreakRepository,
 )
 from app.db.repositories.market_snapshot_repository import MarketSnapshotRepository
+from app.db.repositories.watchlist_repository import WatchlistRepository
 from app.indicators.base import IndicatorResult, SignalToneLiteral
 from app.security.exceptions import NotFoundError
 from app.signals.labels import POSTURE_LABELS, posture_streak_badge
@@ -100,6 +107,8 @@ _DEFAULT_DAYS: dict[str, int] = {
     "dxy": SERIES_DAYS,
     "fed_rate": 365,
     "spx_adx": SERIES_DAYS,
+    "vix_term": SERIES_DAYS,
+    "ad_line": SERIES_DAYS,
 }
 
 router = APIRouter(tags=["market"])
@@ -214,7 +223,7 @@ def _load_regime_results(
     MID timeframe so the UI can render its card alongside ``spx_ma``.
     Voting still happens against ``REGIME_INDICATOR_NAMES`` upstream.
     """
-    display_names = REGIME_INDICATOR_NAMES | {"spx_adx"}
+    display_names = REGIME_INDICATOR_NAMES | {"spx_adx", "vix_term", "ad_line"}
     rows = signals_repo.get_latest_for_symbol(_SPX_SYMBOL)
     results: dict[str, IndicatorResult] = {}
     for row in rows:
@@ -489,6 +498,61 @@ class SpxAdxSeriesResponse(BaseModel):
     thresholds: SpxAdxThresholds
 
 
+class VixTermPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    vix: float | None
+    vix3m: float | None
+    ratio: float | None
+
+
+class VixTermCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    vix: float | None
+    vix3m: float | None
+    ratio: float | None
+    zone: Literal["contango", "flat", "inverted", "unknown"]
+
+
+class VixTermThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    contango: float
+    inversion: float
+
+
+class VixTermSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    indicator: Literal["vix_term"]
+    series: list[VixTermPoint]
+    summary_zh: str
+    current: VixTermCurrent
+    thresholds: VixTermThresholds
+
+
+class AdLinePoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    ad_line: float | None
+    net: int | None
+    advances: int | None
+    declines: int | None
+
+
+class AdLineCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    ad_line: float | None
+    net: int
+    slope_20d: float | None
+
+
+class AdLineSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    indicator: Literal["ad_line"]
+    series: list[AdLinePoint]
+    summary_zh: str
+    current: AdLineCurrent
+
+
 MarketIndicatorSeriesResponse = (
     SpxMaSeriesResponse
     | VixSeriesResponse
@@ -497,6 +561,8 @@ MarketIndicatorSeriesResponse = (
     | DxySeriesResponse
     | FedRateSeriesResponse
     | SpxAdxSeriesResponse
+    | VixTermSeriesResponse
+    | AdLineSeriesResponse
 )
 
 
@@ -504,6 +570,42 @@ def _insufficient(name: str) -> NotFoundError:
     return NotFoundError(
         details={"name": name, "reason": "insufficient_history"},
     )
+
+
+def _build_watchlist_breadth_frame(  # type: ignore[no-any-unimported]
+    prices: DailyPriceRepository,
+    watchlist_repo: WatchlistRepository,
+) -> pd.DataFrame | None:
+    """Rebuild the breadth time series for the ad_line endpoint.
+
+    Mirrors the daily ingestion path in ``app/ingestion/indicators.py`` so
+    the rolling chart and the per-snapshot indicator badge see the same
+    advances / declines / cumulative AD line.
+    """
+    symbols = list(watchlist_repo.distinct_symbols_across_users())
+    if not symbols:
+        return None
+    today = date.today()
+    start = (pd.Timestamp(today) - pd.DateOffset(years=2)).date()
+    direction_series: list[pd.Series] = []  # type: ignore[no-any-unimported]
+    for sym in symbols:
+        rows = prices.get_range(sym, start=start, end=today)
+        if len(rows) < 2:
+            continue
+        s = pd.Series(
+            [float(r.close) for r in rows],
+            index=pd.DatetimeIndex([pd.Timestamp(r.date) for r in rows]),
+            dtype="float64",
+        ).sort_index()
+        direction_series.append(s.diff().rename(sym))
+    if not direction_series:
+        return None
+    combined = pd.concat(direction_series, axis=1)
+    advances = (combined > 0).sum(axis=1).rename("advances")
+    declines = (combined < 0).sum(axis=1).rename("declines")
+    net = (advances - declines).rename("net")
+    ad_line = net.cumsum().rename("ad_line")
+    return pd.concat([advances, declines, net, ad_line], axis=1)
 
 
 @router.get(
@@ -536,6 +638,7 @@ def get_market_indicator_series(
     _user_id: int = Depends(current_user_id),
     prices: DailyPriceRepository = Depends(get_daily_price_repository),
     macro: MacroRepository = Depends(get_macro_repository),
+    watchlist_repo: WatchlistRepository = Depends(get_watchlist_repository),
 ) -> MarketIndicatorSeriesResponse:
     if name not in SUPPORTED_MARKET_INDICATORS:
         raise NotFoundError(
@@ -598,6 +701,26 @@ def get_market_indicator_series(
         if frame.empty or len(frame) < SPX_ADX_MIN_BARS:
             raise _insufficient(name)
         return SpxAdxSeriesResponse.model_validate(build_spx_adx_payload(frame, window))
+
+    if name == "vix_term":
+        vix_series = build_macro_value_series(macro.get_all_for_series("VIXCLS"))
+        vix3m_series = build_macro_value_series(macro.get_all_for_series("VXVCLS"))
+        if (
+            vix_series.empty
+            or vix3m_series.empty
+            or len(vix_series.dropna()) < VIX_TERM_MIN_BARS
+            or len(vix3m_series.dropna()) < VIX_TERM_MIN_BARS
+        ):
+            raise _insufficient(name)
+        return VixTermSeriesResponse.model_validate(
+            build_vix_term_payload(vix_series, vix3m_series, window)
+        )
+
+    if name == "ad_line":
+        breadth = _build_watchlist_breadth_frame(prices, watchlist_repo)
+        if breadth is None or len(breadth) < AD_LINE_MIN_BARS:
+            raise _insufficient(name)
+        return AdLineSeriesResponse.model_validate(build_ad_line_payload(breadth, window))
 
     # fed_rate: SUPPORTED_MARKET_INDICATORS already gates this branch.
     fed_series = build_macro_value_series(macro.get_all_for_series(FED_FUNDS_MACRO_SERIES))

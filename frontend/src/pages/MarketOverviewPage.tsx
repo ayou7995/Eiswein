@@ -34,11 +34,15 @@ import { ROUTES } from '../lib/constants';
 // operator can tell apart "today VIX is panicky" (short) from "SPX
 // trend is intact" (mid) from "yield curve is structurally bearish"
 // (long). Backend ``INDICATOR_TIMEFRAMES`` is source of truth.
-const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'ad_day'];
+// v2 Phase 4: VIX term-structure joins the short card — captures
+// curve inversion (VIX > VIX3M) as a stress signal the VIX level
+// reading on its own can miss.
+const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'ad_day', 'vix_term'];
 // v2 Phase 2: SPX ADX joins the mid card — answers "is the SPX trend
 // strong enough to bet on?" alongside SPX 50/200 MA (which gives the
 // direction). Together they answer "trend confirmed" vs "drifting".
-const REGIME_MID: ReadonlyArray<string> = ['spx_ma', 'spx_adx'];
+// v2 Phase 4: cumulative watchlist AD Line for SPX-vs-breadth divergence.
+const REGIME_MID: ReadonlyArray<string> = ['spx_ma', 'spx_adx', 'ad_line'];
 const REGIME_LONG: ReadonlyArray<string> = ['yield_spread'];
 const MACRO_BACKDROP_NAMES: ReadonlySet<string> = new Set(['dxy', 'fed_rate']);
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = [

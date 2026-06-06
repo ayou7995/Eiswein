@@ -44,14 +44,15 @@ def test_compute_market_regime_returns_four_indicators(
 ) -> None:
     ctx = indicator_context_factory(spx_frame=trend_frame)
     results = orch.compute_market_regime(ctx)
-    # v2 Phase 2: SPX ADX joined the regime registry alongside the
-    # original 4 (spx_ma / ad_day / vix / yield_spread).
+    # v2 Phase 2 added spx_adx; Phase 4 added vix_term + ad_line.
     assert set(results.keys()) == {
         "spx_ma",
         "ad_day",
         "vix",
         "yield_spread",
         "spx_adx",
+        "vix_term",
+        "ad_line",
     }
 
 

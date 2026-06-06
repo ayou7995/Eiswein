@@ -28,3 +28,9 @@ class IndicatorContext:
     indicator_version: str = INDICATOR_VERSION
     spx_frame: pd.DataFrame | None = None
     macro_frames: dict[str, pd.DataFrame] = field(default_factory=dict)
+    # v2 Phase 4 (2026-06): pre-computed watchlist-breadth time series for
+    # the ``ad_line`` indicator. DataFrame indexed by date with columns
+    # ``advances`` / ``declines`` / ``net`` / ``ad_line`` (cumulative net).
+    # Built once per ingestion run so the indicator stays a pure
+    # frame-in / result-out read.
+    watchlist_breadth: pd.DataFrame | None = None

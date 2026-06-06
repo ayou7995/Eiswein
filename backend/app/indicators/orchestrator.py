@@ -28,9 +28,11 @@ from app.indicators.direction.volume_anomaly import compute_volume_anomaly
 from app.indicators.macro.dxy import compute_dxy
 from app.indicators.macro.fed_rate import compute_fed_rate
 from app.indicators.market_regime.ad_day import compute_ad_day
+from app.indicators.market_regime.ad_line import compute_ad_line
 from app.indicators.market_regime.spx_adx import compute_spx_adx
 from app.indicators.market_regime.spx_ma import compute_spx_ma
 from app.indicators.market_regime.vix import compute_vix
+from app.indicators.market_regime.vix_term import compute_vix_term
 from app.indicators.market_regime.yield_spread import compute_yield_spread
 from app.indicators.timing.adx import compute_adx
 from app.indicators.timing.atr import compute_atr
@@ -79,6 +81,10 @@ _MARKET_REGIME: dict[str, IndicatorFunc] = {
     # gives direction) — when SPX is above 200MA and SPX ADX > 25 the
     # trend is real; SPX above 200MA but ADX < 20 means we're drifting.
     "spx_adx": compute_spx_adx,
+    # v2 Phase 4: VIX term structure (spot vs 3M) for short-term stress
+    # signal; cumulative watchlist A/D Line for breadth-vs-SPX divergence.
+    "vix_term": compute_vix_term,
+    "ad_line": compute_ad_line,
 }
 
 

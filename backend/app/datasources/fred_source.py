@@ -43,6 +43,11 @@ DEFAULT_SERIES_IDS: tuple[str, ...] = (
     "DTWEXBGS",
     "FEDFUNDS",
     "VIXCLS",
+    # v2 Phase 4 (2026-06): VIX 3-month for term-structure compare.
+    # Inversion (VIX > VIX3M) = short-term panic priced above longer-dated
+    # expectations — a textbook stress signal that complements the raw
+    # VIX level reading.
+    "VXVCLS",
 )
 
 _HEALTH_PROBE_SERIES = "DGS10"

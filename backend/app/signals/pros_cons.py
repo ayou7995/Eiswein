@@ -48,7 +48,18 @@ _TIMING_NAMES: Final[frozenset[str]] = frozenset(
 # visually (大盤 vs 總經) using the indicator_name. SPX ADX (v2 Phase 2)
 # joins as the market-trend-strength gauge.
 _MACRO_NAMES: Final[frozenset[str]] = frozenset(
-    {"dxy", "fed_rate", "spx_ma", "ad_day", "vix", "yield_spread", "spx_adx"}
+    {
+        "dxy",
+        "fed_rate",
+        "spx_ma",
+        "ad_day",
+        "vix",
+        "yield_spread",
+        "spx_adx",
+        # v2 Phase 4: VIX term structure + cumulative breadth A/D Line.
+        "vix_term",
+        "ad_line",
+    }
 )
 
 

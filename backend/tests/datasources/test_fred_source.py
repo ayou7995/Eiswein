@@ -94,7 +94,15 @@ async def test_health_check_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_default_series_list_is_stable() -> None:
     # Contract used by daily_ingestion + tests. Changing this list is a
     # schema-level change — the failure pushes us to update callers.
-    assert DEFAULT_SERIES_IDS == ("DGS10", "DGS2", "DTWEXBGS", "FEDFUNDS", "VIXCLS")
+    assert DEFAULT_SERIES_IDS == (
+        "DGS10",
+        "DGS2",
+        "DTWEXBGS",
+        "FEDFUNDS",
+        "VIXCLS",
+        # v2 Phase 4: VIX 3-month (term-structure compare).
+        "VXVCLS",
+    )
 
 
 @pytest.mark.asyncio
