@@ -7,6 +7,7 @@ import {
   type ChartNameResolver,
 } from '../components/MarketRegimeIndicatorList';
 import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
+import { IndicatorIndexBar } from '../components/IndicatorIndexBar';
 import { IndicatorDriftBanner } from '../components/IndicatorDriftBanner';
 import { UpcomingMacroBanner } from '../components/UpcomingMacroBanner';
 import { Explainable, RuleTable } from '../components/Explainable';
@@ -283,22 +284,31 @@ function RegimeIndicatorsGrid(): JSX.Element {
     return <></>;
   }
 
+  const allItems = [...shortItems, ...midItems, ...longItems];
+
   return (
     <div className="flex flex-col gap-4">
+      {allItems.length > 0 && (
+        <IndicatorIndexBar
+          items={allItems}
+          titleFor={(name) => MARKET_INDICATOR_TITLES[name] ?? name}
+          idFor={(name) => `regime-${name}`}
+        />
+      )}
       <RegimeSection
-        idPrefix="regime-short"
+        idPrefix="regime"
         title="短期市場態勢 (天)"
         subtitle="VIX 恐慌 · 25 日 A/D — 反映今日盤勢冷熱"
         items={shortItems}
       />
       <RegimeSection
-        idPrefix="regime-mid"
+        idPrefix="regime"
         title="中期市場態勢 (週)"
         subtitle="SPX 50/200 均線 — 趨勢健康度"
         items={midItems}
       />
       <RegimeSection
-        idPrefix="regime-long"
+        idPrefix="regime"
         title="長期市場態勢 (月)"
         subtitle="10Y-2Y 殖利率差 — 衰退領先指標"
         items={longItems}
@@ -306,6 +316,18 @@ function RegimeIndicatorsGrid(): JSX.Element {
     </div>
   );
 }
+
+const MARKET_INDICATOR_TITLES: Record<string, string> = {
+  spx_ma: 'SPX 50/200 MA',
+  spx_adx: 'SPX ADX',
+  vix: 'VIX',
+  vix_term: 'VIX 期限',
+  ad_day: 'A/D Day',
+  ad_line: 'A/D Line',
+  yield_spread: '殖利率差',
+  dxy: 'DXY',
+  fed_rate: 'Fed 利率',
+};
 
 interface RegimeSectionProps {
   idPrefix: string;

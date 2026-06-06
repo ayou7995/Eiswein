@@ -87,4 +87,42 @@ describe('ActionBadgePair', () => {
       expect(badge).toHaveAttribute('data-compact', 'true');
     }
   });
+
+  it('renders a vote tally with neutral count derived from total - green - red', () => {
+    render(
+      <ActionBadgePair
+        midAction="hold"
+        midGreen={3}
+        midRed={1}
+        shortAction="watch"
+        shortGreen={2}
+        shortRed={2}
+      />,
+    );
+    const tallies = screen.getAllByTestId('action-vote-tally');
+    expect(tallies).toHaveLength(2);
+    // Mid: 3 green + 1 red + 1 neutral = total 5.
+    expect(tallies[0].textContent).toContain('3🟢');
+    expect(tallies[0].textContent).toContain('1🔴');
+    expect(tallies[0].textContent).toContain('1⚪');
+    // Short: 2 green + 2 red + 1 neutral.
+    expect(tallies[1].textContent).toContain('2🟢');
+    expect(tallies[1].textContent).toContain('2🔴');
+    expect(tallies[1].textContent).toContain('1⚪');
+  });
+
+  it('does not let the neutral count go negative if green+red exceeds total', () => {
+    render(
+      <ActionBadgePair
+        midAction="strong_buy"
+        midGreen={6}
+        midRed={0}
+        shortAction="hold"
+        shortGreen={3}
+        shortRed={0}
+      />,
+    );
+    const tallies = screen.getAllByTestId('action-vote-tally');
+    expect(tallies[0].textContent).toContain('0⚪');
+  });
 });

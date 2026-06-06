@@ -185,8 +185,9 @@ function RegimeRow({ item, resolveChartName }: RegimeRowProps): JSX.Element {
 
   return (
     <li
+      id={`regime-${item.indicator_name}`}
       data-testid="regime-row"
-      className="flex flex-col overflow-hidden rounded-md border border-stone-200 bg-white"
+      className="flex flex-col overflow-hidden rounded-md border border-stone-200 bg-white scroll-mt-24"
     >
       <header className="flex items-center gap-2 px-3 py-2 text-sm text-stone-800">
         <span aria-label={tone.ariaLabel}>{tone.emoji}</span>

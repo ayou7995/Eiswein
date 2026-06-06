@@ -26,6 +26,13 @@ export interface ActionBadgePairProps {
   compact?: boolean;
 }
 
+// v2 Phase 1+3 vote totals — both ladders now run 5 indicators each
+// after CHO (mid) and TTM Squeeze (short) joined the tables. Used by the
+// vote-tally subtitle so the operator can see at a glance how unanimous
+// the verdict is without opening the popover.
+const MID_VOTE_TOTAL = 5;
+const SHORT_VOTE_TOTAL = 5;
+
 export function ActionBadgePair({
   midAction,
   midGreen,
@@ -39,36 +46,95 @@ export function ActionBadgePair({
   return (
     <div
       data-testid="action-badge-pair"
-      className="inline-flex flex-wrap items-center gap-2"
+      className="inline-flex flex-wrap items-start gap-3"
     >
-      <TimeframeLabel
-        text="中期"
-        ariaLabel="中期判斷 (2-4 週)"
-        tone="mid"
-      />
-      <ActionBadge
+      <BadgeColumn
+        label="中期"
+        labelAria="中期判斷 (2-4 週)"
+        labelTone="mid"
         action={midAction}
         timingBadge={midTimingBadge}
         compact={compact}
-        explainContext={{
-          directionGreenCount: midGreen,
-          directionRedCount: midRed,
-        }}
+        green={midGreen}
+        red={midRed}
+        total={MID_VOTE_TOTAL}
       />
-      <TimeframeLabel
-        text="短期"
-        ariaLabel="短期判斷 (3-5 天)"
-        tone="short"
-      />
-      <ActionBadge
+      <BadgeColumn
+        label="短期"
+        labelAria="短期判斷 (3-5 天)"
+        labelTone="short"
         action={shortAction}
         compact={compact}
-        explainContext={{
-          directionGreenCount: shortGreen,
-          directionRedCount: shortRed,
-        }}
+        green={shortGreen}
+        red={shortRed}
+        total={SHORT_VOTE_TOTAL}
       />
     </div>
+  );
+}
+
+interface BadgeColumnProps {
+  label: string;
+  labelAria: string;
+  labelTone: 'short' | 'mid' | 'long';
+  action: ActionCategoryCode;
+  timingBadge?: string | null;
+  compact: boolean;
+  green: number;
+  red: number;
+  total: number;
+}
+
+function BadgeColumn({
+  label,
+  labelAria,
+  labelTone,
+  action,
+  timingBadge = null,
+  compact,
+  green,
+  red,
+  total,
+}: BadgeColumnProps): JSX.Element {
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <div className="inline-flex items-center gap-2">
+        <TimeframeLabel text={label} ariaLabel={labelAria} tone={labelTone} />
+        <ActionBadge
+          action={action}
+          timingBadge={timingBadge}
+          compact={compact}
+          explainContext={{
+            directionGreenCount: green,
+            directionRedCount: red,
+          }}
+        />
+      </div>
+      <VoteTally green={green} red={red} total={total} />
+    </div>
+  );
+}
+
+interface VoteTallyProps {
+  green: number;
+  red: number;
+  total: number;
+}
+
+function VoteTally({ green, red, total }: VoteTallyProps): JSX.Element {
+  const neutral = Math.max(0, total - green - red);
+  return (
+    <span
+      aria-label={`投票分布:${green} 綠、${red} 紅、${neutral} 中性`}
+      data-testid="action-vote-tally"
+      className="pl-1 font-mono text-[11px] text-stone-500"
+    >
+      <span className="text-signal-green">{green}🟢</span>
+      <span className="mx-1 text-stone-300">·</span>
+      <span className="text-signal-red">{red}🔴</span>
+      <span className="mx-1 text-stone-300">·</span>
+      <span>{neutral}⚪</span>
+    </span>
   );
 }
 

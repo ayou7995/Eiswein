@@ -70,6 +70,9 @@ import { IndicatorRangeSelector } from '../components/IndicatorRangeSelector';
 import { TimeframeChip } from '../components/TimeframeChip';
 import { INDICATOR_TIMEFRAMES } from '../lib/timeframes';
 import { computeYBounds } from '../lib/yAxisAutoFit';
+import { DataFreshnessBadge } from '../components/DataFreshnessBadge';
+import { IndicatorIndexBar } from '../components/IndicatorIndexBar';
+import { useSystemInfo } from '../hooks/useSettings';
 import { SignalAccuracySection } from '../components/SignalAccuracySection';
 import {
   MARKET_INDICATOR_RANGES,
@@ -268,6 +271,7 @@ export function TickerDetailPage(): JSX.Element {
   const signalQuery = useTickerSignal(symbol);
   const indicatorsQuery = useTickerIndicators(symbol);
   const pricesQuery = useTickerPrices(symbol, range);
+  const sysInfoQuery = useSystemInfo();
 
   const signal = signalQuery.data;
   const signalError = signalQuery.error;
@@ -297,6 +301,7 @@ export function TickerDetailPage(): JSX.Element {
         signal={signal ?? null}
         signalError={signalError instanceof Error ? signalError : null}
         signalLoading={signalQuery.isLoading}
+        freshness={sysInfoQuery.data?.data_freshness ?? null}
       />
 
       <CandlestickChart
@@ -308,6 +313,13 @@ export function TickerDetailPage(): JSX.Element {
           pricesQuery.isError ? '無法載入價格資料' : '價格資料準備中'
         }
       />
+
+      {signal && signal.pros_cons.length > 0 && (
+        <IndicatorIndexBar
+          items={signal.pros_cons}
+          titleFor={(name) => INDICATOR_TITLES[name] ?? name}
+        />
+      )}
 
       <IndicatorGroup
         title="短期 (3-5 天)"
@@ -352,6 +364,7 @@ interface TickerHeaderProps {
   signal: TickerSignalResponse | null;
   signalError: Error | null;
   signalLoading: boolean;
+  freshness: import('../api/settings').DataFreshness | null;
 }
 
 function TickerHeader({
@@ -359,6 +372,7 @@ function TickerHeader({
   signal,
   signalError,
   signalLoading,
+  freshness,
 }: TickerHeaderProps): JSX.Element {
   const pendingSignal =
     signalError instanceof EisweinApiError && signalError.status === 404;
@@ -387,6 +401,7 @@ function TickerHeader({
             />
           )}
           <NextCatalystChip symbol={symbol} />
+          {freshness && <DataFreshnessBadge freshness={freshness} />}
           {pendingSignal && (
             <span className="text-xs text-stone-500">分析運算中</span>
           )}
@@ -575,8 +590,9 @@ function IndicatorCard({
 
   return (
     <section
+      id={`indicator-${indicatorKey}`}
       data-testid={`indicator-card-${indicatorKey}`}
-      className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6"
+      className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6 scroll-mt-24"
     >
       <header className="flex flex-wrap items-center gap-2">
         <h3 className="text-base font-semibold text-stone-900">{title}</h3>
