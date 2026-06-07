@@ -38,7 +38,11 @@ import { ROUTES } from '../lib/constants';
 // v2 Phase 4: VIX term-structure joins the short card — captures
 // curve inversion (VIX > VIX3M) as a stress signal the VIX level
 // reading on its own can miss.
-const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'ad_day', 'vix_term'];
+// Order matters: 2-col grid renders pairs left→right, top→bottom.
+// VIX + VIX Term in row 1 keeps the two volatility readings side-by-side
+// for direct comparison; A/D Day drops to row 2 because it's the breadth
+// reading (different question — "資金流向" vs "波動率").
+const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'vix_term', 'ad_day'];
 // v2 Phase 2: SPX ADX joins the mid card — answers "is the SPX trend
 // strong enough to bet on?" alongside SPX 50/200 MA (which gives the
 // direction). Together they answer "trend confirmed" vs "drifting".
@@ -158,7 +162,7 @@ function HeroCard(): JSX.Element {
               marker="none"
               explanation={
                 <RuleTable
-                  preface="由 4 個市場態勢指標（SPX 多頭排列、A/D Day、VIX、10Y-2Y 利差）的紅綠燈計票決定。資料不足的指標不算票；4 個全部不足 → 預設為「正常」。"
+                  preface="這是「中期 posture」— 由 4 個市場態勢指標 (SPX 多頭排列、A/D Day、VIX、10Y-2Y 利差) 的紅黃綠燈計票決定。資料不足的指標不算票;4 個全部不足 → 預設為「正常」。Phase 4 新增的「短期 posture」改用 3 vote (VIX + A/D Day + VIX Term);兩者並存,顯示在 header 的雙 badge。"
                   rows={[
                     {
                       condition: '綠燈 ≥ 3',
@@ -447,10 +451,10 @@ function AttentionAlertsBanner(): JSX.Element {
                 rows={[
                   {
                     condition: '🟢🟢 強力買入',
-                    result: '4 個方向指標全綠，買進機會浮現',
+                    result: '5 個方向指標全綠,買進機會浮現',
                   },
-                  { condition: '⚠️ 減倉', result: '紅燈 2-3 個，趨勢轉弱，考慮部分出場' },
-                  { condition: '🔴🔴 出場', result: '4 個方向指標全紅，趕快出' },
+                  { condition: '⚠️ 減倉', result: '紅燈 3-4 個,趨勢轉弱,考慮部分出場' },
+                  { condition: '🔴🔴 出場', result: '5 個方向指標全紅,趕快出' },
                 ]}
                 note="篩選清單為空 → 沒有需要立即關注的訊號。"
               />
@@ -479,10 +483,10 @@ function AttentionAlertsBanner(): JSX.Element {
                 rows={[
                   {
                     condition: '🟢🟢 強力買入',
-                    result: '4 個方向指標全綠',
+                    result: '5 個方向指標全綠',
                   },
-                  { condition: '⚠️ 減倉', result: '紅燈 2-3 個' },
-                  { condition: '🔴🔴 出場', result: '4 個方向指標全紅' },
+                  { condition: '⚠️ 減倉', result: '紅燈 3-4 個' },
+                  { condition: '🔴🔴 出場', result: '5 個方向指標全紅' },
                 ]}
               />
             }

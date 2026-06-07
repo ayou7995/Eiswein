@@ -518,37 +518,37 @@ function IndicatorGroup({
 const PRICE_VS_MA_HEADLINE_LABELS = {
   ruleTitle: '價格 vs 50/200MA 規則',
   ruleNote:
-    '此燈號是個股方向 4 項中的「位階」項；下方包含距離尺標、近期黃金/死亡交叉、與看點。',
+    '此燈號是「中期方向」5 票之 1 的「位階」項(中期 5 vote = price_vs_ma + rsi + volume_anomaly + relative_strength + cho)。只投中期,不投短期。下方包含距離尺標、近期黃金/死亡交叉、與看點。',
 };
 
 const RSI_HEADLINE_LABELS = {
   ruleTitle: 'RSI 紅黃綠燈規則',
   ruleNote:
-    '⚠️ 鈍化現象：強勢趨勢中 RSI 可能連續數週停在 >70 或 <30，「碰到 70 就賣 / 碰到 30 就買」會錯過大行情或接刀。必須配合週線確認 + 價格動作判讀真正反轉。RSI 屬個股方向 4 項中的「動能」項，是 contrarian indicator — 超買偏空、超賣偏多。',
+    '⚠️ 鈍化現象:強勢趨勢中 RSI 可能連續數週停在 >70 或 <30,「碰到 70 就賣 / 碰到 30 就買」會錯過大行情或接刀。必須配合週線確認 + 價格動作判讀真正反轉。RSI 是 dual-vote 成員 — 同時投中期 5 票 + 短期 5 票(短期 5 vote = rsi + macd + bollinger + volume_anomaly + ttm_squeeze)。Contrarian indicator — 超買偏空、超賣偏多。',
 };
 
 const VOLUME_ANOMALY_HEADLINE_LABELS = {
   ruleTitle: '成交量異常紅黃綠燈規則',
   ruleNote:
-    '此燈號是個股方向 4 項中的「資金動能」項。同 O\'Neil A/D Day 邏輯 — 機構動倉一定要量。spike 閾值 2× 是經驗值，可視個股流動性微調。',
+    '此燈號是 dual-vote 成員 — 同時投中期 5 票 + 短期 5 票的「資金動能」項。同 O\'Neil A/D Day 邏輯 — 機構動倉一定要量。spike 閾值 2× 是經驗值,可視個股流動性微調。',
 };
 
 const RELATIVE_STRENGTH_HEADLINE_LABELS = {
   ruleTitle: '相對強度紅黃綠燈規則',
   ruleNote:
-    '此燈號是個股方向 4 項中的「對比大盤」項。20 日是 O\'Neil 系統的標準窗口（≈1 個交易月）。連續多週「強於大盤」常見於領漲類股，是中期持有的好訊號；連續「弱於大盤」是換股的警訊。',
+    '此燈號是「中期方向」5 票之 1 的「對比大盤」項。只投中期,不投短期。20 日是 O\'Neil 系統的標準窗口(≈1 個交易月)。連續多週「強於大盤」常見於領漲類股,是中期持有的好訊號;連續「弱於大盤」是換股的警訊。',
 };
 
 const MACD_HEADLINE_LABELS = {
   ruleTitle: 'MACD 紅黃綠燈規則',
   ruleNote:
-    '此燈號是時機指標 2 項中的「動能交叉」項。MACD 屬「事後型」指標 — 交叉發生後才確認，不能預測。但對「現在該停利還是再加碼」這類問題很實用。配合下方走勢圖看 histogram 是否擴張/收縮，比單看當下的數字更可靠。',
+    '此燈號是「短期方向」5 票之 1 的「動能交叉」項。只投短期,不投中期。MACD 屬「事後型」指標 — 交叉發生後才確認,不能預測。但對「現在該停利還是再加碼」這類問題很實用。配合下方走勢圖看 histogram 是否擴張/收縮,比單看當下的數字更可靠。',
 };
 
 const BOLLINGER_HEADLINE_LABELS = {
   ruleTitle: '布林通道紅黃綠燈規則',
   ruleNote:
-    '此燈號是時機指標 2 項中的「波動位置」項。通道是 mean-reversion 工具：價格突破 ±2σ 統計上會回歸，但**強趨勢可以沿著上/下軌走多日**（"riding the band"）。所以單獨看會誤判，要配合 RSI 和成交量一起判讀。',
+    '此燈號是「短期方向」5 票之 1 的「波動位置」項。只投短期,不投中期。通道是 mean-reversion 工具:價格突破 ±2σ 統計上會回歸,但**強趨勢可以沿著上/下軌走多日**("riding the band")。所以單獨看會誤判,要配合 RSI 和成交量一起判讀。',
 };
 
 const ADX_HEADLINE_LABELS = {

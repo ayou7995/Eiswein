@@ -58,25 +58,25 @@ import {
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
   ruleNote:
-    '此燈號是市場態勢 4 票之 1（綠/紅/黃 → 進攻/防守/正常）；展開列可看距離尺標與看點。',
+    '此燈號是「中期市場態勢」4 票之 1(綠/紅/黃 → 進攻/防守/正常)。只投中期,不投短期 posture。',
 };
 
 const VIX_HEADLINE_LABELS = {
   ruleTitle: 'VIX 紅黃綠燈規則',
   ruleNote:
-    '此燈號是市場態勢 4 票之 1。VIX 過低 (<12) 是反向訊號：市場過於自滿時反轉風險升高。',
+    '此燈號是 dual-vote 成員 — 同時投中期 4 票 + 短期 3 票。VIX 過低 (<12) 是反向訊號:市場過於自滿時反轉風險升高。短期 posture 用 3 vote (vix + ad_day + vix_term),中期 posture 用 4 vote (vix + ad_day + spx_ma + yield_spread)。',
 };
 
 const AD_DAY_HEADLINE_LABELS = {
   ruleTitle: 'A/D Day 紅黃綠燈規則',
   ruleNote:
-    '此燈號是市場態勢 4 票之 1。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。',
+    '此燈號是 dual-vote 成員 — 同時投中期 4 票 + 短期 3 票。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。⚠ 「過去 25 天」是 O\'Neil 定義的固定窗口,不會跟著下方圖表 range 改變;range 只影響顯示多少根歷史 K 線。',
 };
 
 const YIELD_SPREAD_HEADLINE_LABELS = {
   ruleTitle: '10Y-2Y 利差紅黃綠燈規則',
   ruleNote:
-    '此燈號是市場態勢 4 票之 1。倒掛 (spread<0) 是衰退領先指標，過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
+    '此燈號是「中期市場態勢」4 票之 1。只投中期,不投短期 posture。倒掛 (spread<0) 是衰退領先指標,過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
 };
 
 const DXY_HEADLINE_LABELS = {
@@ -100,7 +100,7 @@ const SPX_ADX_HEADLINE_LABELS = {
 const VIX_TERM_HEADLINE_LABELS = {
   ruleTitle: 'VIX 期限結構紅黃綠燈規則',
   ruleNote:
-    '此燈號是短期 posture 投票成員之一。比 VIX 絕對值更敏感於市場結構性轉變 — VIX 22 可能是平日震盪,但若同時 VIX > VIX3M,代表「現在恐慌已強過 3 個月遠期」,通常是真正壓力的開端。',
+    '此燈號是「短期市場態勢」3 票之 1。只投短期,不投中期 posture。比 VIX 絕對值更敏感於市場結構性轉變 — VIX 22 可能是平日震盪,但若同時 VIX > VIX3M,代表「現在恐慌已強過 3 個月遠期」,通常是真正壓力的開端。',
 };
 
 const AD_LINE_HEADLINE_LABELS = {

@@ -186,10 +186,10 @@ export function ActionBadge({
       marker="none"
       explanation={
         <RuleTable
-          preface="由 4 個方向指標（Price vs MA、RSI、成交量、相對強度）的紅綠燈計票。決策表由上往下掃，高信心動作優先（如 2🟢/1🔴 → 持有，不會降為觀望）。黃燈不算票。"
+          preface="由 5 個方向指標的紅黃綠燈計票決定 action。中期 (2-4 週) 用 price_vs_ma + rsi + volume_anomaly + relative_strength + cho;短期 (3-5 天) 用 rsi + macd + bollinger + volume_anomaly + ttm_squeeze。決策表由上往下掃,高信心動作優先 (如 3🟢/1🔴 → 持有,不會降為觀望)。黃燈不算票。"
           rows={buildActionRuleRows(action, explainContext.directionGreenCount, explainContext.directionRedCount)}
           currentValueText={`你目前: 綠燈 ${explainContext.directionGreenCount} · 紅燈 ${explainContext.directionRedCount} → ${preset.emoji} ${preset.label}`}
-          note="時機指標（MACD / Bollinger）不影響 action，只在買進方向加上「✓ 時機好」或「⏳ 等回調」修飾。"
+          note="時機指標 (MACD / Bollinger) 跟 ADX / ATR 不影響 mid action,只在買進方向加上「✓ 時機好」或「⏳ 等回調」修飾。"
         />
       }
     >
