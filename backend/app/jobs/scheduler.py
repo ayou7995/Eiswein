@@ -38,6 +38,7 @@ from app.config import Settings
 from app.datasources.base import DataSource
 from app.jobs import backup as backup_job
 from app.jobs import daily_update as daily_update_job
+from app.jobs import intraday_vix_refresh as intraday_vix_refresh_job
 from app.jobs import schwab_token_refresh as schwab_token_refresh_job
 from app.jobs import token_reminder as token_reminder_job
 from app.jobs import vacuum as vacuum_job
@@ -54,6 +55,7 @@ JobId = Literal[
     "token_reminder",
     "vacuum",
     "schwab_token_refresh",
+    "intraday_vix_refresh",
 ]
 
 
@@ -245,6 +247,23 @@ def _register_jobs(
             "session_factory": session_factory,
         },
     )
+    # Phase 6: yfinance intraday VIX / VIX3M every 15 min during market
+    # hours (the gate is inside the job itself — see ``_is_market_hours``).
+    # APScheduler fires year-round; the job no-ops outside the window.
+    scheduler.add_job(
+        _intraday_vix_refresh_wrapper,
+        trigger=CronTrigger(minute="*/15", timezone=_TIMEZONE),
+        id="intraday_vix_refresh",
+        name="intraday_vix_refresh",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=600,
+        kwargs={
+            "session_factory": session_factory,
+            "data_source": data_source,
+        },
+    )
     # Schwab access tokens live 30 min; we refresh every 20 min so any
     # user-initiated call in the remaining 10m has a warm token.
     # Scheduler gate: if Schwab isn't configured the job is a no-op
@@ -294,6 +313,10 @@ async def _vacuum_wrapper(**kwargs: Any) -> None:
 
 async def _schwab_token_refresh_wrapper(**kwargs: Any) -> None:
     await schwab_token_refresh_job.run(**kwargs)
+
+
+async def _intraday_vix_refresh_wrapper(**kwargs: Any) -> None:
+    await intraday_vix_refresh_job.run(**kwargs)
 
 
 def get_scheduler_status(handle: SchedulerHandle | None) -> SchedulerStatus:

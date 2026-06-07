@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +150,58 @@ class YFinanceSource(DataSource):
             raise DataSourceError(details={"reason": "delisted_or_invalid", "symbol": symbol})
         return frame
 
+    async def fetch_intraday_last(
+        self, symbols: list[str]
+    ) -> dict[str, tuple[date, float] | None]:
+        """Latest intraday bar's (date, close) for each symbol.
+
+        Used by the intraday VIX / VIX3M refresh job — Yahoo serves
+        5-minute bars for indices during market hours which lets the
+        dashboard surface today's VIX move without waiting for FRED's
+        T+1 publication. None means yfinance returned no data for that
+        symbol (delisted, after-hours gap, etc.).
+
+        Bypasses the daily-cache path because intraday values change
+        every 5 minutes — caching would actively hurt us here.
+        """
+        if not symbols:
+            return {}
+        cleaned = sorted({s.strip().upper() for s in symbols if s.strip()})
+        try:
+            raw = await asyncio.to_thread(
+                _download_with_retry, cleaned, period="1d", interval="5m"
+            )
+        except Exception as exc:
+            logger.warning(
+                "yfinance_intraday_failed",
+                symbols=cleaned,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return {s: None for s in cleaned}
+
+        per_symbol = _split_bulk_frame(raw, cleaned)
+        out: dict[str, tuple[date, float] | None] = {}
+        for sym in cleaned:
+            frame = per_symbol.get(sym)
+            if frame is None or frame.empty:
+                out[sym] = None
+                continue
+            last_idx = frame.index[-1]
+            # ``_split_bulk_frame`` lowercases the per-symbol columns
+            # (open / high / low / close / volume) to match the rest of
+            # the codebase, so we read "close" not "Close" here.
+            last_close = frame["close"].iloc[-1] if "close" in frame.columns else None
+            if last_close is None or pd.isna(last_close):
+                out[sym] = None
+                continue
+            bar_date = last_idx.date() if hasattr(last_idx, "date") else None
+            if bar_date is None:
+                out[sym] = None
+                continue
+            out[sym] = (bar_date, float(last_close))
+        return out
+
     async def health_check(self) -> DataSourceHealth:
         try:
             result = await self.bulk_download([_HEALTH_PROBE_SYMBOL], period="5d")
@@ -188,11 +240,17 @@ class YFinanceSource(DataSource):
     retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
     reraise=True,
 )
-def _download_with_retry(symbols: list[str], *, period: str) -> pd.DataFrame:
-    """Single bulk upstream call. Returns raw yfinance multi-ticker frame."""
+def _download_with_retry(
+    symbols: list[str], *, period: str, interval: str = "1d"
+) -> pd.DataFrame:
+    """Single bulk upstream call. Returns raw yfinance multi-ticker frame.
+
+    ``interval`` defaults to daily; intraday refresh passes ``5m`` to
+    pull the most recent bar of indices like ``^VIX`` / ``^VIX3M``."""
     kwargs: dict[str, Any] = {
         "tickers": " ".join(symbols),
         "period": period,
+        "interval": interval,
         "group_by": "ticker",
         "threads": False,
         "progress": False,

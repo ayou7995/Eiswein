@@ -40,7 +40,7 @@ def file_session_factory(file_engine: Engine) -> sessionmaker[Session]:
 
 
 @pytest.mark.asyncio
-async def test_start_scheduler_registers_all_four_jobs(
+async def test_start_scheduler_registers_all_unconditional_jobs(
     settings: Settings,
     file_engine: Engine,
     file_session_factory: sessionmaker[Session],
@@ -59,10 +59,16 @@ async def test_start_scheduler_registers_all_four_jobs(
         status = handle.status()
         assert status.status == "running"
         job_ids = sorted(job.id for job in status.jobs)
-        # Schwab gate not configured by default — the four daily jobs
-        # always register. Industry sync used to live here but pivoted
-        # to a manual paste flow, so it no longer has a scheduler slot.
-        assert job_ids == ["backup", "daily_update", "token_reminder", "vacuum"]
+        # Schwab gate not configured by default — these five daily jobs
+        # always register. Phase 6 (2026-06) added intraday_vix_refresh
+        # which runs every 15 min during NYSE hours.
+        assert job_ids == [
+            "backup",
+            "daily_update",
+            "intraday_vix_refresh",
+            "token_reminder",
+            "vacuum",
+        ]
         # Every job must have a next_run_time set.
         assert all(job.next_run_time is not None for job in status.jobs)
     finally:
