@@ -85,15 +85,25 @@ async def run(
         logger.debug("intraday_vix_skipped_off_hours", now_et=now.isoformat())
         return
 
-    latest = await data_source.fetch_intraday_last(list(_SYMBOL_TO_SERIES.keys()))
+    frames = await data_source.fetch_today_running(list(_SYMBOL_TO_SERIES.keys()))
     rows: list[MacroRow] = []
     written: list[dict[str, str | float]] = []
     for symbol, series_id in _SYMBOL_TO_SERIES.items():
-        bar = latest.get(symbol)
-        if bar is None:
+        frame = frames.get(symbol)
+        if frame is None or frame.empty or "close" not in frame.columns:
             logger.info("intraday_vix_no_bar", symbol=symbol)
             continue
-        bar_date, close = bar
+        last_close = frame["close"].iloc[-1]
+        if last_close is None or float(last_close) != float(last_close):
+            # NaN-check via self-inequality avoids importing pandas here.
+            logger.info("intraday_vix_no_bar", symbol=symbol)
+            continue
+        last_idx = frame.index[-1]
+        bar_date = last_idx.date() if hasattr(last_idx, "date") else None
+        if bar_date is None:
+            logger.info("intraday_vix_no_bar", symbol=symbol)
+            continue
+        close = float(last_close)
         rows.append(
             MacroRow(series_id=series_id, date=bar_date, value=Decimal(str(close)))
         )

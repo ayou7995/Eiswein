@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import datetime, time
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import pytest
 
 from app.db.models import MacroIndicator
@@ -67,7 +68,7 @@ async def test_run_skips_off_hours(
     it returns without hitting yfinance or the DB."""
 
     class _FakeSource:
-        fetch_intraday_last = AsyncMock(return_value={})
+        fetch_today_running = AsyncMock(return_value={})
 
     fake_source = _FakeSource()
     # Force "now" to a Saturday so the gate is False regardless of when
@@ -77,7 +78,22 @@ async def test_run_skips_off_hours(
         _FixedClock(datetime(2026, 6, 6, 12, 0, tzinfo=_NY)),
     )
     await run(session_factory=session_factory, data_source=fake_source)  # type: ignore[arg-type]
-    fake_source.fetch_intraday_last.assert_not_called()
+    fake_source.fetch_today_running.assert_not_called()
+
+
+def _running_bar(close: float, when: datetime) -> pd.DataFrame:
+    """Stand-in for ``fetch_today_running``'s per-symbol frame: a single
+    OHLCV row indexed by ``when``."""
+    return pd.DataFrame(
+        {
+            "open": [close],
+            "high": [close],
+            "low": [close],
+            "close": [close],
+            "volume": [0],
+        },
+        index=pd.DatetimeIndex([pd.Timestamp(when)]),
+    )
 
 
 @pytest.mark.asyncio
@@ -87,13 +103,13 @@ async def test_run_writes_upsert_during_market_hours(
 ) -> None:
     """During market hours, the job fetches yfinance + UPSERTs both
     VIXCLS and VXVCLS rows."""
-    bar_date = date(2026, 6, 5)
+    bar_when = datetime(2026, 6, 5, 11, 0, tzinfo=_NY)
 
     class _FakeSource:
-        fetch_intraday_last = AsyncMock(
+        fetch_today_running = AsyncMock(
             return_value={
-                "^VIX": (bar_date, 18.42),
-                "^VIX3M": (bar_date, 19.30),
+                "^VIX": _running_bar(18.42, bar_when),
+                "^VIX3M": _running_bar(19.30, bar_when),
             }
         )
 
@@ -109,7 +125,7 @@ async def test_run_writes_upsert_during_market_hours(
     with session_factory() as session:
         rows = (
             session.query(MacroIndicator)
-            .filter(MacroIndicator.date == bar_date)
+            .filter(MacroIndicator.date == bar_when.date())
             .order_by(MacroIndicator.series_id)
             .all()
         )
@@ -123,16 +139,16 @@ async def test_run_handles_missing_bar_gracefully(
     session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When yfinance returns None for ^VIX3M (e.g. index data delisted
-    / network blip), the VIX row still gets written and the job
-    doesn't raise."""
-    bar_date = date(2026, 6, 5)
+    """When yfinance returns an empty frame for ^VIX3M (e.g. index data
+    delisted / network blip), the VIX row still gets written and the
+    job doesn't raise."""
+    bar_when = datetime(2026, 6, 5, 11, 0, tzinfo=_NY)
 
     class _FakeSource:
-        fetch_intraday_last = AsyncMock(
+        fetch_today_running = AsyncMock(
             return_value={
-                "^VIX": (bar_date, 18.42),
-                "^VIX3M": None,
+                "^VIX": _running_bar(18.42, bar_when),
+                "^VIX3M": pd.DataFrame(),
             }
         )
 
@@ -146,7 +162,7 @@ async def test_run_handles_missing_bar_gracefully(
     with session_factory() as session:
         rows = (
             session.query(MacroIndicator)
-            .filter(MacroIndicator.date == bar_date)
+            .filter(MacroIndicator.date == bar_when.date())
             .all()
         )
     series = {r.series_id: r.value for r in rows}
