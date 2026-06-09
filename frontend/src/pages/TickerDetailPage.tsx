@@ -389,10 +389,11 @@ function TickerHeader({
       aria-labelledby="ticker-heading"
       // Sticky so the operator always knows which symbol they're on as
       // they scroll through the ~5000-6000px of indicator detail below.
-      className="sticky top-0 z-10 -mx-4 flex flex-col gap-3 border-b border-stone-200 bg-stone-50/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+      className="sticky top-0 z-10 -mx-4 flex flex-col gap-2 border-b border-stone-200 bg-stone-50/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
     >
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      {/* Row 1 — primary: symbol + dual action badges + stats grid */}
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 id="ticker-heading" className="font-mono text-2xl font-semibold">
             {symbol}
           </h1>
@@ -408,34 +409,48 @@ function TickerHeader({
               shortRed={signal.direction_short_red_count}
             />
           )}
-          <NextCatalystChip symbol={symbol} />
-          {freshness && <DataFreshnessBadge freshness={freshness} />}
           {pendingSignal && (
             <span className="text-xs text-stone-500">分析運算中</span>
           )}
         </div>
         {signal && (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-stone-500">
+          <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-xs">
             {signal.stop_loss && (
-              <span data-testid="stop-loss-pill">
-                停損參考：
-                <Tooltip text="200MA × 0.97">
-                  <span className="cursor-help underline decoration-dotted decoration-stone-400 underline-offset-2">
-                    ${signal.stop_loss}
-                  </span>
-                </Tooltip>
-              </span>
+              <>
+                <dt className="text-stone-400">停損參考</dt>
+                <dd
+                  data-testid="stop-loss-pill"
+                  className="text-right font-mono text-stone-700"
+                >
+                  <Tooltip text="200MA × 0.97">
+                    <span className="cursor-help underline decoration-dotted decoration-stone-400 underline-offset-2">
+                      ${signal.stop_loss}
+                    </span>
+                  </Tooltip>
+                </dd>
+              </>
             )}
-            <span>最近交易日：{signal.date}</span>
-            <span>
-              市場態勢：
+            <dt className="text-stone-400">最近交易日</dt>
+            <dd className="text-right font-mono text-stone-700">{signal.date}</dd>
+            <dt className="text-stone-400">市場態勢</dt>
+            <dd className="text-right text-stone-700">
               {POSTURE_LABELS[signal.market_posture_at_compute] ??
                 signal.market_posture_at_compute}
-            </span>
-            <span>指標版本：{signal.indicator_version}</span>
-          </div>
+            </dd>
+            <dt className="text-stone-400">指標版本</dt>
+            <dd className="text-right font-mono text-stone-500">
+              {signal.indicator_version}
+            </dd>
+          </dl>
         )}
       </header>
+      {/* Row 2 — sub-row: catalyst + freshness chips */}
+      {(signal || freshness) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <NextCatalystChip symbol={symbol} />
+          {freshness && <DataFreshnessBadge freshness={freshness} />}
+        </div>
+      )}
     </section>
   );
 }
