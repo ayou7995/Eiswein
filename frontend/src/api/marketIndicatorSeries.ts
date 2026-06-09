@@ -10,7 +10,8 @@ export const marketIndicatorSeriesNameSchema = z.enum([
   'fed_rate',
   'spx_adx',
   'vix_term',
-  'ad_line',
+  'rsp_spy',
+  'hyg_ief',
 ]);
 export type MarketIndicatorSeriesName = z.infer<typeof marketIndicatorSeriesNameSchema>;
 
@@ -199,22 +200,41 @@ const vixTermResponseSchema = z.object({
   }),
 });
 
-const adLineResponseSchema = z.object({
-  indicator: z.literal('ad_line'),
+const rspSpyResponseSchema = z.object({
+  indicator: z.literal('rsp_spy'),
   series: z.array(
     z.object({
       date: z.string(),
-      ad_line: z.number().nullable(),
-      net: z.number().nullable(),
-      advances: z.number().nullable(),
-      declines: z.number().nullable(),
+      rsp: z.number().nullable(),
+      spy: z.number().nullable(),
+      ratio: z.number().nullable(),
     }),
   ),
   summary_zh: z.string(),
   current: z.object({
-    ad_line: z.number().nullable(),
-    net: z.number(),
-    slope_20d: z.number().nullable(),
+    rsp: z.number().nullable(),
+    spy: z.number().nullable(),
+    ratio: z.number().nullable(),
+    slope_20d_pct: z.number().nullable(),
+  }),
+});
+
+const hygIefResponseSchema = z.object({
+  indicator: z.literal('hyg_ief'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      hyg: z.number().nullable(),
+      ief: z.number().nullable(),
+      ratio: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    hyg: z.number().nullable(),
+    ief: z.number().nullable(),
+    ratio: z.number().nullable(),
+    slope_20d_pct: z.number().nullable(),
   }),
 });
 
@@ -227,7 +247,8 @@ export const marketIndicatorSeriesResponseSchema = z.discriminatedUnion('indicat
   fedFundsResponseSchema,
   spxAdxResponseSchema,
   vixTermResponseSchema,
-  adLineResponseSchema,
+  rspSpyResponseSchema,
+  hygIefResponseSchema,
 ]);
 
 export type MarketIndicatorSeriesResponse = z.infer<typeof marketIndicatorSeriesResponseSchema>;
@@ -239,7 +260,8 @@ export type DxyTrendSeriesResponse = z.infer<typeof dxyTrendResponseSchema>;
 export type FedFundsSeriesResponse = z.infer<typeof fedFundsResponseSchema>;
 export type SpxAdxSeriesResponse = z.infer<typeof spxAdxResponseSchema>;
 export type VixTermSeriesResponse = z.infer<typeof vixTermResponseSchema>;
-export type AdLineSeriesResponse = z.infer<typeof adLineResponseSchema>;
+export type RspSpySeriesResponse = z.infer<typeof rspSpyResponseSchema>;
+export type HygIefSeriesResponse = z.infer<typeof hygIefResponseSchema>;
 
 // Range options mapped to trading days. Server validates 21 ≤ days ≤ 1260
 // for the ``days`` param; the ``ALL`` button instead sends ``?range=all``
@@ -267,7 +289,8 @@ export const DEFAULT_RANGE_BY_INDICATOR: Record<MarketIndicatorSeriesName, Marke
   // Mid-term trend
   spx_ma: '3M',
   spx_adx: '3M',
-  ad_line: '3M',
+  rsp_spy: '3M',
+  hyg_ief: '3M',
   // Short-term posture additions (Phase 4)
   vix_term: '1M',
   // Long-term macro

@@ -46,8 +46,16 @@ const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'vix_term', 'ad_day'];
 // v2 Phase 2: SPX ADX joins the mid card — answers "is the SPX trend
 // strong enough to bet on?" alongside SPX 50/200 MA (which gives the
 // direction). Together they answer "trend confirmed" vs "drifting".
-// v2 Phase 4: cumulative watchlist AD Line for SPX-vs-breadth divergence.
-const REGIME_MID: ReadonlyArray<string> = ['spx_ma', 'spx_adx', 'ad_line'];
+// v2 (2026-06): watchlist AD Line dropped (universe drift > signal),
+// replaced by rsp_spy (equal-weight breadth, display-only) + hyg_ief
+// (credit spread, votes in mid posture). 4 cards in a 2-col grid:
+// row 1 SPX MA + SPX ADX, row 2 RSP/SPY + HYG/IEF.
+const REGIME_MID: ReadonlyArray<string> = [
+  'spx_ma',
+  'spx_adx',
+  'rsp_spy',
+  'hyg_ief',
+];
 const REGIME_LONG: ReadonlyArray<string> = ['yield_spread'];
 const MACRO_BACKDROP_NAMES: ReadonlySet<string> = new Set(['dxy', 'fed_rate']);
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = [
@@ -330,7 +338,8 @@ const MARKET_INDICATOR_TITLES: Record<string, string> = {
   vix: 'VIX',
   vix_term: 'VIX 期限',
   ad_day: 'A/D Day',
-  ad_line: 'A/D Line',
+  rsp_spy: '廣度 (RSP/SPY)',
+  hyg_ief: '信用利差 (HYG/IEF)',
   yield_spread: '殖利率差',
   dxy: 'DXY',
   fed_rate: 'Fed 利率',

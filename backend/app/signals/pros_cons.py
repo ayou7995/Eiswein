@@ -56,9 +56,11 @@ _MACRO_NAMES: Final[frozenset[str]] = frozenset(
         "vix",
         "yield_spread",
         "spx_adx",
-        # v2 Phase 4: VIX term structure + cumulative breadth A/D Line.
+        # v2 Phase 4: VIX term structure for short-term posture.
         "vix_term",
-        "ad_line",
+        # v2 (2026-06): cross-asset / breadth structural indicators.
+        "rsp_spy",
+        "hyg_ief",
     }
 )
 

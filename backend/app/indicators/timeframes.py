@@ -42,7 +42,8 @@ INDICATOR_TIMEFRAMES: Final[dict[str, Timeframe]] = {
     "yield_spread": "long",
     "spx_adx": "mid",
     "vix_term": "short",
-    "ad_line": "mid",
+    "rsp_spy": "mid",
+    "hyg_ief": "mid",
     # Timing (2 + 2 in v2 Phase 2, + 1 in Phase 3)
     "macd": "short",
     "bollinger": "short",

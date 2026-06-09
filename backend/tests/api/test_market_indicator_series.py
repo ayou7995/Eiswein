@@ -917,14 +917,3 @@ def test_vix_term_returns_404_when_history_too_short(
     assert resp.json()["error"]["details"]["reason"] == "insufficient_history"
 
 
-def test_ad_line_returns_404_when_no_watchlist(
-    client: TestClient,
-    test_password: str,
-    app: FastAPI,
-    session_factory: sessionmaker[Session],
-) -> None:
-    _install_empty_datasource(app, symbols=set())
-    _login(client, test_password)
-    resp = client.get("/api/v1/market/indicator/ad_line/series")
-    assert resp.status_code == 404
-    assert resp.json()["error"]["details"]["reason"] == "insufficient_history"

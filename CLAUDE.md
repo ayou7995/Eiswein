@@ -101,19 +101,40 @@ After completing a module: run `security-auditor` then `test-writer`.
 - No comments except non-obvious "why" explanations
 - English for code identifiers, Traditional Chinese for user-facing text/labels
 
-## Core Indicators (12)
-**Market regime (4)**: SPX 50/200 MA, A/D Day Count, VIX level+trend, 10Y-2Y yield spread
-**Per-ticker direction (4)**: Price vs 50/200 MA, RSI(14)+weekly RSI, volume anomaly, relative strength vs SPX
-**Timing (2)**: MACD, Bollinger Bands
-**Macro (2)**: DXY trend, Fed Funds Rate + market expectations
+## Core Indicators
+**Market regime (8)**: SPX 50/200 MA, SPX ADX, A/D Day Count, VIX level+trend,
+VIX term structure (VIX/VIX3M), 10Y-2Y yield spread, RSP/SPY breadth ratio
+(display-only), HYG/IEF credit spread ratio. The 2026-06 cleanup dropped the
+watchlist-derived "A/D Line" (universe drift → noise) and added the two
+ETF-ratio indicators in its place.
+**Per-ticker direction (5)**: Price vs 50/200 MA, RSI(14)+weekly RSI, volume
+anomaly, relative strength vs SPX, Chaikin Oscillator (CHO).
+**Timing (5)**: MACD, Bollinger Bands, ADX, ATR, TTM Squeeze.
+**Macro (2)**: DXY trend, Fed Funds Rate + market expectations.
 
-## Signal Rules (revised 2026-04-17)
-- **Layer 1 (Market Posture)**: 4 market-regime indicators vote → 進攻/正常/防守
-- **Layer D1a (Direction)**: 4 direction indicators (Price vs MA, RSI, Volume, Relative Strength) → ActionCategory (強力買入 🟢🟢 / 買入 🟢 / 持有 ✓ / 觀望 👀 / 減倉 ⚠️ / 出場 🔴🔴)
-- **Layer D1b (Timing)**: 2 timing indicators (MACD, BB) → TimingModifier (✓ 時機好 / none / ⏳ 等回調) — modifies Entry recommendation emphasis only, does NOT change Action
-- Timing modifier only shows for buy-side actions (強力買入, 買入, 持有). Suppressed for 觀望/減倉/出場.
-- All-NEUTRAL (data_sufficient=False for all 4 direction) → 觀望 + "⚪ 資料不足以判斷"
-- Implemented as pure-function decision tables, NOT if/elif chains. See `docs/STAFF_REVIEW_DECISIONS.md` I1 for full spec.
+## Signal Rules (revised 2026-06)
+- **Layer 1 mid-term posture**: 5 regime indicators vote (spx_ma, ad_day,
+  vix, yield_spread, hyg_ief) → 進攻 (4+ green) / 防守 (3+ red) / 正常.
+  spx_adx + rsp_spy + vix_term are display-only — they show up on the
+  dashboard but don't tally votes.
+- **Layer 1 short-term posture**: 3 regime indicators vote (vix, ad_day,
+  vix_term) → 進攻 (3 green) / 防守 (1+ red) / 正常.
+- **Layer D1a (Direction mid)**: 5 direction indicators (price_vs_ma, rsi,
+  volume_anomaly, relative_strength, cho) → ActionCategory (強力買入 🟢🟢 /
+  買入 🟢 / 持有 ✓ / 觀望 👀 / 減倉 ⚠️ / 出場 🔴🔴).
+- **Layer D1a-short (Direction short)**: 5 direction indicators (rsi, macd,
+  bollinger, volume_anomaly, ttm_squeeze) → ActionCategory. Renders as a
+  second badge next to the mid-term verdict (Phase 1 dual-badge work).
+- **Layer D1b (Timing)**: 2 timing indicators (MACD, BB) → TimingModifier
+  (✓ 時機好 / none / ⏳ 等回調) — modifies Entry recommendation emphasis
+  only, does NOT change Action. ADX + ATR + TTM Squeeze are read alongside
+  but are independent gauges, not timing-modifier inputs.
+- Timing modifier only shows for buy-side actions (強力買入, 買入, 持有).
+  Suppressed for 觀望/減倉/出場.
+- All-NEUTRAL (data_sufficient=False for all direction indicators) →
+  觀望 + "⚪ 資料不足以判斷".
+- Implemented as pure-function decision tables, NOT if/elif chains. See
+  `docs/STAFF_REVIEW_DECISIONS.md` I1 for full spec.
 - Equal weight v1. Adjust based on accumulated history data.
 
 ## UX Output Rules (IMPORTANT)

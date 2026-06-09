@@ -62,16 +62,16 @@ class IndicatorResult(BaseModel):
 
     ``data_as_of`` is the **actual date of the underlying data** that
     drove this result, which may lag the snapshot's trade_date when an
-    upstream source (FRED, yfinance, watchlist breadth) hasn't published
-    the latest bar yet. None means "unknown" — used by helpers that
-    don't know their input window (insufficient/error fallbacks) and by
-    historical rows from before the field was introduced. When ``data_as_of``
-    is older than the snapshot ``date``, the UI surfaces a "資料截至 X"
-    pill so the operator isn't fooled into believing today's number is
-    actually today's data. See ``compute_ad_line`` for cross-source min:
-    when an indicator reads multiple frames, ``data_as_of`` is the
-    earliest "last update" across them — we're only as fresh as our
-    worst-lagged input.
+    upstream source (FRED, yfinance) hasn't published the latest bar
+    yet. None means "unknown" — used by helpers that don't know their
+    input window (insufficient/error fallbacks) and by historical rows
+    from before the field was introduced. When ``data_as_of`` is older
+    than the snapshot ``date``, the UI surfaces a "資料截至 X" pill so
+    the operator isn't fooled into believing today's number is actually
+    today's data. See ``compute_rsp_spy`` / ``compute_hyg_ief`` for
+    cross-source min: when an indicator reads multiple frames,
+    ``data_as_of`` is the earliest "last update" across them — we're
+    only as fresh as our worst-lagged input.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -97,7 +97,7 @@ _POST_CLOSE_BUFFER_MINUTES = 30
 # union guarantee a live SPY price series even if no user has SPY on
 # their watchlist. Migration 0014 adds SPY to the admin watchlist too —
 # this set is the belt against the suspenders of the seed row.
-SYSTEM_SYMBOLS: frozenset[str] = frozenset({"SPY"})
+SYSTEM_SYMBOLS: frozenset[str] = frozenset({"SPY", "RSP", "HYG", "IEF"})
 
 
 @dataclass(frozen=True)

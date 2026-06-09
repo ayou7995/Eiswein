@@ -51,32 +51,32 @@ import {
   VixTermHeadlineExplainable,
 } from './VixTermEnhancedDetail';
 import {
-  AdLineEnhancedDetail,
-  AdLineHeadlineExplainable,
-} from './AdLineEnhancedDetail';
+  RatioEnhancedDetail,
+  RatioHeadlineExplainable,
+} from './RatioEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
   ruleNote:
-    '此燈號是「中期市場態勢」4 票之 1(綠/紅/黃 → 進攻/防守/正常)。只投中期,不投短期 posture。',
+    '此燈號是「中期市場態勢」5 票之 1(綠/紅/黃 → 進攻/防守/正常)。只投中期,不投短期 posture。',
 };
 
 const VIX_HEADLINE_LABELS = {
   ruleTitle: 'VIX 紅黃綠燈規則',
   ruleNote:
-    '此燈號是 dual-vote 成員 — 同時投中期 4 票 + 短期 3 票。VIX 過低 (<12) 是反向訊號:市場過於自滿時反轉風險升高。短期 posture 用 3 vote (vix + ad_day + vix_term),中期 posture 用 4 vote (vix + ad_day + spx_ma + yield_spread)。',
+    '此燈號是 dual-vote 成員 — 同時投中期 5 票 + 短期 3 票。VIX 過低 (<12) 是反向訊號:市場過於自滿時反轉風險升高。短期 posture 用 3 vote (vix + ad_day + vix_term),中期 posture 用 5 vote (spx_ma + ad_day + vix + yield_spread + hyg_ief)。',
 };
 
 const AD_DAY_HEADLINE_LABELS = {
   ruleTitle: 'A/D Day 紅黃綠燈規則',
   ruleNote:
-    '此燈號是 dual-vote 成員 — 同時投中期 4 票 + 短期 3 票。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。⚠ 「過去 25 天」是 O\'Neil 定義的固定窗口,不會跟著下方圖表 range 改變;range 只影響顯示多少根歷史 K 線。',
+    '此燈號是 dual-vote 成員 — 同時投中期 5 票 + 短期 3 票。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。⚠ 「過去 25 天」是 O\'Neil 定義的固定窗口,不會跟著下方圖表 range 改變;range 只影響顯示多少根歷史 K 線。',
 };
 
 const YIELD_SPREAD_HEADLINE_LABELS = {
   ruleTitle: '10Y-2Y 利差紅黃綠燈規則',
   ruleNote:
-    '此燈號是「中期市場態勢」4 票之 1。只投中期,不投短期 posture。倒掛 (spread<0) 是衰退領先指標,過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
+    '此燈號是「中期市場態勢」5 票之 1。只投中期,不投短期 posture。倒掛 (spread<0) 是衰退領先指標,過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
 };
 
 const DXY_HEADLINE_LABELS = {
@@ -103,10 +103,48 @@ const VIX_TERM_HEADLINE_LABELS = {
     '此燈號是「短期市場態勢」3 票之 1。只投短期,不投中期 posture。比 VIX 絕對值更敏感於市場結構性轉變 — VIX 22 可能是平日震盪,但若同時 VIX > VIX3M,代表「現在恐慌已強過 3 個月遠期」,通常是真正壓力的開端。',
 };
 
-const AD_LINE_HEADLINE_LABELS = {
-  ruleTitle: '觀察名單 A/D Line 紅黃綠燈規則',
+const RSP_SPY_HEADLINE_LABELS = {
+  ruleTitle: 'RSP/SPY 廣度紅黃綠燈規則',
   ruleNote:
-    '此燈號是「廣度健康度檢查」— 個人化版本的 NYSE 廣度指標,範圍是所有使用者 watchlist 的並集。窄漲 (SPX 上但 AD Line 下) = 警示;同步上升 = 健康行情。不投正式 posture 票。⚠ 加入/移除 watchlist 標的會回溯改變歷史值 — 兩個不同時間點的截圖不一定能對得起來。',
+    '此燈號是「結構性廣度」檢查 — 用 SPX 等權重 ETF (RSP) 比市值權重 ETF (SPY) 衡量「典型成分股是不是跟得上指數」。比率上升 = 廣度健康,大部分股票都在參與;下降 = Mag 7 撐住指數其他股票走弱 = 窄漲警示。Display-only,不投 posture 票(跟 spx_ma 高度相關不重複)。',
+  preface:
+    'RSP = SPX 等權重 ETF (500 檔每檔 0.2%),SPY = 市值權重 ETF (Mag-7 ~30%)。20 日 ratio 斜率 ≥ +1% = 廣度健康;≤ -1% = 窄漲警示;之間為持平。Mag-7 撐住指數但 RSP/SPY 走低,是 late-cycle 警訊。',
+  greenLabel: '🟢 廣度健康',
+  redLabel: '🔴 窄漲警示',
+  yellowLabel: '🟡 廣度持平',
+  ratioName: 'RSP/SPY',
+};
+
+const HYG_IEF_HEADLINE_LABELS = {
+  ruleTitle: 'HYG/IEF 信用利差紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「信用市場壓力」檢查 — HYG (高收益公司債) vs IEF (中期公債) 的相對表現。比率上升 = 資金敢買垃圾債 = risk-on,股市友善;比率下降 = 資金逃向公債 = 信用利差擴大 = 通常領先 SPX 賣壓 7-14 個交易日。此燈號投中期 posture 票(genuine leading indicator)。',
+  preface:
+    'HYG = 高收益公司債 ETF,IEF = 7-10Y 公債 ETF。20 日 ratio 斜率 ≥ +1% = 風險偏好高(信用偏好);≤ -1% = 信用利差擴大(stress);之間為持平。2008、2020-03、2022 Q1、2023 SVB、2023 Oct 中東等大跌前,信用利差都先見到走擴。',
+  greenLabel: '🟢 信用偏好',
+  redLabel: '🔴 信用利差擴大',
+  yellowLabel: '🟡 信用利差持平',
+  ratioName: 'HYG/IEF',
+};
+
+const RSP_SPY_DETAIL_LABELS = {
+  numeratorLabel: 'RSP',
+  denominatorLabel: 'SPY',
+  numeratorKey: 'rsp_close',
+  denominatorKey: 'spy_close',
+  greenSummary: '🟢 廣度健康 — 大部分股票參與行情',
+  redSummary: '🔴 窄漲警示 — Mag 7 撐盤、其他走弱',
+  yellowSummary: '🟡 廣度持平 — 沒有明顯結構性訊號',
+};
+
+const HYG_IEF_DETAIL_LABELS = {
+  numeratorLabel: 'HYG',
+  denominatorLabel: 'IEF',
+  numeratorKey: 'hyg_close',
+  denominatorKey: 'ief_close',
+  greenSummary: '🟢 信用偏好 — 風險資產獲青睞',
+  redSummary: '🔴 信用利差擴大 — 領先股市賣壓警訊',
+  yellowSummary: '🟡 信用利差持平 — 中性背景',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {
@@ -251,11 +289,17 @@ function RegimeRow({
               detail={item.detail}
               labels={VIX_TERM_HEADLINE_LABELS}
             />
-          ) : item.indicator_name === 'ad_line' ? (
-            <AdLineHeadlineExplainable
+          ) : item.indicator_name === 'rsp_spy' ? (
+            <RatioHeadlineExplainable
               shortLabel={item.short_label}
               detail={item.detail}
-              labels={AD_LINE_HEADLINE_LABELS}
+              labels={RSP_SPY_HEADLINE_LABELS}
+            />
+          ) : item.indicator_name === 'hyg_ief' ? (
+            <RatioHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={HYG_IEF_HEADLINE_LABELS}
             />
           ) : (
             item.short_label
@@ -287,8 +331,16 @@ function RegimeRow({
           <AdxEnhancedDetail detail={item.detail} />
         ) : item.indicator_name === 'vix_term' ? (
           <VixTermEnhancedDetail detail={item.detail} />
-        ) : item.indicator_name === 'ad_line' ? (
-          <AdLineEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'rsp_spy' ? (
+          <RatioEnhancedDetail
+            detail={item.detail}
+            labels={RSP_SPY_DETAIL_LABELS}
+          />
+        ) : item.indicator_name === 'hyg_ief' ? (
+          <RatioEnhancedDetail
+            detail={item.detail}
+            labels={HYG_IEF_DETAIL_LABELS}
+          />
         ) : (
           detailEntries.length > 0 && (
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-stone-700">
@@ -507,12 +559,29 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
       />
     );
   }
-  if (response.indicator === 'ad_line') {
+  if (response.indicator === 'rsp_spy') {
+    const { yMin, yMax } = computeYBounds(response.series, ['ratio']);
     return (
-      <IndicatorMultiLine
+      <IndicatorBoundedLine
         series={response.series}
-        lines={[{ key: 'ad_line', label: '累積 AD Line', color: '#0284c7', width: 2 }]}
-        ariaLabel="觀察名單 AD Line 60 日走勢"
+        lines={[{ key: 'ratio', label: 'RSP / SPY', color: '#1c1917' }]}
+        thresholds={[]}
+        yAxisMin={yMin}
+        yAxisMax={yMax}
+        ariaLabel="RSP/SPY 廣度比 60 日走勢"
+      />
+    );
+  }
+  if (response.indicator === 'hyg_ief') {
+    const { yMin, yMax } = computeYBounds(response.series, ['ratio']);
+    return (
+      <IndicatorBoundedLine
+        series={response.series}
+        lines={[{ key: 'ratio', label: 'HYG / IEF', color: '#1c1917' }]}
+        thresholds={[]}
+        yAxisMin={yMin}
+        yAxisMax={yMax}
+        ariaLabel="HYG/IEF 信用利差 60 日走勢"
       />
     );
   }

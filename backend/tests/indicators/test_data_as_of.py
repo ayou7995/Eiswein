@@ -2,8 +2,8 @@
 
 The architectural property under test: every indicator that consumes a
 frame propagates ``frame.index[-1].date()`` as ``data_as_of`` on the
-result. Cross-source consumers (relative_strength, ad_line, vix_term,
-yield_spread) propagate the **min** across their inputs.
+result. Cross-source consumers (relative_strength, rsp_spy, hyg_ief,
+vix_term, yield_spread) propagate the **min** across their inputs.
 
 These tests guard against the silent regression where a future indicator
 forgets to plumb data_as_of through, which would re-introduce the bug
@@ -28,7 +28,6 @@ from app.indicators.direction.volume_anomaly import compute_volume_anomaly
 from app.indicators.macro.dxy import compute_dxy
 from app.indicators.macro.fed_rate import compute_fed_rate
 from app.indicators.market_regime.ad_day import compute_ad_day
-from app.indicators.market_regime.ad_line import compute_ad_line
 from app.indicators.market_regime.spx_adx import compute_spx_adx
 from app.indicators.market_regime.spx_ma import compute_spx_ma
 from app.indicators.market_regime.vix import compute_vix
@@ -236,25 +235,24 @@ def test_fed_rate_propagates_monthly_frame_as_of() -> None:
     assert result.data_as_of == fed_frame.index[-1].date()
 
 
-# --- ad_line: cross-source breadth + SPX -----------------------------------
 
 
-def test_ad_line_propagates_min_of_breadth_and_spx() -> None:
-    breadth_long = pd.DataFrame(
-        {
-            "advances": [5] * 40,
-            "declines": [3] * 40,
-            "net": [2] * 40,
-            "ad_line": np.arange(40, dtype="float64") * 2,
-        },
-        index=pd.date_range("2026-04-15", periods=40, freq="B"),
-    )
-    spx_short = _ohlcv(400.0 + np.arange(35, dtype="float64") * 0.1, start="2026-04-15")
-    ctx = IndicatorContext(
-        today=date(2026, 6, 6),
-        spx_frame=spx_short,
-        watchlist_breadth=breadth_long,
-    )
-    result = compute_ad_line(None, ctx)
-    # Should pick the EARLIER of the two (SPX ends sooner).
-    assert result.data_as_of == spx_short.index[-1].date()
+# --- rsp_spy / hyg_ief: cross-source min ----------------------------------
+
+
+def test_rsp_spy_propagates_min_of_spy_and_rsp() -> None:
+    from app.indicators.market_regime.rsp_spy import compute_rsp_spy
+    spy_long = _ohlcv(400.0 + np.arange(40, dtype="float64") * 0.5, start="2026-04-01")
+    rsp_short = _ohlcv(200.0 + np.arange(30, dtype="float64") * 0.7, start="2026-04-01")
+    ctx = IndicatorContext(today=date(2026, 6, 6), spx_frame=spy_long, rsp_frame=rsp_short)
+    result = compute_rsp_spy(None, ctx)
+    assert result.data_as_of == rsp_short.index[-1].date()
+
+
+def test_hyg_ief_propagates_min_of_hyg_and_ief() -> None:
+    from app.indicators.market_regime.hyg_ief import compute_hyg_ief
+    hyg_long = _ohlcv(80.0 + np.arange(40, dtype="float64") * 0.1, start="2026-04-01")
+    ief_short = _ohlcv(np.full(30, 95.0), start="2026-04-01")
+    ctx = IndicatorContext(today=date(2026, 6, 6), hyg_frame=hyg_long, ief_frame=ief_short)
+    result = compute_hyg_ief(None, ctx)
+    assert result.data_as_of == ief_short.index[-1].date()

@@ -284,7 +284,8 @@ def frame_as_of(frame: pd.DataFrame | None) -> date | None:
     "the data this indicator just consumed is as fresh as the last
     row's index date." Combined with ``min`` across multiple frames it
     composes naturally for cross-source indicators (relative_strength,
-    ad_line) — we're only as fresh as our worst-lagged input.
+    rsp_spy, hyg_ief, vix_term) — we're only as fresh as our
+    worst-lagged input.
     """
     if frame is None or len(frame) == 0:
         return None

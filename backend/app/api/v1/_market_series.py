@@ -51,7 +51,8 @@ MarketIndicatorNameLiteral = Literal[
     "fed_rate",
     "spx_adx",
     "vix_term",
-    "ad_line",
+    "rsp_spy",
+    "hyg_ief",
 ]
 
 # Whitelist for the URL slug. Mirrors the NAME constants exported
@@ -70,7 +71,8 @@ SUPPORTED_MARKET_INDICATORS: Final[frozenset[str]] = frozenset(
         "fed_rate",
         "spx_adx",
         "vix_term",
-        "ad_line",
+        "rsp_spy",
+        "hyg_ief",
     }
 )
 
@@ -1068,53 +1070,139 @@ def _vix_term_summary(
     return f"接近平坦 (比 {ratio:.2f})"
 
 
-# --- ad_line (Phase 4) ----------------------------------------------------
-_AD_LINE_LOOKBACK: Final[int] = 20
-AD_LINE_MIN_BARS: Final[int] = _AD_LINE_LOOKBACK + 5
+# --- rsp_spy + hyg_ief (2026-06 cross-asset/breadth) ----------------------
+
+_RATIO_LOOKBACK: Final[int] = 20
+_RATIO_GREEN_PCT_PER_DAY: Final[float] = 0.05
+_RATIO_RED_PCT_PER_DAY: Final[float] = -0.05
+# Minimum bars match the indicator's _MIN_BARS so chart endpoint and
+# snapshot indicator agree on "data sufficient" boundary.
+RSP_SPY_MIN_BARS: Final[int] = SERIES_DAYS + 5
+HYG_IEF_MIN_BARS: Final[int] = SERIES_DAYS + 5
 
 
-def build_ad_line_payload(breadth: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
-    """Watchlist AD Line rolling payload + zh-TW divergence summary."""
-    tail = breadth.iloc[-days:]
+def build_rsp_spy_payload(
+    rsp_frame: pd.DataFrame, spy_frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """Equal-weight vs cap-weight breadth chart payload."""
+    return _build_ratio_payload(
+        indicator="rsp_spy",
+        numerator_frame=rsp_frame,
+        denominator_frame=spy_frame,
+        numerator_key="rsp",
+        denominator_key="spy",
+        green_label="廣度健康 (RSP/SPY)",
+        red_label="窄漲警示 (RSP/SPY)",
+        flat_label="廣度持平 (RSP/SPY)",
+        days=days,
+    )
+
+
+def build_hyg_ief_payload(
+    hyg_frame: pd.DataFrame, ief_frame: pd.DataFrame, days: int = SERIES_DAYS
+) -> dict[str, object]:
+    """HY corp bond vs Treasury credit spread chart payload."""
+    return _build_ratio_payload(
+        indicator="hyg_ief",
+        numerator_frame=hyg_frame,
+        denominator_frame=ief_frame,
+        numerator_key="hyg",
+        denominator_key="ief",
+        green_label="信用偏好 (HYG/IEF)",
+        red_label="信用利差擴大 (HYG/IEF)",
+        flat_label="信用利差持平 (HYG/IEF)",
+        days=days,
+    )
+
+
+def _build_ratio_payload(
+    *,
+    indicator: str,
+    numerator_frame: pd.DataFrame,
+    denominator_frame: pd.DataFrame,
+    numerator_key: str,
+    denominator_key: str,
+    green_label: str,
+    red_label: str,
+    flat_label: str,
+    days: int,
+) -> dict[str, object]:
+    """Shared shape: ratio time-series + 20-day slope summary.
+
+    Both rsp_spy and hyg_ief use the same chart contract — a ratio line
+    with a slope-driven zh-TW summary — so the builder is shared.
+    """
+    num_close = numerator_frame["close"].astype("float64")
+    den_close = denominator_frame["close"].astype("float64")
+    joined = pd.concat(
+        [num_close.rename(numerator_key), den_close.rename(denominator_key)], axis=1
+    ).dropna()
+    ratio_series = joined[numerator_key] / joined[denominator_key]
+
+    tail_joined = joined.iloc[-days:]
+    tail_ratio = ratio_series.iloc[-days:]
+
     series = [
         {
             "date": _index_to_date(idx),
-            "ad_line": _round_or_none(_safe_float(row["ad_line"])),
-            "net": int(row["net"]) if not _is_nan(row["net"]) else None,
-            "advances": int(row["advances"]) if not _is_nan(row["advances"]) else None,
-            "declines": int(row["declines"]) if not _is_nan(row["declines"]) else None,
+            numerator_key: _round_or_none(_safe_float(tail_joined[numerator_key].loc[idx])),
+            denominator_key: _round_or_none(
+                _safe_float(tail_joined[denominator_key].loc[idx])
+            ),
+            "ratio": _round_or_none(_safe_float(tail_ratio.loc[idx]), ndigits=5),
         }
-        for idx, row in tail.iterrows()
+        for idx in tail_joined.index
     ]
 
-    ad_tail = breadth["ad_line"].iloc[-_AD_LINE_LOOKBACK:].dropna()
-    if len(ad_tail) >= 2:
-        first = float(ad_tail.iloc[0])
-        last = float(ad_tail.iloc[-1])
-        ad_slope = (last - first) / len(ad_tail)
-    else:
-        ad_slope = 0.0
+    current_num = _safe_float(tail_joined[numerator_key].iloc[-1])
+    current_den = _safe_float(tail_joined[denominator_key].iloc[-1])
+    current_ratio = _safe_float(tail_ratio.iloc[-1])
 
-    current_ad = _safe_float(breadth["ad_line"].iloc[-1])
-    current_net = int(breadth["net"].iloc[-1]) if not _is_nan(breadth["net"].iloc[-1]) else 0
-    summary = _ad_line_summary(slope=ad_slope, net=current_net)
+    slope_tail = ratio_series.iloc[-_RATIO_LOOKBACK:]
+    if len(slope_tail) >= 2:
+        first = float(slope_tail.iloc[0])
+        last = float(slope_tail.iloc[-1])
+        slope_pct_per_day = (
+            ((last - first) / first * 100.0) / len(slope_tail) if first != 0 else 0.0
+        )
+    else:
+        slope_pct_per_day = 0.0
+    slope_20d_pct = slope_pct_per_day * _RATIO_LOOKBACK
+
+    summary = _ratio_summary(
+        slope_pct_per_day=slope_pct_per_day,
+        slope_20d_pct=slope_20d_pct,
+        green_label=green_label,
+        red_label=red_label,
+        flat_label=flat_label,
+    )
 
     return {
-        "indicator": "ad_line",
+        "indicator": indicator,
         "series": series,
         "summary_zh": summary,
         "current": {
-            "ad_line": _round_or_none(current_ad),
-            "net": current_net,
-            "slope_20d": _round_or_none(ad_slope, ndigits=2),
+            numerator_key: _round_or_none(current_num),
+            denominator_key: _round_or_none(current_den),
+            "ratio": _round_or_none(current_ratio, ndigits=5),
+            "slope_20d_pct": _round_or_none(slope_20d_pct, ndigits=2),
         },
     }
 
 
-def _ad_line_summary(*, slope: float, net: int) -> str:
-    direction = "上升" if slope > 0 else "下降" if slope < 0 else "盤整"
-    sign = "+" if net > 0 else ""
-    return f"觀察名單 AD Line 過去 20 日{direction} (今日淨 {sign}{net})"
+def _ratio_summary(
+    *,
+    slope_pct_per_day: float,
+    slope_20d_pct: float,
+    green_label: str,
+    red_label: str,
+    flat_label: str,
+) -> str:
+    if slope_pct_per_day >= _RATIO_GREEN_PCT_PER_DAY:
+        return f"{green_label} 20D {slope_20d_pct:+.2f}%"
+    if slope_pct_per_day <= _RATIO_RED_PCT_PER_DAY:
+        return f"{red_label} 20D {slope_20d_pct:+.2f}%"
+    return f"{flat_label} 20D {slope_20d_pct:+.2f}%"
 
 
 # --- shared helpers -------------------------------------------------------

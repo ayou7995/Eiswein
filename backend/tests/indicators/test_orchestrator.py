@@ -44,7 +44,8 @@ def test_compute_market_regime_returns_four_indicators(
 ) -> None:
     ctx = indicator_context_factory(spx_frame=trend_frame)
     results = orch.compute_market_regime(ctx)
-    # v2 Phase 2 added spx_adx; Phase 4 added vix_term + ad_line.
+    # v2 Phase 2 added spx_adx; Phase 4 added vix_term; later (2026-06)
+    # dropped ad_line and added rsp_spy + hyg_ief.
     assert set(results.keys()) == {
         "spx_ma",
         "ad_day",
@@ -52,7 +53,8 @@ def test_compute_market_regime_returns_four_indicators(
         "yield_spread",
         "spx_adx",
         "vix_term",
-        "ad_line",
+        "rsp_spy",
+        "hyg_ief",
     }
 
 

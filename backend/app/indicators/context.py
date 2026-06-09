@@ -28,9 +28,10 @@ class IndicatorContext:
     indicator_version: str = INDICATOR_VERSION
     spx_frame: pd.DataFrame | None = None
     macro_frames: dict[str, pd.DataFrame] = field(default_factory=dict)
-    # v2 Phase 4 (2026-06): pre-computed watchlist-breadth time series for
-    # the ``ad_line`` indicator. DataFrame indexed by date with columns
-    # ``advances`` / ``declines`` / ``net`` / ``ad_line`` (cumulative net).
-    # Built once per ingestion run so the indicator stays a pure
-    # frame-in / result-out read.
-    watchlist_breadth: pd.DataFrame | None = None
+    # v2 (2026-06): supplementary ETF OHLCV frames for cross-asset and
+    # breadth indicators. RSP feeds rsp_spy (equal-weight breadth);
+    # HYG + IEF feed hyg_ief (credit spread risk-on/off). Each frame
+    # has the same shape as ``spx_frame`` (OHLCV indexed by date).
+    rsp_frame: pd.DataFrame | None = None
+    hyg_frame: pd.DataFrame | None = None
+    ief_frame: pd.DataFrame | None = None
