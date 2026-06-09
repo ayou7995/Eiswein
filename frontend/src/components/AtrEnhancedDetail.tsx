@@ -256,16 +256,25 @@ function StopHint({ atr, close }: { atr: number; close: number }): JSX.Element {
       aria-label="停損距離參考"
       className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
     >
-      <h3 className="text-stone-500">停損距離參考（2 ATR）</h3>
+      <h3 className="text-stone-500">
+        <Explainable
+          title="為什麼用 ATR 算停損"
+          explanation={
+            <p className="leading-relaxed text-stone-700">
+              較固定 % 停損更尊重股票本身波動 — 波動股自動拉寬,平靜股自動縮緊。
+              連續 2 ATR 內的回測通常還屬於正常波動,不視為趨勢破壞。
+            </p>
+          }
+        >
+          停損距離參考（2 ATR）
+        </Explainable>
+      </h3>
       <p className="text-stone-700">
         若以 <span className="font-mono">close − 2 × ATR</span> 為停損 →{' '}
         <span className="font-mono text-stone-900">${stop.toFixed(2)}</span>{' '}
         <span className="text-stone-500">
           (距收盤 -{stopPct.toFixed(1)}%)
         </span>
-      </p>
-      <p className="text-stone-500">
-        較固定 % 停損更尊重股票本身波動 — 波動股自動拉寬,平靜股自動縮緊。
       </p>
     </section>
   );

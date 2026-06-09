@@ -261,12 +261,20 @@ function BandsTable({
       aria-label="壓縮率"
       className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
     >
-      <h3 className="text-stone-500">壓縮率（BB 寬 / KC 寬）</h3>
-      <p className="text-stone-700">
-        <span className="font-mono text-stone-900">{compressionPct.toFixed(0)}%</span>{' '}
-        — 100% 以下代表布林通道完全縮在 Keltner 之內 (squeeze ON)。
-        通常需要連續 6+ 根日 squeeze 才會產生有意義的點火。
-      </p>
+      <h3 className="text-stone-500">
+        <Explainable
+          title="壓縮率怎麼讀"
+          explanation={
+            <p className="leading-relaxed text-stone-700">
+              100% 以下代表布林通道完全縮在 Keltner 之內 (squeeze ON)。
+              通常需要連續 6+ 根日 squeeze 才會產生有意義的點火。
+            </p>
+          }
+        >
+          壓縮率（BB 寬 / KC 寬）
+        </Explainable>
+      </h3>
+      <p className="font-mono text-stone-900">{compressionPct.toFixed(0)}%</p>
     </section>
   );
 }

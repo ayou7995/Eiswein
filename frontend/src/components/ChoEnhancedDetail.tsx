@@ -103,7 +103,6 @@ export function ChoEnhancedDetail({
         cho={d.cho}
         rising={rising}
       />
-      <SlopeContext detail={d} />
       <Watchpoints detail={d} />
     </div>
   );
@@ -249,29 +248,3 @@ function PhasePill({
   );
 }
 
-function SlopeContext({
-  detail,
-}: {
-  detail: z.infer<typeof choDetailSchema>;
-}): JSX.Element {
-  return (
-    <section
-      aria-label="CHO 數值"
-      className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
-    >
-      <h3 className="text-stone-500">CHO 數值（EMA{detail.fast} − EMA{detail.slow} on AD Line）</h3>
-      <p className="text-stone-700">
-        今日{' '}
-        <span className="font-mono text-stone-900">{formatCho(detail.cho)}</span>
-        ,昨日 <span className="font-mono">{formatCho(detail.prior)}</span>,
-        差距{' '}
-        <span className="font-mono">{formatCho(detail.cho - detail.prior)}</span>
-        。
-      </p>
-      <p className="text-stone-500">
-        因 CHO 隨成交量規模浮動,「接近零」的閾值會自動依股票成交量量級調整 —
-        AAPL 跟 KO 用同一條規則仍然公平。
-      </p>
-    </section>
-  );
-}
