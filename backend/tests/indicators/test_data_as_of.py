@@ -256,3 +256,23 @@ def test_hyg_ief_propagates_min_of_hyg_and_ief() -> None:
     ctx = IndicatorContext(today=date(2026, 6, 6), hyg_frame=hyg_long, ief_frame=ief_short)
     result = compute_hyg_ief(None, ctx)
     assert result.data_as_of == ief_short.index[-1].date()
+
+
+def test_skew_propagates_skew_frame_as_of() -> None:
+    from app.indicators.market_regime.skew import compute_skew
+    skew_frame = _ohlcv(np.full(20, 120.0), start="2026-05-01")
+    ctx = IndicatorContext(today=date(2026, 6, 6), skew_frame=skew_frame)
+    result = compute_skew(None, ctx)
+    assert result.data_as_of == skew_frame.index[-1].date()
+
+
+def test_unrate_propagates_macro_frame_as_of() -> None:
+    """UNRATE monthly publication lag flows through honestly — FRED's
+    latest UNRATE observation is at least a few weeks behind ``today``."""
+    from app.indicators.market_regime.unrate import compute_unrate
+    monthly_idx = pd.date_range("2025-01-01", periods=15, freq="MS")
+    unrate_frame = pd.DataFrame({"value": [3.7] * 15}, index=monthly_idx)
+    ctx = IndicatorContext(today=date(2026, 6, 6), macro_frames={"UNRATE": unrate_frame})
+    result = compute_unrate(None, ctx)
+    assert result.data_as_of == unrate_frame.index[-1].date()
+    assert (date(2026, 6, 6) - result.data_as_of).days > 0

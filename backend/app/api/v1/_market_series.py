@@ -53,6 +53,8 @@ MarketIndicatorNameLiteral = Literal[
     "vix_term",
     "rsp_spy",
     "hyg_ief",
+    "skew",
+    "unrate",
 ]
 
 # Whitelist for the URL slug. Mirrors the NAME constants exported
@@ -73,6 +75,8 @@ SUPPORTED_MARKET_INDICATORS: Final[frozenset[str]] = frozenset(
         "vix_term",
         "rsp_spy",
         "hyg_ief",
+        "skew",
+        "unrate",
     }
 )
 
@@ -1203,6 +1207,226 @@ def _ratio_summary(
     if slope_pct_per_day <= _RATIO_RED_PCT_PER_DAY:
         return f"{red_label} 20D {slope_20d_pct:+.2f}%"
     return f"{flat_label} 20D {slope_20d_pct:+.2f}%"
+
+
+# --- skew (Phase 5) -------------------------------------------------------
+
+_SKEW_NORMAL_HIGH: Final[float] = 130.0
+_SKEW_ELEVATED_HIGH: Final[float] = 145.0
+_SKEW_PERCENTILE_WINDOW: Final[int] = 252
+_SKEW_TREND_WINDOW: Final[int] = 10
+SKEW_MIN_BARS: Final[int] = _SKEW_TREND_WINDOW + 1
+
+
+def build_skew_payload(frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
+    """CBOE Skew Index series + zone payload.
+
+    Reads close-only from the OHLCV frame — the API still ships
+    ``level`` (not OHLC) because the chart is a simple level line, the
+    same shape as VIX.
+    """
+    close = frame["close"].astype("float64").dropna()
+    tail = close.iloc[-days:]
+    series = [
+        {"date": _index_to_date(idx), "level": _round_or_none(level, ndigits=1)}
+        for idx, level in zip(tail.index, tail, strict=True)
+    ]
+
+    current_level = float(close.iloc[-1])
+    if len(close) > _SKEW_TREND_WINDOW:
+        prior = float(close.iloc[-(_SKEW_TREND_WINDOW + 1)])
+        ten_day_change: float | None = current_level - prior
+    else:
+        ten_day_change = None
+    percentile = percentile_in_window(close, _SKEW_PERCENTILE_WINDOW)
+    zone = _skew_zone(current_level)
+    summary = _skew_summary(level=current_level, zone=zone, percentile=percentile)
+
+    return {
+        "indicator": "skew",
+        "series": series,
+        "summary_zh": summary,
+        "current": {
+            "level": _round_or_none(current_level, ndigits=1),
+            "ten_day_change": _round_or_none(ten_day_change, ndigits=1),
+            "zone": zone,
+            "percentile_1y": _round_or_none(percentile, ndigits=4),
+        },
+        "thresholds": {
+            "normal_high": _SKEW_NORMAL_HIGH,
+            "elevated_high": _SKEW_ELEVATED_HIGH,
+        },
+    }
+
+
+_SkewZone = Literal["normal", "elevated", "high", "unknown"]
+
+
+def _skew_zone(level: float | None) -> _SkewZone:
+    if level is None:
+        return "unknown"
+    if level <= _SKEW_NORMAL_HIGH:
+        return "normal"
+    if level < _SKEW_ELEVATED_HIGH:
+        return "elevated"
+    return "high"
+
+
+_SKEW_ZONE_LABEL_ZH: Final[dict[_SkewZone, str]] = {
+    "normal": "尾部風險低",
+    "elevated": "尾部風險上升",
+    "high": "機構避險",
+    "unknown": "資料不足",
+}
+
+
+def _skew_summary(
+    *, level: float, zone: _SkewZone, percentile: float | None
+) -> str:
+    label = _SKEW_ZONE_LABEL_ZH[zone]
+    pct_phrase = (
+        f"，過去 1 年 {int(round(percentile * 100))}% 百分位"
+        if percentile is not None
+        else "，百分位資料不足"
+    )
+    return f"SKEW {level:.0f} {label}{pct_phrase}"
+
+
+# --- unrate (Phase 5) -----------------------------------------------------
+
+_UNRATE_SAHM_3M: Final[int] = 3
+_UNRATE_SAHM_12M: Final[int] = 12
+_UNRATE_SAHM_WARNING: Final[float] = 0.30
+_UNRATE_SAHM_TRIGGER: Final[float] = 0.50
+UNRATE_MIN_MONTHS: Final[int] = _UNRATE_SAHM_12M + 1
+
+
+def build_unrate_payload(value_series: pd.Series, days: int = SERIES_DAYS) -> dict[str, object]:
+    """US unemployment + Sahm Rule payload.
+
+    UNRATE is published monthly; ``days`` is interpreted as a *display*
+    window of calendar days so the chart shows ~``days`` calendar days of
+    history (which translates to ``days/30`` monthly points). For shorter
+    windows we surface every available month — the chart's value is in
+    the trend, not the density.
+    """
+    cleaned = value_series.dropna().sort_index()
+    if cleaned.empty:
+        return _unrate_insufficient()
+
+    earliest = pd.Timestamp(cleaned.index[-1]) - pd.Timedelta(days=days)
+    tail = cleaned[cleaned.index >= earliest]
+    if tail.empty:
+        # Display window narrower than monthly resolution — fall back to
+        # last 24 months so the chart isn't blank.
+        tail = cleaned.iloc[-24:]
+
+    # Sahm Rule needs at least 13 months of data — if available use the
+    # rolling computation over the whole series, then slice for display.
+    if len(cleaned) >= UNRATE_MIN_MONTHS:
+        three_mma_series = cleaned.rolling(window=_UNRATE_SAHM_3M, min_periods=1).mean()
+        twelve_low_series = cleaned.rolling(
+            window=_UNRATE_SAHM_12M, min_periods=_UNRATE_SAHM_12M
+        ).min()
+        sahm_series = (three_mma_series - twelve_low_series).dropna()
+    else:
+        sahm_series = pd.Series(dtype="float64")
+
+    series_points: list[dict[str, object]] = []
+    for idx, rate in zip(tail.index, tail, strict=True):
+        sahm_val = float(sahm_series.loc[idx]) if idx in sahm_series.index else None
+        series_points.append(
+            {
+                "date": _index_to_date(idx),
+                "rate": _round_or_none(_safe_float(rate), ndigits=2),
+                "sahm_value": _round_or_none(sahm_val, ndigits=3),
+            }
+        )
+
+    current_rate = float(cleaned.iloc[-1])
+    sahm_value: float | None
+    distance_to_trigger: float | None
+    if len(cleaned) >= UNRATE_MIN_MONTHS:
+        three_mma = float(cleaned.iloc[-_UNRATE_SAHM_3M:].mean())
+        twelve_low = float(cleaned.iloc[-_UNRATE_SAHM_12M:].min())
+        sahm_value = three_mma - twelve_low
+        distance_to_trigger = _UNRATE_SAHM_TRIGGER - sahm_value
+    else:
+        three_mma = current_rate
+        twelve_low = current_rate
+        sahm_value = None
+        distance_to_trigger = None
+
+    zone = _unrate_zone(sahm_value)
+    summary = _unrate_summary(current_rate=current_rate, sahm_value=sahm_value, zone=zone)
+
+    return {
+        "indicator": "unrate",
+        "series": series_points,
+        "summary_zh": summary,
+        "current": {
+            "current_rate": _round_or_none(current_rate, ndigits=2),
+            "three_month_avg": _round_or_none(three_mma, ndigits=3),
+            "twelve_month_low": _round_or_none(twelve_low, ndigits=2),
+            "sahm_value": _round_or_none(sahm_value, ndigits=3),
+            "sahm_distance_to_trigger": _round_or_none(distance_to_trigger, ndigits=3),
+            "zone": zone,
+        },
+        "thresholds": {
+            "warning": _UNRATE_SAHM_WARNING,
+            "trigger": _UNRATE_SAHM_TRIGGER,
+        },
+    }
+
+
+def _unrate_insufficient() -> dict[str, object]:
+    return {
+        "indicator": "unrate",
+        "series": [],
+        "summary_zh": "資料不足",
+        "current": {
+            "current_rate": None,
+            "three_month_avg": None,
+            "twelve_month_low": None,
+            "sahm_value": None,
+            "sahm_distance_to_trigger": None,
+            "zone": "unknown",
+        },
+        "thresholds": {
+            "warning": _UNRATE_SAHM_WARNING,
+            "trigger": _UNRATE_SAHM_TRIGGER,
+        },
+    }
+
+
+_UnrateZone = Literal["healthy", "warning", "recession", "unknown"]
+
+
+def _unrate_zone(sahm_value: float | None) -> _UnrateZone:
+    if sahm_value is None:
+        return "unknown"
+    if sahm_value >= _UNRATE_SAHM_TRIGGER:
+        return "recession"
+    if sahm_value >= _UNRATE_SAHM_WARNING:
+        return "warning"
+    return "healthy"
+
+
+_UNRATE_ZONE_LABEL_ZH: Final[dict[_UnrateZone, str]] = {
+    "healthy": "失業率健康",
+    "warning": "失業率警戒",
+    "recession": "Sahm Rule 觸發",
+    "unknown": "資料不足",
+}
+
+
+def _unrate_summary(
+    *, current_rate: float, sahm_value: float | None, zone: _UnrateZone
+) -> str:
+    label = _UNRATE_ZONE_LABEL_ZH[zone]
+    if sahm_value is None:
+        return f"失業率 {current_rate:.1f}%（{label}）"
+    return f"失業率 {current_rate:.1f}%，Sahm {sahm_value:+.2f}（{label}）"
 
 
 # --- shared helpers -------------------------------------------------------

@@ -38,14 +38,14 @@ def test_compute_all_returns_all_expected_names(
     assert set(results.keys()) == expected
 
 
-def test_compute_market_regime_returns_four_indicators(
+def test_compute_market_regime_returns_all_indicators(
     trend_frame: pd.DataFrame,
     indicator_context_factory: Callable[..., IndicatorContext],
 ) -> None:
     ctx = indicator_context_factory(spx_frame=trend_frame)
     results = orch.compute_market_regime(ctx)
-    # v2 Phase 2 added spx_adx; Phase 4 added vix_term; later (2026-06)
-    # dropped ad_line and added rsp_spy + hyg_ief.
+    # v2 Phase 2 added spx_adx; Phase 4 added vix_term; 2026-06 dropped
+    # ad_line and added rsp_spy + hyg_ief; Phase 5 added skew + unrate.
     assert set(results.keys()) == {
         "spx_ma",
         "ad_day",
@@ -55,6 +55,8 @@ def test_compute_market_regime_returns_four_indicators(
         "vix_term",
         "rsp_spy",
         "hyg_ief",
+        "skew",
+        "unrate",
     }
 
 

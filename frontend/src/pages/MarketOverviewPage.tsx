@@ -42,7 +42,9 @@ import { ROUTES } from '../lib/constants';
 // VIX + VIX Term in row 1 keeps the two volatility readings side-by-side
 // for direct comparison; A/D Day drops to row 2 because it's the breadth
 // reading (different question — "資金流向" vs "波動率").
-const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'vix_term', 'ad_day'];
+// Phase 5 (2026-06): SKEW joins the short-term posture vote (4-vote).
+// 2-col grid: row 1 VIX + VIX Term, row 2 A/D Day + SKEW.
+const REGIME_SHORT: ReadonlyArray<string> = ['vix', 'vix_term', 'ad_day', 'skew'];
 // v2 Phase 2: SPX ADX joins the mid card — answers "is the SPX trend
 // strong enough to bet on?" alongside SPX 50/200 MA (which gives the
 // direction). Together they answer "trend confirmed" vs "drifting".
@@ -56,7 +58,12 @@ const REGIME_MID: ReadonlyArray<string> = [
   'rsp_spy',
   'hyg_ief',
 ];
-const REGIME_LONG: ReadonlyArray<string> = ['yield_spread'];
+// Phase 5 (2026-06): UNRATE joins the long-term display (Sahm Rule
+// recession trigger; votes in mid-term posture). 2 cards side-by-side:
+// yield curve (forward-looking recession lead) + unemployment (real-time
+// recession detector). They convey genuinely different signals — Sahm
+// flips well after yield_spread does.
+const REGIME_LONG: ReadonlyArray<string> = ['yield_spread', 'unrate'];
 const MACRO_BACKDROP_NAMES: ReadonlySet<string> = new Set(['dxy', 'fed_rate']);
 const ATTENTION_ACTIONS: readonly ActionCategoryCode[] = [
   'strong_buy',
@@ -324,7 +331,7 @@ function RegimeIndicatorsGrid(): JSX.Element {
       <RegimeSection
         idPrefix="regime"
         title="長期市場態勢 (月)"
-        subtitle="10Y-2Y 殖利率差 — 衰退領先指標"
+        subtitle="殖利率差 — 衰退領先 / 失業率 + Sahm Rule — 衰退實時偵測"
         items={longItems}
         snapshotDate={data?.date ?? null}
       />
@@ -338,9 +345,11 @@ const MARKET_INDICATOR_TITLES: Record<string, string> = {
   vix: 'VIX',
   vix_term: 'VIX 期限',
   ad_day: 'A/D Day',
+  skew: 'SKEW (尾部風險)',
   rsp_spy: '廣度 (RSP/SPY)',
   hyg_ief: '信用利差 (HYG/IEF)',
   yield_spread: '殖利率差',
+  unrate: '失業率 (Sahm Rule)',
   dxy: 'DXY',
   fed_rate: 'Fed 利率',
 };

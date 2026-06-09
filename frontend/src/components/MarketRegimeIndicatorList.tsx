@@ -54,29 +54,37 @@ import {
   RatioEnhancedDetail,
   RatioHeadlineExplainable,
 } from './RatioEnhancedDetail';
+import {
+  SkewEnhancedDetail,
+  SkewHeadlineExplainable,
+} from './SkewEnhancedDetail';
+import {
+  UnrateEnhancedDetail,
+  UnrateHeadlineExplainable,
+} from './UnrateEnhancedDetail';
 
 const SPX_MA_HEADLINE_LABELS = {
   ruleTitle: 'SPX 紅黃綠燈規則',
   ruleNote:
-    '此燈號是「中期市場態勢」5 票之 1(綠/紅/黃 → 進攻/防守/正常)。只投中期,不投短期 posture。',
+    '此燈號是「中期市場態勢」6 票之 1(綠/紅/黃 → 進攻/防守/正常)。只投中期,不投短期 posture。',
 };
 
 const VIX_HEADLINE_LABELS = {
   ruleTitle: 'VIX 紅黃綠燈規則',
   ruleNote:
-    '此燈號是 dual-vote 成員 — 同時投中期 5 票 + 短期 3 票。VIX 過低 (<12) 是反向訊號:市場過於自滿時反轉風險升高。短期 posture 用 3 vote (vix + ad_day + vix_term),中期 posture 用 5 vote (spx_ma + ad_day + vix + yield_spread + hyg_ief)。',
+    '此燈號是 dual-vote 成員 — 同時投中期 6 票 + 短期 4 票。VIX 過低 (<12) 是反向訊號:市場過於自滿時反轉風險升高。短期 posture 用 4 vote (vix + ad_day + vix_term + skew),中期 posture 用 6 vote (spx_ma + ad_day + vix + yield_spread + hyg_ief + unrate)。',
 };
 
 const AD_DAY_HEADLINE_LABELS = {
   ruleTitle: 'A/D Day 紅黃綠燈規則',
   ruleNote:
-    '此燈號是 dual-vote 成員 — 同時投中期 5 票 + 短期 3 票。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。⚠ 「過去 25 天」是 O\'Neil 定義的固定窗口,不會跟著下方圖表 range 改變;range 只影響顯示多少根歷史 K 線。',
+    '此燈號是 dual-vote 成員 — 同時投中期 6 票 + 短期 4 票。進貨/出貨日須伴隨「量擴大」才計入 — 大資金需要量才能動倉。⚠ 「過去 25 天」是 O\'Neil 定義的固定窗口,不會跟著下方圖表 range 改變;range 只影響顯示多少根歷史 K 線。',
 };
 
 const YIELD_SPREAD_HEADLINE_LABELS = {
   ruleTitle: '10Y-2Y 利差紅黃綠燈規則',
   ruleNote:
-    '此燈號是「中期市場態勢」5 票之 1。只投中期,不投短期 posture。倒掛 (spread<0) 是衰退領先指標,過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
+    '此燈號是「中期市場態勢」6 票之 1。只投中期,不投短期 posture。倒掛 (spread<0) 是衰退領先指標,過去 5 次衰退都先見倒掛、衰退實際發生在倒掛結束後 6-18 個月。',
 };
 
 const DXY_HEADLINE_LABELS = {
@@ -100,7 +108,19 @@ const SPX_ADX_HEADLINE_LABELS = {
 const VIX_TERM_HEADLINE_LABELS = {
   ruleTitle: 'VIX 期限結構紅黃綠燈規則',
   ruleNote:
-    '此燈號是「短期市場態勢」3 票之 1。只投短期,不投中期 posture。比 VIX 絕對值更敏感於市場結構性轉變 — VIX 22 可能是平日震盪,但若同時 VIX > VIX3M,代表「現在恐慌已強過 3 個月遠期」,通常是真正壓力的開端。',
+    '此燈號是「短期市場態勢」4 票之 1。只投短期,不投中期 posture。比 VIX 絕對值更敏感於市場結構性轉變 — VIX 22 可能是平日震盪,但若同時 VIX > VIX3M,代表「現在恐慌已強過 3 個月遠期」,通常是真正壓力的開端。',
+};
+
+const SKEW_HEADLINE_LABELS = {
+  ruleTitle: 'CBOE SKEW 尾部風險紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「短期市場態勢」4 票之 1。SKEW 衡量機構在 OTM put 的避險出價 — 跟 VIX 互補:VIX 量化 ATM 月度波動率(共識),SKEW 量化「尾部分布」(萬一)。SKEW 偷偷走高、VIX 還平靜時(2007/2018/2020-02 的設定)正是 VIX 單獨檢視會錯過的累積警訊。≤130 正常;130-145 警戒;≥145 機構避險(紅)。',
+};
+
+const UNRATE_HEADLINE_LABELS = {
+  ruleTitle: '失業率 + Sahm Rule 紅黃綠燈規則',
+  ruleNote:
+    '此燈號是「中期市場態勢」6 票之 1(但屬於長期 timeframe — 月更新)。Sahm Rule(Claudia Sahm 2019)= 失業率 3 個月平均 − 過去 12 個月最低值。≥0.50 → 自 1959 以來每次美國衰退都已開始,從沒誤觸。跟殖利率差(衰退領先 6-18 個月)互補:Sahm 是「衰退已在發生」的實時偵測。',
 };
 
 const RSP_SPY_HEADLINE_LABELS = {
@@ -301,6 +321,18 @@ function RegimeRow({
               detail={item.detail}
               labels={HYG_IEF_HEADLINE_LABELS}
             />
+          ) : item.indicator_name === 'skew' ? (
+            <SkewHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={SKEW_HEADLINE_LABELS}
+            />
+          ) : item.indicator_name === 'unrate' ? (
+            <UnrateHeadlineExplainable
+              shortLabel={item.short_label}
+              detail={item.detail}
+              labels={UNRATE_HEADLINE_LABELS}
+            />
           ) : (
             item.short_label
           )}
@@ -341,6 +373,10 @@ function RegimeRow({
             detail={item.detail}
             labels={HYG_IEF_DETAIL_LABELS}
           />
+        ) : item.indicator_name === 'skew' ? (
+          <SkewEnhancedDetail detail={item.detail} />
+        ) : item.indicator_name === 'unrate' ? (
+          <UnrateEnhancedDetail detail={item.detail} />
         ) : (
           detailEntries.length > 0 && (
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-stone-700">
@@ -582,6 +618,54 @@ function IndicatorChart({ response }: IndicatorChartProps): JSX.Element | null {
         yAxisMin={yMin}
         yAxisMax={yMax}
         ariaLabel="HYG/IEF 信用利差 60 日走勢"
+      />
+    );
+  }
+  if (response.indicator === 'skew') {
+    // SKEW lives in ~110-160; soft-clip below 100 to keep the marker
+    // honest if a chart range catches an unusually-low day.
+    const { yMin, yMax } = computeYBounds(response.series, ['level'], {
+      softMin: 100,
+    });
+    return (
+      <IndicatorBoundedLine
+        series={response.series}
+        lines={[{ key: 'level', label: 'SKEW', color: '#1c1917' }]}
+        thresholds={[
+          {
+            value: response.thresholds.normal_high,
+            label: '正常上限',
+            color: '#22c55e',
+            fillBetween: 'below',
+          },
+          {
+            value: response.thresholds.elevated_high,
+            label: '機構避險',
+            color: '#ef4444',
+            fillBetween: 'above',
+          },
+        ]}
+        yAxisMin={yMin}
+        yAxisMax={yMax}
+        ariaLabel="CBOE SKEW 走勢"
+      />
+    );
+  }
+  if (response.indicator === 'unrate') {
+    return (
+      <IndicatorMultiLine
+        series={response.series}
+        lines={[
+          { key: 'rate', label: '失業率 (%)', color: '#1c1917', width: 2 },
+          {
+            key: 'sahm_value',
+            label: 'Sahm 值',
+            color: '#ef4444',
+            style: 'dashed',
+            width: 1,
+          },
+        ]}
+        ariaLabel="失業率 + Sahm Rule 走勢"
       />
     );
   }

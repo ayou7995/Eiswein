@@ -41,6 +41,7 @@ _SPX_SYMBOL = "SPY"
 _RSP_SYMBOL = "RSP"  # SPX Equal-Weight ETF (vs SPY for breadth)
 _HYG_SYMBOL = "HYG"  # High-Yield Corp Bond ETF (vs IEF for credit spread)
 _IEF_SYMBOL = "IEF"  # 7-10Y Treasury ETF
+_SKEW_SYMBOL = "^SKEW"  # CBOE Skew Index (tail-risk pricing)
 # Macro series consumed by indicator modules.
 _MACRO_SERIES: tuple[str, ...] = (
     "VIXCLS",
@@ -49,6 +50,7 @@ _MACRO_SERIES: tuple[str, ...] = (
     "DGS2",
     "DTWEXBGS",
     "FEDFUNDS",
+    "UNRATE",
 )
 
 
@@ -69,6 +71,7 @@ def build_context(
     rsp_frame = _load_price_frame(prices, _RSP_SYMBOL, today)
     hyg_frame = _load_price_frame(prices, _HYG_SYMBOL, today)
     ief_frame = _load_price_frame(prices, _IEF_SYMBOL, today)
+    skew_frame = _load_price_frame(prices, _SKEW_SYMBOL, today)
     macro_frames: dict[str, pd.DataFrame] = {}
     for series_id in _MACRO_SERIES:
         frame = _load_macro_frame(macro, series_id, as_of=today)
@@ -86,6 +89,7 @@ def build_context(
         rsp_frame=rsp_frame.copy(deep=True) if rsp_frame is not None else None,
         hyg_frame=hyg_frame.copy(deep=True) if hyg_frame is not None else None,
         ief_frame=ief_frame.copy(deep=True) if ief_frame is not None else None,
+        skew_frame=skew_frame.copy(deep=True) if skew_frame is not None else None,
         macro_frames={k: v.copy(deep=True) for k, v in macro_frames.items()},
     )
 

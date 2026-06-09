@@ -30,8 +30,10 @@ from app.indicators.macro.fed_rate import compute_fed_rate
 from app.indicators.market_regime.ad_day import compute_ad_day
 from app.indicators.market_regime.hyg_ief import compute_hyg_ief
 from app.indicators.market_regime.rsp_spy import compute_rsp_spy
+from app.indicators.market_regime.skew import compute_skew
 from app.indicators.market_regime.spx_adx import compute_spx_adx
 from app.indicators.market_regime.spx_ma import compute_spx_ma
+from app.indicators.market_regime.unrate import compute_unrate
 from app.indicators.market_regime.vix import compute_vix
 from app.indicators.market_regime.vix_term import compute_vix_term
 from app.indicators.market_regime.yield_spread import compute_yield_spread
@@ -95,6 +97,11 @@ _MARKET_REGIME: dict[str, IndicatorFunc] = {
     #   indicator vs equity selloffs — votes in mid posture).
     "rsp_spy": compute_rsp_spy,
     "hyg_ief": compute_hyg_ief,
+    # v2 (2026-06): tail-risk + recession recursion (7-vote regime).
+    # skew = CBOE Skew Index — institutional OTM put bid (short-term).
+    # unrate = US unemployment + Sahm Rule recession trigger (long-term).
+    "skew": compute_skew,
+    "unrate": compute_unrate,
 }
 
 

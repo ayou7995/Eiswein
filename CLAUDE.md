@@ -102,23 +102,24 @@ After completing a module: run `security-auditor` then `test-writer`.
 - English for code identifiers, Traditional Chinese for user-facing text/labels
 
 ## Core Indicators
-**Market regime (8)**: SPX 50/200 MA, SPX ADX, A/D Day Count, VIX level+trend,
+**Market regime (10)**: SPX 50/200 MA, SPX ADX, A/D Day Count, VIX level+trend,
 VIX term structure (VIX/VIX3M), 10Y-2Y yield spread, RSP/SPY breadth ratio
-(display-only), HYG/IEF credit spread ratio. The 2026-06 cleanup dropped the
-watchlist-derived "A/D Line" (universe drift → noise) and added the two
-ETF-ratio indicators in its place.
+(display-only), HYG/IEF credit spread ratio, CBOE SKEW Index, US unemployment
++ Sahm Rule. The 2026-06 cleanup dropped the watchlist-derived "A/D Line"
+(universe drift → noise); Phase 5 added SKEW (tail-risk) and UNRATE (Sahm
+Rule recession trigger).
 **Per-ticker direction (5)**: Price vs 50/200 MA, RSI(14)+weekly RSI, volume
 anomaly, relative strength vs SPX, Chaikin Oscillator (CHO).
 **Timing (5)**: MACD, Bollinger Bands, ADX, ATR, TTM Squeeze.
 **Macro (2)**: DXY trend, Fed Funds Rate + market expectations.
 
-## Signal Rules (revised 2026-06)
-- **Layer 1 mid-term posture**: 5 regime indicators vote (spx_ma, ad_day,
-  vix, yield_spread, hyg_ief) → 進攻 (4+ green) / 防守 (3+ red) / 正常.
-  spx_adx + rsp_spy + vix_term are display-only — they show up on the
-  dashboard but don't tally votes.
-- **Layer 1 short-term posture**: 3 regime indicators vote (vix, ad_day,
-  vix_term) → 進攻 (3 green) / 防守 (1+ red) / 正常.
+## Signal Rules (revised 2026-06 Phase 5)
+- **Layer 1 mid-term posture (6-vote)**: spx_ma, ad_day, vix, yield_spread,
+  hyg_ief, unrate → 進攻 (5+ green) / 防守 (4+ red) / 正常. spx_adx, rsp_spy,
+  vix_term are display-only — they show up on the dashboard but don't tally
+  mid-term votes.
+- **Layer 1 short-term posture (4-vote)**: vix, ad_day, vix_term, skew →
+  進攻 (4 green) / 防守 (2+ red) / 正常.
 - **Layer D1a (Direction mid)**: 5 direction indicators (price_vs_ma, rsi,
   volume_anomaly, relative_strength, cho) → ActionCategory (強力買入 🟢🟢 /
   買入 🟢 / 持有 ✓ / 觀望 👀 / 減倉 ⚠️ / 出場 🔴🔴).

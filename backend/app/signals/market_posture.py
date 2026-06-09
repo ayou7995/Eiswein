@@ -1,25 +1,33 @@
-"""Layer 1 — Market posture classifier (mid-term, 5-vote).
+"""Layer 1 — Market posture classifier (mid-term, 6-vote).
 
-5 market-regime indicators (SPX MA, A/D Day, VIX, 10Y-2Y yield spread,
-HYG/IEF credit spread) vote → MarketPosture. Rules:
+6 market-regime indicators vote → MarketPosture:
 
-* 4+ GREEN                            → 進攻 (OFFENSIVE)
-* 3+ RED                              → 防守 (DEFENSIVE)
+* spx_ma       (mid)   — SPX vs 50/200 MA
+* ad_day       (short) — Accumulation/Distribution day count
+* vix          (short) — VIX level + 10-day trend
+* yield_spread (long)  — 10Y-2Y Treasury curve
+* hyg_ief      (mid)   — HY corp bond vs Treasury (credit spread)
+* unrate       (long)  — US unemployment + Sahm Rule recession trigger
+
+(SKEW is short-only — it votes in the separate ``market_posture_short``
+4-vote table, NOT here.)
+
+Rules:
+
+* ≥5 GREEN                            → 進攻 (OFFENSIVE)
+* ≥4 RED                              → 防守 (DEFENSIVE)
 * otherwise                           → 正常 (NORMAL)
 
-The OFFENSIVE bar was lifted from 3/4 to 4/5 because adding a 5th
-indicator dilutes per-indicator weight; without lifting the threshold,
-"3 green" would trigger OFFENSIVE more often. DEFENSIVE stayed at the
-"majority red" level (3/5) — false NORMAL is cheaper than false
-DEFENSIVE when posture's job is to flag risk.
+Threshold rationale: 5/6 ≈ 83 % keeps the "strong majority" bar for
+OFFENSIVE close to the previous 4/5 = 80 %; 4/6 ≈ 67 % is slightly
+stricter than the prior 3/5 = 60 % DEFENSIVE bar — a deliberate
+calibration to avoid more frequent DEFENSIVE flips now that an extra
+vote (UNRATE) sits in the table.
 
 Indicators with ``data_sufficient=False`` are excluded from the vote
-(C10). When ALL 5 are insufficient, posture defaults to NORMAL rather
-than flipping between OFFENSIVE / DEFENSIVE based on zero data (safer
-conservative fallback for a market-wide context badge).
-
-Per D2: market posture never silently downgrades per-ticker actions —
-it's surfaced as a context badge in the UI only.
+(C10). When ALL 6 are insufficient, posture defaults to NORMAL.
+Display-only regime indicators (spx_adx, rsp_spy, vix_term) appear in
+the dashboard cards but never enter the vote.
 """
 
 from __future__ import annotations
@@ -30,16 +38,15 @@ from typing import Final
 from app.indicators.base import IndicatorResult, SignalTone
 from app.signals.types import MarketPosture
 
-# v2 (2026-06): hyg_ief joined the vote — credit spread is a genuinely
-# orthogonal leading indicator vs equity. spx_adx / rsp_spy / vix_term
-# are display-only.
+# v3 (2026-06 Phase 5): unrate joined the mid posture (Sahm Rule
+# recession trigger). skew lives in market_posture_short.
 REGIME_INDICATOR_NAMES: Final[frozenset[str]] = frozenset(
-    {"spx_ma", "ad_day", "vix", "yield_spread", "hyg_ief"}
+    {"spx_ma", "ad_day", "vix", "yield_spread", "hyg_ief", "unrate"}
 )
 
 
 def classify_market_posture(regime_results: Mapping[str, IndicatorResult]) -> MarketPosture:
-    """Classify market posture from the 5 mid-term regime indicators."""
+    """Classify market posture from the 6 mid-term regime indicators."""
     votes = [
         r
         for name, r in regime_results.items()
@@ -51,9 +58,9 @@ def classify_market_posture(regime_results: Mapping[str, IndicatorResult]) -> Ma
     greens = sum(1 for r in votes if r.signal == SignalTone.GREEN)
     reds = sum(1 for r in votes if r.signal == SignalTone.RED)
 
-    if greens >= 4:
+    if greens >= 5:
         return MarketPosture.OFFENSIVE
-    if reds >= 3:
+    if reds >= 4:
         return MarketPosture.DEFENSIVE
     return MarketPosture.NORMAL
 
@@ -64,7 +71,7 @@ def count_regime_tones(
     """Return ``(green_count, red_count, yellow_count)`` for persistence.
 
     ``data_sufficient=False`` rows are NEUTRAL and not counted toward any
-    of the three — the caller can derive ``neutral = 5 - sum`` if needed.
+    of the three — the caller can derive ``neutral = 6 - sum`` if needed.
     """
     votes = [
         r

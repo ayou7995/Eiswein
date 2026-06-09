@@ -8,30 +8,36 @@ the market dropped suddenly but the structural picture hasn't broken.
 
 Why two postures
 ----------------
-The mid-term vote uses 4 regime indicators including ``yield_spread``
+The mid-term vote uses 6 regime indicators including ``yield_spread``
 (recession lead, 12-18 month horizon) and ``spx_ma`` (mid-term trend).
 These barely move day-to-day, which is correct for a mid-term gauge but
 useless for "is today panic or just noise?".
 
-The short vote (Phase 4) uses three fast regime indicators:
+The short vote uses four fast regime indicators (Phase 5 added SKEW):
 
 * ``vix``      — implied volatility level, reacts in hours
 * ``ad_day``   — last 25 trading days breadth (accumulation/distribution)
 * ``vix_term`` — VIX/VIX3M ratio (curve inversion = immediate stress)
+* ``skew``     — CBOE Skew Index (institutional OTM put bid; the
+                 quiet-VIX/rising-SKEW divergence is exactly the kind of
+                 build-up the other three indicators miss)
 
 Decision rule
 -------------
-With 3 vote members the rule is:
+With 4 vote members the rule is:
 
-* 3 GREEN  → OFFENSIVE (all calm + accumulating = clean buy backdrop)
+* 4 GREEN  → OFFENSIVE (all calm + accumulating + low tail-risk pricing
+  = clean buy backdrop; deliberately strict so partial signals don't
+  trip the offensive flag)
 * 2+ RED   → DEFENSIVE (multiple panic signals)
-* 1 RED    → DEFENSIVE (a single curve inversion or distribution day
-  is still a meaningful tactical warning)
 * else     → NORMAL
 
 Asymmetry is deliberate: short-term posture should be quick to flag
 risk, slow to declare safety. False NORMAL is cheaper than false
-OFFENSIVE on a tactical horizon.
+OFFENSIVE on a tactical horizon. The earlier 3-vote rule "1+ RED →
+DEFENSIVE" relaxed to "2+ RED" because a 4-vote table makes 1/4 = 25 %
+RED too noisy — a single VIX spike could flip the badge without any
+corroboration from breadth, curve, or skew.
 """
 
 from __future__ import annotations
@@ -43,14 +49,14 @@ from app.indicators.base import IndicatorResult, SignalTone
 from app.signals.types import MarketPosture
 
 REGIME_SHORT_INDICATOR_NAMES: Final[frozenset[str]] = frozenset(
-    {"vix", "ad_day", "vix_term"}
+    {"vix", "ad_day", "vix_term", "skew"}
 )
 
 
 def classify_market_posture_short(
     regime_results: Mapping[str, IndicatorResult],
 ) -> MarketPosture:
-    """Classify short-term market posture from the 2 fastest regime indicators.
+    """Classify short-term market posture from the 4 fastest regime indicators.
 
     All-NEUTRAL fallback returns NORMAL — same conservative default as
     the mid-term classifier, for the same reason (a context badge that
@@ -66,9 +72,9 @@ def classify_market_posture_short(
     greens = sum(1 for r in votes if r.signal == SignalTone.GREEN)
     reds = sum(1 for r in votes if r.signal == SignalTone.RED)
 
-    if reds >= 1:
+    if reds >= 2:
         return MarketPosture.DEFENSIVE
-    if greens >= 3:
+    if greens >= 4:
         return MarketPosture.OFFENSIVE
     return MarketPosture.NORMAL
 

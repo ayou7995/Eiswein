@@ -12,6 +12,8 @@ export const marketIndicatorSeriesNameSchema = z.enum([
   'vix_term',
   'rsp_spy',
   'hyg_ief',
+  'skew',
+  'unrate',
 ]);
 export type MarketIndicatorSeriesName = z.infer<typeof marketIndicatorSeriesNameSchema>;
 
@@ -238,6 +240,51 @@ const hygIefResponseSchema = z.object({
   }),
 });
 
+const skewResponseSchema = z.object({
+  indicator: z.literal('skew'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      level: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    level: z.number().nullable(),
+    ten_day_change: z.number().nullable(),
+    zone: z.enum(['normal', 'elevated', 'high', 'unknown']),
+    percentile_1y: z.number().nullable(),
+  }),
+  thresholds: z.object({
+    normal_high: z.number(),
+    elevated_high: z.number(),
+  }),
+});
+
+const unrateResponseSchema = z.object({
+  indicator: z.literal('unrate'),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      rate: z.number().nullable(),
+      sahm_value: z.number().nullable(),
+    }),
+  ),
+  summary_zh: z.string(),
+  current: z.object({
+    current_rate: z.number().nullable(),
+    three_month_avg: z.number().nullable(),
+    twelve_month_low: z.number().nullable(),
+    sahm_value: z.number().nullable(),
+    sahm_distance_to_trigger: z.number().nullable(),
+    zone: z.enum(['healthy', 'warning', 'recession', 'unknown']),
+  }),
+  thresholds: z.object({
+    warning: z.number(),
+    trigger: z.number(),
+  }),
+});
+
 export const marketIndicatorSeriesResponseSchema = z.discriminatedUnion('indicator', [
   spxMaResponseSchema,
   vixResponseSchema,
@@ -249,6 +296,8 @@ export const marketIndicatorSeriesResponseSchema = z.discriminatedUnion('indicat
   vixTermResponseSchema,
   rspSpyResponseSchema,
   hygIefResponseSchema,
+  skewResponseSchema,
+  unrateResponseSchema,
 ]);
 
 export type MarketIndicatorSeriesResponse = z.infer<typeof marketIndicatorSeriesResponseSchema>;
@@ -262,6 +311,8 @@ export type SpxAdxSeriesResponse = z.infer<typeof spxAdxResponseSchema>;
 export type VixTermSeriesResponse = z.infer<typeof vixTermResponseSchema>;
 export type RspSpySeriesResponse = z.infer<typeof rspSpyResponseSchema>;
 export type HygIefSeriesResponse = z.infer<typeof hygIefResponseSchema>;
+export type SkewSeriesResponse = z.infer<typeof skewResponseSchema>;
+export type UnrateSeriesResponse = z.infer<typeof unrateResponseSchema>;
 
 // Range options mapped to trading days. Server validates 21 ≤ days ≤ 1260
 // for the ``days`` param; the ``ALL`` button instead sends ``?range=all``
@@ -291,12 +342,15 @@ export const DEFAULT_RANGE_BY_INDICATOR: Record<MarketIndicatorSeriesName, Marke
   spx_adx: '3M',
   rsp_spy: '3M',
   hyg_ief: '3M',
-  // Short-term posture additions (Phase 4)
+  // Short-term posture additions (Phase 4 + 5)
   vix_term: '1M',
+  skew: '1M',
   // Long-term macro
   yield_spread: '1Y',
   dxy: '1Y',
   fed_rate: '1Y',
+  // UNRATE is monthly — 5Y view shows ~1 full cycle of the Sahm Rule.
+  unrate: '5Y',
 };
 
 export function getMarketIndicatorSeries(

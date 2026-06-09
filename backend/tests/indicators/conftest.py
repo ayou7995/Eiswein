@@ -103,6 +103,7 @@ def indicator_context_factory() -> Callable[..., IndicatorContext]:
         rsp_frame: pd.DataFrame | None = None,
         hyg_frame: pd.DataFrame | None = None,
         ief_frame: pd.DataFrame | None = None,
+        skew_frame: pd.DataFrame | None = None,
     ) -> IndicatorContext:
         return IndicatorContext(
             today=today or date(2024, 12, 31),
@@ -111,6 +112,7 @@ def indicator_context_factory() -> Callable[..., IndicatorContext]:
             rsp_frame=rsp_frame,
             hyg_frame=hyg_frame,
             ief_frame=ief_frame,
+            skew_frame=skew_frame,
         )
 
     return _factory

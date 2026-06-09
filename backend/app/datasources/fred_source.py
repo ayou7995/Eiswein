@@ -48,6 +48,11 @@ DEFAULT_SERIES_IDS: tuple[str, ...] = (
     # expectations — a textbook stress signal that complements the raw
     # VIX level reading.
     "VXVCLS",
+    # Phase 5 (2026-06): US civilian unemployment rate. Feeds the
+    # ``unrate`` indicator's Sahm Rule recession-trigger check.
+    # Monthly series; FRED publishes the new month's value on the
+    # first Friday of the month following the reference period.
+    "UNRATE",
 )
 
 _HEALTH_PROBE_SERIES = "DGS10"

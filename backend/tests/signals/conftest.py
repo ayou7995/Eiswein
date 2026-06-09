@@ -79,12 +79,15 @@ def build_timing_results(
 
 
 def build_regime_results(greens: int, reds: int, yellows: int = 0) -> dict[str, IndicatorResult]:
-    """5-vote mid regime: spx_ma, ad_day, vix, yield_spread, hyg_ief."""
-    names = ["spx_ma", "ad_day", "vix", "yield_spread", "hyg_ief"]
+    """6-vote mid regime: spx_ma, ad_day, vix, yield_spread, hyg_ief, unrate."""
+    names = ["spx_ma", "ad_day", "vix", "yield_spread", "hyg_ief", "unrate"]
+    if greens + reds + yellows > 6:
+        msg = "green + red + yellow votes exceed 6"
+        raise ValueError(msg)
     signals: list[str] = (
         [SignalTone.GREEN] * greens + [SignalTone.RED] * reds + [SignalTone.YELLOW] * yellows
     )
-    while len(signals) < 5:
+    while len(signals) < 6:
         signals.append(SignalTone.YELLOW)
     return {
         name: _make_result(name, sig)  # type: ignore[arg-type]

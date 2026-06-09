@@ -102,6 +102,8 @@ def test_default_series_list_is_stable() -> None:
         "VIXCLS",
         # v2 Phase 4: VIX 3-month (term-structure compare).
         "VXVCLS",
+        # Phase 5 (2026-06): US unemployment (Sahm Rule).
+        "UNRATE",
     )
 
 

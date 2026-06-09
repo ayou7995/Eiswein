@@ -61,6 +61,9 @@ _MACRO_NAMES: Final[frozenset[str]] = frozenset(
         # v2 (2026-06): cross-asset / breadth structural indicators.
         "rsp_spy",
         "hyg_ief",
+        # Phase 5 (2026-06): 7-vote regime additions.
+        "skew",
+        "unrate",
     }
 )
 

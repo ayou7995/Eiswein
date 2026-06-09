@@ -44,6 +44,10 @@ INDICATOR_TIMEFRAMES: Final[dict[str, Timeframe]] = {
     "vix_term": "short",
     "rsp_spy": "mid",
     "hyg_ief": "mid",
+    # Short-term posture additions (Phase 5).
+    "skew": "short",
+    # Long-term macro additions (Phase 5).
+    "unrate": "long",
     # Timing (2 + 2 in v2 Phase 2, + 1 in Phase 3)
     "macd": "short",
     "bollinger": "short",

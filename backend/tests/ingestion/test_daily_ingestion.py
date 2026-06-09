@@ -60,12 +60,12 @@ async def test_daily_update_issues_exactly_one_bulk_call(
         )
 
     # distinct_watchlist_symbols={SPY, QQQ, IWM} ∪ SYSTEM_SYMBOLS={SPY,
-    # RSP, HYG, IEF} = {SPY, QQQ, IWM, RSP, HYG, IEF} = 6 unique.
+    # RSP, HYG, IEF, ^SKEW} = {^SKEW, HYG, IEF, IWM, QQQ, RSP, SPY} = 7 unique.
     assert result.market_open is True
-    assert result.symbols_requested == 6
-    assert result.symbols_succeeded == 6
+    assert result.symbols_requested == 7
+    assert result.symbols_succeeded == 7
     assert result.symbols_failed == 0
-    # Exactly one bulk fetch for all 6 distinct symbols
+    # Exactly one bulk fetch for all 7 distinct symbols
     assert len(fake_data_source.calls) == 1  # type: ignore[attr-defined]
     assert fake_data_source.calls[0][0] == "bulk"  # type: ignore[attr-defined]
     assert sorted(fake_data_source.calls[0][1]) == [  # type: ignore[attr-defined]
@@ -75,6 +75,7 @@ async def test_daily_update_issues_exactly_one_bulk_call(
         "QQQ",
         "RSP",
         "SPY",
+        "^SKEW",
     ]
 
 
@@ -160,9 +161,9 @@ async def test_daily_update_bypasses_trading_day_gate_for_non_scheduled_triggers
         )
 
     # Not "skipped" — the job entered its real path. SYSTEM_SYMBOLS
-    # adds RSP/HYG/IEF on top of SPY, so 4 symbols total.
+    # adds RSP/HYG/IEF/^SKEW on top of SPY, so 5 symbols total.
     assert result.market_open is True, f"trigger={trigger!r} should bypass the non-trading-day gate"
-    assert result.symbols_requested == 4
+    assert result.symbols_requested == 5
     # Bulk fetch actually fired.
     assert len(fake_data_source.calls) == 1  # type: ignore[attr-defined]
 
@@ -185,6 +186,7 @@ async def test_daily_update_isolates_per_symbol_failures(
                 "RSP": _make_price_frame(),
                 "HYG": _make_price_frame(),
                 "IEF": _make_price_frame(),
+                "^SKEW": _make_price_frame(),
             },
             empty_for={"DELIST"},
         )
@@ -194,10 +196,10 @@ async def test_daily_update_isolates_per_symbol_failures(
     with session_factory() as session:
         result = await run_daily_update(db=session, data_source=ds, settings=settings)
 
-    # 3 watchlist (SPY/QQQ/DELIST) + 3 new SYSTEM_SYMBOLS (RSP/HYG/IEF;
-    # SPY already in watchlist) = 6 unique. DELIST fails as before.
-    assert result.symbols_requested == 6
-    assert result.symbols_succeeded == 5
+    # 3 watchlist (SPY/QQQ/DELIST) + 4 new SYSTEM_SYMBOLS (RSP/HYG/IEF/
+    # ^SKEW; SPY already in watchlist) = 7 unique. DELIST fails as before.
+    assert result.symbols_requested == 7
+    assert result.symbols_succeeded == 6
     assert result.symbols_delisted == 1
     assert result.symbols_failed == 0
 
@@ -238,8 +240,8 @@ async def test_daily_update_is_idempotent(
         )
         second_rows = DailyPriceRepository(session).count_for_symbol("SPY")
 
-    # SYSTEM_SYMBOLS adds RSP/HYG/IEF on top of SPY (4 total).
-    assert first.symbols_succeeded == 4
+    # SYSTEM_SYMBOLS adds RSP/HYG/IEF/^SKEW on top of SPY (5 total).
+    assert first.symbols_succeeded == 5
     # UPSERT: same dates → same row count (idempotent). This is the
     # load-bearing idempotency assertion — re-running daily_update
     # never duplicates DailyPrice rows.

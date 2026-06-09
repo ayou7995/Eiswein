@@ -40,8 +40,10 @@ from app.api.v1._market_series import (
     HYG_IEF_MIN_BARS,
     RSP_SPY_MIN_BARS,
     SERIES_DAYS,
+    SKEW_MIN_BARS,
     SPX_ADX_MIN_BARS,
     SUPPORTED_MARKET_INDICATORS,
+    UNRATE_MIN_MONTHS,
     VIX_TERM_MIN_BARS,
     build_ad_day_payload,
     build_dxy_payload,
@@ -49,9 +51,11 @@ from app.api.v1._market_series import (
     build_hyg_ief_payload,
     build_macro_value_series,
     build_rsp_spy_payload,
+    build_skew_payload,
     build_spx_adx_payload,
     build_spx_ma_payload,
     build_spy_frame,
+    build_unrate_payload,
     build_vix_payload,
     build_vix_term_payload,
     build_yield_spread_payload,
@@ -109,6 +113,11 @@ _DEFAULT_DAYS: dict[str, int] = {
     "vix_term": SERIES_DAYS,
     "rsp_spy": SERIES_DAYS,
     "hyg_ief": SERIES_DAYS,
+    # Phase 5: short-term tail-risk + long-term macro additions.
+    "skew": SERIES_DAYS,
+    # UNRATE is monthly; default to 5 years of calendar history for the
+    # chart so the Sahm Rule trend over a cycle is legible.
+    "unrate": 365 * 5,
 }
 
 router = APIRouter(tags=["market"])
@@ -141,7 +150,7 @@ class MarketPostureResponse(BaseModel):
 
     date: date
     timezone: str = "America/New_York"
-    # Mid-term posture (weeks horizon, 4 regime indicators).
+    # Mid-term posture (weeks horizon, 6 regime indicators).
     posture: MarketPosture
     posture_label: str
     regime_green_count: int
@@ -149,10 +158,10 @@ class MarketPostureResponse(BaseModel):
     regime_yellow_count: int
     streak_days: int
     streak_badge: str | None
-    # Short-term posture (days horizon, 2 regime indicators: vix + ad_day).
-    # v2 Phase 1 — UI renders this beside the mid-term posture so the
-    # operator can distinguish "structurally fine but today is panicky"
-    # from "structurally weakening".
+    # Short-term posture (days horizon, 4 regime indicators: vix +
+    # ad_day + vix_term + skew). UI renders this beside the mid-term
+    # posture so the operator can distinguish "structurally fine but
+    # today is panicky" from "structurally weakening".
     posture_short: MarketPosture
     posture_short_label: str
     regime_short_green_count: int
@@ -226,7 +235,12 @@ def _load_regime_results(
     MID timeframe so the UI can render its card alongside ``spx_ma``.
     Voting still happens against ``REGIME_INDICATOR_NAMES`` upstream.
     """
-    display_names = REGIME_INDICATOR_NAMES | {"spx_adx", "vix_term", "rsp_spy", "hyg_ief"}
+    display_names = REGIME_INDICATOR_NAMES | {
+        "spx_adx",
+        "vix_term",
+        "rsp_spy",
+        "hyg_ief",
+    }
     rows = signals_repo.get_latest_for_symbol(_SPX_SYMBOL)
     results: dict[str, IndicatorResult] = {}
     for row in rows:
@@ -582,6 +596,67 @@ class HygIefSeriesResponse(BaseModel):
     current: HygIefCurrent
 
 
+class SkewPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    level: float | None
+
+
+class SkewCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    level: float | None
+    ten_day_change: float | None
+    zone: Literal["normal", "elevated", "high", "unknown"]
+    percentile_1y: float | None
+
+
+class SkewThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    normal_high: float
+    elevated_high: float
+
+
+class SkewSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    indicator: Literal["skew"]
+    series: list[SkewPoint]
+    summary_zh: str
+    current: SkewCurrent
+    thresholds: SkewThresholds
+
+
+class UnratePoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    date: date
+    rate: float | None
+    sahm_value: float | None
+
+
+class UnrateCurrent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    current_rate: float | None
+    three_month_avg: float | None
+    twelve_month_low: float | None
+    sahm_value: float | None
+    sahm_distance_to_trigger: float | None
+    zone: Literal["healthy", "warning", "recession", "unknown"]
+
+
+class UnrateThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    warning: float
+    trigger: float
+
+
+class UnrateSeriesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    indicator: Literal["unrate"]
+    series: list[UnratePoint]
+    summary_zh: str
+    current: UnrateCurrent
+    thresholds: UnrateThresholds
+
+
 MarketIndicatorSeriesResponse = (
     SpxMaSeriesResponse
     | VixSeriesResponse
@@ -593,6 +668,8 @@ MarketIndicatorSeriesResponse = (
     | VixTermSeriesResponse
     | RspSpySeriesResponse
     | HygIefSeriesResponse
+    | SkewSeriesResponse
+    | UnrateSeriesResponse
 )
 
 
@@ -743,6 +820,23 @@ def get_market_indicator_series(
             raise _insufficient(name)
         return HygIefSeriesResponse.model_validate(
             build_hyg_ief_payload(hyg_frame, ief_frame, window)
+        )
+
+    if name == "skew":
+        end = date.today()
+        start = end - timedelta(days=_spy_lookback_for(window))
+        rows = prices.get_range("^SKEW", start=start, end=end)
+        frame = build_spy_frame(rows)
+        if frame.empty or len(frame) < SKEW_MIN_BARS:
+            raise _insufficient(name)
+        return SkewSeriesResponse.model_validate(build_skew_payload(frame, window))
+
+    if name == "unrate":
+        unrate_series = build_macro_value_series(macro.get_all_for_series("UNRATE"))
+        if unrate_series.empty or len(unrate_series.dropna()) < UNRATE_MIN_MONTHS:
+            raise _insufficient(name)
+        return UnrateSeriesResponse.model_validate(
+            build_unrate_payload(unrate_series, window)
         )
 
     # fed_rate: SUPPORTED_MARKET_INDICATORS already gates this branch.

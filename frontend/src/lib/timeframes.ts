@@ -46,6 +46,8 @@ export const INDICATOR_TIMEFRAMES: Record<string, Timeframe> = {
   vix_term: 'short',
   rsp_spy: 'mid',
   hyg_ief: 'mid',
+  skew: 'short',
+  unrate: 'long',
   macd: 'short',
   bollinger: 'short',
   adx: 'mid',

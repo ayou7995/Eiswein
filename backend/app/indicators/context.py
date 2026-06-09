@@ -35,3 +35,8 @@ class IndicatorContext:
     rsp_frame: pd.DataFrame | None = None
     hyg_frame: pd.DataFrame | None = None
     ief_frame: pd.DataFrame | None = None
+    # CBOE SKEW Index (^SKEW from yfinance). Tail-risk pricing — feeds
+    # the short-term ``skew`` indicator. Same OHLCV shape; we only read
+    # ``close`` but persist the full frame so the API endpoint can show
+    # candles if a future iteration needs that.
+    skew_frame: pd.DataFrame | None = None
