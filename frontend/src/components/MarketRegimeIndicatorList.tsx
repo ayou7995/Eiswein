@@ -155,6 +155,10 @@ const RSP_SPY_DETAIL_LABELS = {
   greenSummary: '🟢 廣度健康 — 大部分股票參與行情',
   redSummary: '🔴 窄漲警示 — Mag 7 撐盤、其他走弱',
   yellowSummary: '🟡 廣度持平 — 沒有明顯結構性訊號',
+  ratioName: 'RSP/SPY',
+  greenZoneLabel: '🟢 廣度健康',
+  redZoneLabel: '🔴 窄漲警示',
+  yellowZoneLabel: '🟡 廣度持平',
 };
 
 const HYG_IEF_DETAIL_LABELS = {
@@ -165,6 +169,10 @@ const HYG_IEF_DETAIL_LABELS = {
   greenSummary: '🟢 信用偏好 — 風險資產獲青睞',
   redSummary: '🔴 信用利差擴大 — 領先股市賣壓警訊',
   yellowSummary: '🟡 信用利差持平 — 中性背景',
+  ratioName: 'HYG/IEF',
+  greenZoneLabel: '🟢 信用偏好',
+  redZoneLabel: '🔴 信用利差擴大',
+  yellowZoneLabel: '🟡 信用利差持平',
 };
 
 const TONE_DOT: Record<ProsConsItem['tone'], { emoji: string; ariaLabel: string }> = {

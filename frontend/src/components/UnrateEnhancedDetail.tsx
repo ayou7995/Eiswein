@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { Explainable, RuleTable } from './Explainable';
 import { PositionGauge, type PositionGaugeZone } from './PositionGauge';
 
+interface UnrateWatchpoint {
+  direction: 'up' | 'down';
+  threshold: number;
+  nextLabel: string;
+}
+
 // UNRATE + Sahm Rule detail fields. Mirrors the indicator output in
 // ``backend/app/indicators/market_regime/unrate.py``. The voting signal
 // is keyed on ``sahm_value``; ``current_rate`` / ``twelve_month_low``
@@ -178,6 +184,84 @@ export function UnrateEnhancedDetail({
           </span>
         </p>
       </section>
+      <Watchpoints zone={zone} detail={d} />
     </div>
+  );
+}
+
+function buildWatchpoints(zone: UnrateZone, d: UnrateDetail): UnrateWatchpoint[] {
+  if (zone === 'healthy') {
+    return [
+      { direction: 'up', threshold: d.threshold_warning, nextLabel: ZONE_LABEL.warning },
+    ];
+  }
+  if (zone === 'warning') {
+    return [
+      { direction: 'down', threshold: d.threshold_warning, nextLabel: ZONE_LABEL.healthy },
+      { direction: 'up', threshold: d.threshold_trigger, nextLabel: ZONE_LABEL.recession },
+    ];
+  }
+  return [
+    { direction: 'down', threshold: d.threshold_trigger, nextLabel: ZONE_LABEL.warning },
+    { direction: 'down', threshold: d.threshold_warning, nextLabel: ZONE_LABEL.healthy },
+  ];
+}
+
+function Watchpoints({
+  zone,
+  detail,
+}: {
+  zone: UnrateZone;
+  detail: UnrateDetail;
+}): JSX.Element {
+  const points = buildWatchpoints(zone, detail);
+  return (
+    <section aria-label="Sahm 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="依目前所在區塊決定要顯示哪些 Sahm 值轉換："
+              rows={[
+                {
+                  condition: '🟢 健康 (Sahm < 0.30)',
+                  result: '只看「Sahm 升至 0.30 → 警戒」',
+                  current: zone === 'healthy',
+                },
+                {
+                  condition: '🟡 警戒 (0.30 ≤ Sahm < 0.50)',
+                  result: '雙向(降至 0.30 → 健康 / 升至 0.50 → Sahm 觸發)',
+                  current: zone === 'warning',
+                },
+                {
+                  condition: '🔴 衰退 (Sahm ≥ 0.50)',
+                  result: '兩條皆為「恢復條件」',
+                  current: zone === 'recession',
+                },
+              ]}
+              note="閾值 0.30 是「警戒前哨」,0.50 是 Sahm Rule 衰退觸發點。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        (觸發轉態勢的關鍵 Sahm 值)
+      </h3>
+      <ul className="flex flex-col gap-1.5">
+        {points.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+          >
+            <span className="text-stone-700">
+              Sahm {p.direction === 'up' ? '升至' : '降至'} +{p.threshold.toFixed(2)}
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

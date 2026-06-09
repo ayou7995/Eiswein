@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { Explainable, RuleTable } from './Explainable';
 import { PositionGauge, type PositionGaugeZone } from './PositionGauge';
 
+interface SkewWatchpoint {
+  direction: 'up' | 'down';
+  threshold: number;
+  nextLabel: string;
+}
+
 // CBOE Skew Index detail fields. Mirrors the indicator output in
 // ``backend/app/indicators/market_regime/skew.py`` — three-zone
 // system (normal / elevated / high) keyed off the level.
@@ -166,6 +172,84 @@ export function SkewEnhancedDetail({
           highlightCurrentZone
         />
       </section>
+      <Watchpoints zone={zone} detail={d} />
     </div>
+  );
+}
+
+function buildWatchpoints(zone: SkewZone, d: SkewDetail): SkewWatchpoint[] {
+  if (zone === 'normal') {
+    return [
+      { direction: 'up', threshold: d.threshold_normal_high, nextLabel: ZONE_LABEL.elevated },
+    ];
+  }
+  if (zone === 'elevated') {
+    return [
+      { direction: 'down', threshold: d.threshold_normal_high, nextLabel: ZONE_LABEL.normal },
+      { direction: 'up', threshold: d.threshold_elevated_high, nextLabel: ZONE_LABEL.high },
+    ];
+  }
+  return [
+    { direction: 'down', threshold: d.threshold_elevated_high, nextLabel: ZONE_LABEL.elevated },
+    { direction: 'down', threshold: d.threshold_normal_high, nextLabel: ZONE_LABEL.normal },
+  ];
+}
+
+function Watchpoints({
+  zone,
+  detail,
+}: {
+  zone: SkewZone;
+  detail: SkewDetail;
+}): JSX.Element {
+  const points = buildWatchpoints(zone, detail);
+  return (
+    <section aria-label="SKEW 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="依目前所在區塊決定要顯示哪些閾值轉換："
+              rows={[
+                {
+                  condition: '🟢 正常 (≤130)',
+                  result: '只看「站上 130 → 警戒」',
+                  current: zone === 'normal',
+                },
+                {
+                  condition: '🟡 警戒 (130-145)',
+                  result: '雙向(破 130 → 正常 / 破 145 → 機構避險)',
+                  current: zone === 'elevated',
+                },
+                {
+                  condition: '🔴 機構避險 (≥145)',
+                  result: '兩條皆為「恢復條件」',
+                  current: zone === 'high',
+                },
+              ]}
+              note="閾值 130 / 145 是業界 SKEW tail-risk 分區。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        (觸發轉態勢的關鍵 SKEW 值)
+      </h3>
+      <ul className="flex flex-col gap-1.5">
+        {points.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+          >
+            <span className="text-stone-700">
+              {p.direction === 'up' ? '突破' : '跌破'} {p.threshold.toFixed(0)}
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

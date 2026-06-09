@@ -122,7 +122,107 @@ export function VixTermEnhancedDetail({
         />
       </section>
       <InterpretPanel d={d} />
+      <Watchpoints d={d} />
     </div>
+  );
+}
+
+type VixTermZone = 'contango' | 'flat' | 'inverted';
+
+function classifyVixTermZone(d: z.infer<typeof vixTermDetailSchema>): VixTermZone {
+  if (d.ratio >= d.inversion_threshold) return 'inverted';
+  if (d.ratio >= d.contango_threshold) return 'flat';
+  return 'contango';
+}
+
+const VIX_TERM_ZONE_LABEL: Record<VixTermZone, string> = {
+  contango: '🟢 contango',
+  flat: '🟡 平坦',
+  inverted: '🔴 倒掛',
+};
+
+interface VixTermWatchpoint {
+  direction: 'up' | 'down';
+  threshold: number;
+  nextLabel: string;
+}
+
+function buildVixTermWatchpoints(
+  zone: VixTermZone,
+  d: z.infer<typeof vixTermDetailSchema>,
+): VixTermWatchpoint[] {
+  if (zone === 'contango') {
+    return [
+      { direction: 'up', threshold: d.contango_threshold, nextLabel: VIX_TERM_ZONE_LABEL.flat },
+    ];
+  }
+  if (zone === 'flat') {
+    return [
+      { direction: 'down', threshold: d.contango_threshold, nextLabel: VIX_TERM_ZONE_LABEL.contango },
+      { direction: 'up', threshold: d.inversion_threshold, nextLabel: VIX_TERM_ZONE_LABEL.inverted },
+    ];
+  }
+  return [
+    { direction: 'down', threshold: d.inversion_threshold, nextLabel: VIX_TERM_ZONE_LABEL.flat },
+    { direction: 'down', threshold: d.contango_threshold, nextLabel: VIX_TERM_ZONE_LABEL.contango },
+  ];
+}
+
+function Watchpoints({
+  d,
+}: {
+  d: z.infer<typeof vixTermDetailSchema>;
+}): JSX.Element {
+  const zone = classifyVixTermZone(d);
+  const points = buildVixTermWatchpoints(zone, d);
+  return (
+    <section aria-label="VIX 期限看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="依目前所在區塊決定要顯示哪些 ratio 轉換："
+              rows={[
+                {
+                  condition: '🟢 深度 contango (比 < 0.95)',
+                  result: '只看「比突破 0.95 → 平坦」',
+                  current: zone === 'contango',
+                },
+                {
+                  condition: '🟡 平坦 (0.95-1.0)',
+                  result: '雙向(破 0.95 → contango / 突破 1.0 → 倒掛)',
+                  current: zone === 'flat',
+                },
+                {
+                  condition: '🔴 倒掛 (比 ≥ 1.0)',
+                  result: '兩條皆為「恢復條件」',
+                  current: zone === 'inverted',
+                },
+              ]}
+              note="0.95 / 1.0 是業界期限結構分區門檻。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        (觸發轉態勢的關鍵比值)
+      </h3>
+      <ul className="flex flex-col gap-1.5">
+        {points.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+          >
+            <span className="text-stone-700">
+              比 {p.direction === 'up' ? '突破' : '跌破'} {p.threshold.toFixed(2)}
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

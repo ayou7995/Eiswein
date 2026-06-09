@@ -88,6 +88,13 @@ export interface RatioEnhancedDetailLabels {
   greenSummary: string; // "🟢 上升 — 信號偏多"
   redSummary: string; // "🔴 下降 — 信號偏空"
   yellowSummary: string; // "🟡 持平"
+  // Watchpoint copy — short single-character zone labels for the
+  // "突破 / 跌破" callouts. Mirrors the existing ratioName so the prose
+  // reads naturally ("RSP/SPY 20D 斜率 突破 +0.05%/日 → 🟢 上升").
+  ratioName: string; // "RSP/SPY", "HYG/IEF"
+  greenZoneLabel: string; // "🟢 上升 (廣度健康)"
+  redZoneLabel: string; // "🔴 下降 (信用利差擴大)"
+  yellowZoneLabel: string; // "🟡 持平"
 }
 
 // Gauge spans ±2% per day (i.e. ±40% over 20 days), well beyond the
@@ -181,7 +188,104 @@ export function RatioEnhancedDetail({
         denominatorLabel={labels.denominatorLabel}
         ratio={d.ratio}
       />
+      <Watchpoints slopePctPerDay={d.slope_pct_per_day} labels={labels} />
     </div>
+  );
+}
+
+type RatioZone = 'down' | 'flat' | 'up';
+
+function classifyRatioZone(slopePctPerDay: number): RatioZone {
+  if (slopePctPerDay >= 0.05) return 'up';
+  if (slopePctPerDay <= -0.05) return 'down';
+  return 'flat';
+}
+
+interface RatioWatchpoint {
+  direction: 'up' | 'down';
+  threshold: number; // slope_pct_per_day threshold (e.g. 0.05)
+  nextLabel: string;
+}
+
+function buildRatioWatchpoints(
+  zone: RatioZone,
+  labels: RatioEnhancedDetailLabels,
+): RatioWatchpoint[] {
+  if (zone === 'up') {
+    return [
+      { direction: 'down', threshold: 0.05, nextLabel: labels.yellowZoneLabel },
+    ];
+  }
+  if (zone === 'down') {
+    return [
+      { direction: 'up', threshold: -0.05, nextLabel: labels.yellowZoneLabel },
+    ];
+  }
+  return [
+    { direction: 'down', threshold: -0.05, nextLabel: labels.redZoneLabel },
+    { direction: 'up', threshold: 0.05, nextLabel: labels.greenZoneLabel },
+  ];
+}
+
+function Watchpoints({
+  slopePctPerDay,
+  labels,
+}: {
+  slopePctPerDay: number;
+  labels: RatioEnhancedDetailLabels;
+}): JSX.Element {
+  const zone = classifyRatioZone(slopePctPerDay);
+  const points = buildRatioWatchpoints(zone, labels);
+  return (
+    <section aria-label="比率看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="依目前所在區塊決定要顯示哪些斜率轉換："
+              rows={[
+                {
+                  condition: `${labels.ratioName} 20D 斜率 ≥ +0.05%/日`,
+                  result: `${labels.greenZoneLabel}`,
+                  current: zone === 'up',
+                },
+                {
+                  condition: `${labels.ratioName} 20D 斜率 在 ±0.05%/日 之間`,
+                  result: `${labels.yellowZoneLabel}`,
+                  current: zone === 'flat',
+                },
+                {
+                  condition: `${labels.ratioName} 20D 斜率 ≤ -0.05%/日`,
+                  result: `${labels.redZoneLabel}`,
+                  current: zone === 'down',
+                },
+              ]}
+              note="0.05%/日 ≈ 1%/20D。短期內小於此幅度視為持平,不算結構性轉折。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        (觸發轉態勢的關鍵斜率)
+      </h3>
+      <ul className="flex flex-col gap-1.5">
+        {points.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+          >
+            <span className="text-stone-700">
+              斜率 {p.direction === 'up' ? '升至' : '跌破'}{' '}
+              {p.threshold >= 0 ? '+' : ''}
+              {p.threshold.toFixed(2)}%/日
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
