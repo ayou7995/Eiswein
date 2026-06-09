@@ -107,6 +107,80 @@ def test_market_posture_returns_latest_snapshot(
         }, f"missing/invalid timeframe on {entry['indicator_name']}"
 
 
+def test_market_posture_pros_cons_includes_skew_and_unrate(
+    client: TestClient,
+    test_password: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Phase 5 regression: ``skew`` votes in short posture (not in
+    REGIME_INDICATOR_NAMES), so its DailySignal row would be filtered
+    out of the pros_cons response unless the route's display whitelist
+    lists it explicitly. ``unrate`` votes in mid posture so it rides in
+    via REGIME_INDICATOR_NAMES — both must surface on the dashboard."""
+    _login(client, test_password)
+    today = date(2024, 12, 31)
+
+    with session_factory() as session:
+        MarketSnapshotRepository(session).upsert(
+            build_market_snapshot_row(
+                trade_date=today,
+                posture=MarketPosture.NORMAL,
+                regime_green_count=2,
+                regime_red_count=1,
+                regime_yellow_count=3,
+                indicator_version="1.0.0",
+                computed_at=datetime.now(UTC),
+            )
+        )
+        MarketPostureStreakRepository(session).record_posture(
+            as_of_date=today,
+            posture=MarketPosture.NORMAL,
+            computed_at=datetime.now(UTC),
+        )
+        sig_repo = DailySignalRepository(session)
+        skew_row = result_to_row(
+            "SPY",
+            today,
+            IndicatorResult(
+                name="skew",
+                value=148.0,
+                signal=SignalTone.RED,  # type: ignore[arg-type]
+                data_sufficient=True,
+                short_label="SKEW 走高 148 (機構避險)",
+                detail={"level": 148.0, "threshold_elevated_high": 145.0},
+                computed_at=datetime.now(UTC),
+            ),
+        )
+        unrate_row = result_to_row(
+            "SPY",
+            today,
+            IndicatorResult(
+                name="unrate",
+                value=4.3,
+                signal=SignalTone.GREEN,  # type: ignore[arg-type]
+                data_sufficient=True,
+                short_label="失業率 4.3%, Sahm +0.20 (健康)",
+                detail={"current_rate": 4.3, "sahm_value": 0.20},
+                computed_at=datetime.now(UTC),
+            ),
+        )
+        sig_repo.upsert_many([skew_row, unrate_row])
+        session.commit()
+
+    resp = client.get("/api/v1/market-posture")
+    assert resp.status_code == 200
+    body = resp.json()
+    names = [i["indicator_name"] for i in body["pros_cons"]]
+    assert "skew" in names
+    assert "unrate" in names
+    skew_item = next(i for i in body["pros_cons"] if i["indicator_name"] == "skew")
+    assert skew_item["timeframe"] == "short"
+    assert skew_item["tone"] == "con"
+    unrate_item = next(i for i in body["pros_cons"] if i["indicator_name"] == "unrate")
+    assert unrate_item["timeframe"] == "long"
+    assert unrate_item["tone"] == "pro"
+
+
 def test_market_posture_streak_badge_emitted_at_3_days(
     client: TestClient,
     test_password: str,

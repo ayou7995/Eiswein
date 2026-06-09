@@ -240,6 +240,11 @@ def _load_regime_results(
         "vix_term",
         "rsp_spy",
         "hyg_ief",
+        # ``skew`` votes in the short-term posture (REGIME_SHORT_INDICATOR_NAMES)
+        # not the mid-term, so it doesn't ride in via the union with
+        # REGIME_INDICATOR_NAMES — list it explicitly so its card and chip
+        # render on the dashboard.
+        "skew",
     }
     rows = signals_repo.get_latest_for_symbol(_SPX_SYMBOL)
     results: dict[str, IndicatorResult] = {}
