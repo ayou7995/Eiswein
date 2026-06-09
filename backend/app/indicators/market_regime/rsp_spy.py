@@ -124,20 +124,12 @@ def _percent_slope_per_day(series: pd.Series) -> float:
 def _classify(
     *, slope_pct_per_day: float, slope_20d_pct: float
 ) -> tuple[SignalToneLiteral, str]:
+    suffix = f"RSP/SPY 20D {slope_20d_pct:+.2f}%"
     if slope_pct_per_day >= _SLOPE_GREEN_PCT_PER_DAY:
-        return (
-            SignalTone.GREEN,
-            f"廣度健康 (RSP/SPY 20D {slope_20d_pct:+.2f}%)",
-        )
+        return SignalTone.GREEN, f"{suffix}（廣度健康）"
     if slope_pct_per_day <= _SLOPE_RED_PCT_PER_DAY:
-        return (
-            SignalTone.RED,
-            f"窄漲警示 (RSP/SPY 20D {slope_20d_pct:+.2f}%)",
-        )
-    return (
-        SignalTone.YELLOW,
-        f"廣度持平 (RSP/SPY 20D {slope_20d_pct:+.2f}%)",
-    )
+        return SignalTone.RED, f"{suffix}（窄漲警示）"
+    return SignalTone.YELLOW, f"{suffix}（廣度持平）"
 
 
 def _min_date(a: date | None, b: date | None) -> date | None:

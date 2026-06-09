@@ -97,12 +97,12 @@ def _classify_trend(change: float) -> str:
 
 
 def _classify_level(level: float, trend: str) -> tuple[SignalToneLiteral, str]:
+    _ = trend  # Trend ships in detail; the headline is level + zone only.
     if level <= _NORMAL_HIGH:
-        return SignalTone.GREEN, f"SKEW 正常 {level:.0f}（尾部風險低）"
+        return SignalTone.GREEN, f"SKEW {level:.0f}（尾部風險低）"
     if level < _ELEVATED_HIGH:
-        return SignalTone.YELLOW, f"SKEW 升高 {level:.0f}（尾部風險上升）"
-    emphasis = "走高" if trend == "rising" else "偏高"
-    return SignalTone.RED, f"SKEW {emphasis} {level:.0f}（機構避險）"
+        return SignalTone.YELLOW, f"SKEW {level:.0f}（尾部風險上升）"
+    return SignalTone.RED, f"SKEW {level:.0f}（機構避險）"
 
 
 __all__ = ["NAME", "compute_skew"]

@@ -55,7 +55,10 @@ def compute_spx_ma(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
     if price is None or ma50 is None or ma200 is None:
         return insufficient_result(NAME, data_as_of=data_as_of)
 
-    signal, short_label = _classify(price=price, ma50=ma50, ma200=ma200)
+    price_vs_ma50_pct = ((price - ma50) / ma50) * 100.0
+    signal, short_label = _classify(
+        price=price, ma50=ma50, ma200=ma200, price_vs_ma50_pct=price_vs_ma50_pct
+    )
     golden_cross, death_cross = detect_ma_crosses(ma50_series, ma200_series)
 
     return IndicatorResult(
@@ -68,7 +71,7 @@ def compute_spx_ma(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
             "price": price,
             "ma50": ma50,
             "ma200": ma200,
-            "price_vs_ma50_pct": ((price - ma50) / ma50) * 100.0,
+            "price_vs_ma50_pct": price_vs_ma50_pct,
             "price_vs_ma200_pct": ((price - ma200) / ma200) * 100.0,
             "golden_cross_10d": golden_cross,
             "death_cross_10d": death_cross,
@@ -78,11 +81,14 @@ def compute_spx_ma(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
     )
 
 
-def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLiteral, str]:
+def _classify(
+    *, price: float, ma50: float, ma200: float, price_vs_ma50_pct: float
+) -> tuple[SignalToneLiteral, str]:
+    distance = f"距 50MA {price_vs_ma50_pct:+.2f}%"
     if price > ma50 and price > ma200:
-        return SignalTone.GREEN, "SPX 多頭排列"
+        return SignalTone.GREEN, f"SPX {distance}（多頭排列）"
     # Holding the line on the long-term MA (price at or above 200MA) is not
     # bearish — that's a YELLOW "mixed" signal, not a RED "broken" one.
     if price >= ma200:
-        return SignalTone.YELLOW, "SPX 中期多頭、短期偏弱"
-    return SignalTone.RED, "SPX 空頭趨勢"
+        return SignalTone.YELLOW, f"SPX {distance}（中期多頭、短期偏弱）"
+    return SignalTone.RED, f"SPX {distance}（空頭趨勢）"

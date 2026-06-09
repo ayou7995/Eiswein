@@ -72,7 +72,7 @@ def compute_spx_adx(frame: pd.DataFrame, context: IndicatorContext) -> Indicator
 
     slope = _adx_slope(result.adx, _SLOPE_LOOKBACK)
     direction = "up" if plus_di > minus_di else "down"
-    signal, short_label = _classify(adx_value, slope)
+    signal, short_label = _classify(adx_value, slope, name_prefix="SPX ADX")
 
     return IndicatorResult(
         name=NAME,

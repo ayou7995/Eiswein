@@ -162,6 +162,12 @@ export function UnrateEnhancedDetail({
         />
       </section>
 
+      <TonePill
+        zone={zone}
+        sahmValue={d.sahm_value}
+        sahmDistanceToTrigger={d.sahm_distance_to_trigger}
+      />
+
       <section
         aria-label="失業率現況"
         className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
@@ -186,6 +192,41 @@ export function UnrateEnhancedDetail({
       </section>
       <Watchpoints zone={zone} detail={d} />
     </div>
+  );
+}
+
+function TonePill({
+  zone,
+  sahmValue,
+  sahmDistanceToTrigger,
+}: {
+  zone: UnrateZone;
+  sahmValue: number;
+  sahmDistanceToTrigger: number | undefined;
+}): JSX.Element {
+  const tone =
+    zone === 'recession'
+      ? 'border-signal-red/40 bg-signal-red/10 text-signal-red'
+      : zone === 'warning'
+        ? 'border-amber-400/40 bg-amber-50 text-amber-700'
+        : 'border-signal-green/40 bg-signal-green/10 text-signal-green';
+  const distancePhrase =
+    sahmDistanceToTrigger !== undefined
+      ? `,距 Sahm 觸發 ${sahmDistanceToTrigger >= 0 ? '+' : ''}${sahmDistanceToTrigger.toFixed(2)}`
+      : '';
+  const summary =
+    zone === 'recession'
+      ? `🔴 Sahm Rule 觸發 — 衰退已在發生 (Sahm ${sahmValue >= 0 ? '+' : ''}${sahmValue.toFixed(2)})`
+      : zone === 'warning'
+        ? `🟡 失業率警戒 — 距離 Sahm 觸發 < 0.20${distancePhrase}`
+        : `🟢 失業率穩定 — 無衰退訊號${distancePhrase}`;
+  return (
+    <section
+      aria-label="失業率判讀"
+      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${tone}`}
+    >
+      <span className="font-medium">{summary}</span>
+    </section>
   );
 }
 
@@ -231,7 +272,7 @@ function Watchpoints({
                 },
                 {
                   condition: '🟡 警戒 (0.30 ≤ Sahm < 0.50)',
-                  result: '雙向(降至 0.30 → 健康 / 升至 0.50 → Sahm 觸發)',
+                  result: '雙向(跌至 0.30 → 健康 / 升至 0.50 → Sahm 觸發)',
                   current: zone === 'warning',
                 },
                 {
@@ -246,7 +287,7 @@ function Watchpoints({
         >
           看點
         </Explainable>
-        (觸發轉態勢的關鍵 Sahm 值)
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 Sahm 值）</span>
       </h3>
       <ul className="flex flex-col gap-1.5">
         {points.map((p) => (
@@ -255,7 +296,7 @@ function Watchpoints({
             className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
           >
             <span className="text-stone-700">
-              Sahm {p.direction === 'up' ? '升至' : '降至'} +{p.threshold.toFixed(2)}
+              Sahm {p.direction === 'up' ? '升至' : '跌至'} +{p.threshold.toFixed(2)}
             </span>
             <span className="text-stone-400">→</span>
             <span className="text-stone-700">{p.nextLabel}</span>

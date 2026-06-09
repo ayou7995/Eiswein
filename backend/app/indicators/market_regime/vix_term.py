@@ -101,20 +101,14 @@ def _min_date(a: date | None, b: date | None) -> date | None:
 
 
 def _classify(*, ratio: float, vix: float, vix3m: float) -> tuple[SignalToneLiteral, str]:
+    _ = vix
+    _ = vix3m
+    suffix = f"VIX 期限 {ratio:.2f}"
     if ratio >= _INVERSION_THRESHOLD:
-        return (
-            SignalTone.RED,
-            f"倒掛 (VIX {vix:.1f} ≥ VIX3M {vix3m:.1f})",
-        )
+        return SignalTone.RED, f"{suffix}（倒掛）"
     if ratio < _CONTANGO_THRESHOLD:
-        return (
-            SignalTone.GREEN,
-            f"深度 contango (比 {ratio:.2f})",
-        )
-    return (
-        SignalTone.YELLOW,
-        f"接近平坦 (比 {ratio:.2f})",
-    )
+        return SignalTone.GREEN, f"{suffix}（深度 contango）"
+    return SignalTone.YELLOW, f"{suffix}（接近平坦）"
 
 
 __all__ = ["NAME", "compute_vix_term"]

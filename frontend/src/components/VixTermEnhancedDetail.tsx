@@ -99,7 +99,7 @@ export function VixTermEnhancedDetail({
         className="flex flex-col gap-2 text-xs"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-stone-500">VIX / VIX3M 比 (0.5 - 1.3 顯示範圍)</h3>
+          <h3 className="text-stone-500">VIX / VIX3M 比（0.5 - 1.3 顯示範圍）</h3>
           <span className="text-stone-500">
             <span className="text-[10px] text-stone-400">VIX</span>
             <span className="ml-1 font-mono tabular-nums text-stone-900">
@@ -206,7 +206,7 @@ function Watchpoints({
         >
           看點
         </Explainable>
-        (觸發轉態勢的關鍵比值)
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵比值）</span>
       </h3>
       <ul className="flex flex-col gap-1.5">
         {points.map((p) => (
@@ -247,19 +247,7 @@ function InterpretPanel({
       aria-label="期限結構判讀"
       className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${tone}`}
     >
-      <Explainable
-        title="VIX vs VIX3M 怎麼讀"
-        explanation={
-          <p className="leading-relaxed text-stone-700">
-            VIX 是 30 天隱含波動率,VIX3M 是 3 個月。正常狀態下市場給遠月一個 vol
-            risk premium,所以 VIX3M 通常比 VIX 高 (比 &lt; 1)。當比 ≥ 1 時 =
-            市場「現在」的恐慌已超過「3 個月後」的預期 — 通常是黑天鵝事件,
-            機構大量買 1 個月 put 推升 VIX 所致。
-          </p>
-        }
-      >
-        <span className="font-medium">{label}</span>
-      </Explainable>
+      <span className="font-medium">{label}</span>
     </section>
   );
 }

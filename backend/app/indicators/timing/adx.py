@@ -120,23 +120,27 @@ def _adx_slope(adx: pd.Series, lookback: int) -> float | None:
     return float((cleaned.iloc[-1] - cleaned.iloc[-1 - lookback]) / lookback)
 
 
-def _classify(adx: float, slope: float | None) -> tuple[SignalToneLiteral, str]:
+def _classify(
+    adx: float, slope: float | None, *, name_prefix: str = "ADX"
+) -> tuple[SignalToneLiteral, str]:
     """Return (signal, short_label) per the table in the module docstring.
 
     ADX ≥ 25 with a stable-or-rising slope is GREEN (strong trend in
     play). A meaningfully falling slope while ADX is still ≥ 25 means
     the trend is dissipating — YELLOW. The slope deadband is -0.5 per
     bar so noise-level fluctuation in the smoothing doesn't flip us
-    every refresh."""
+    every refresh.
+
+    ``name_prefix`` lets the SPX ADX indicator label its output as
+    ``"SPX ADX ..."`` while per-ticker stays ``"ADX ..."`` — the rest of
+    the format is identical so the dashboard renders them in the same
+    "[name] [value]（[zone]）" shape.
+    """
     weakening_threshold = -0.5
     if adx >= _TREND_THRESHOLD:
         if slope is not None and slope < weakening_threshold:
-            label = f"趨勢轉弱 (ADX {adx:.0f} ↓)"
-            return SignalTone.YELLOW, label
-        label = f"強趨勢 (ADX {adx:.0f})"
-        return SignalTone.GREEN, label
+            return SignalTone.YELLOW, f"{name_prefix} {adx:.0f}（強趨勢 ↓）"
+        return SignalTone.GREEN, f"{name_prefix} {adx:.0f}（強趨勢）"
     if adx >= _NO_TREND_THRESHOLD:
-        label = f"趨勢未明朗 (ADX {adx:.0f})"
-        return SignalTone.YELLOW, label
-    label = f"盤整中 (ADX {adx:.0f} < 20)"
-    return SignalTone.YELLOW, label
+        return SignalTone.YELLOW, f"{name_prefix} {adx:.0f}（趨勢未明朗）"
+    return SignalTone.YELLOW, f"{name_prefix} {adx:.0f}（盤整）"

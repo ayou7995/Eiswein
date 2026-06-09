@@ -149,7 +149,7 @@ export function RatioEnhancedDetail({
       >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-stone-500">
-            20 日斜率 (% / 日,顯示 ±2% 區間)
+            20 日斜率（% / 日,顯示 ±2% 區間）
           </h3>
           <span className="text-stone-500">
             <span className="text-[10px] text-stone-400">每日</span>
@@ -267,7 +267,7 @@ function Watchpoints({
         >
           看點
         </Explainable>
-        (觸發轉態勢的關鍵斜率)
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵斜率）</span>
       </h3>
       <ul className="flex flex-col gap-1.5">
         {points.map((p) => (
@@ -276,7 +276,7 @@ function Watchpoints({
             className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
           >
             <span className="text-stone-700">
-              斜率 {p.direction === 'up' ? '升至' : '跌破'}{' '}
+              斜率 {p.direction === 'up' ? '突破' : '跌破'}{' '}
               {p.threshold >= 0 ? '+' : ''}
               {p.threshold.toFixed(2)}%/日
             </span>

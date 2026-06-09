@@ -172,8 +172,38 @@ export function SkewEnhancedDetail({
           highlightCurrentZone
         />
       </section>
+      <TonePill zone={zone} level={d.level} />
       <Watchpoints zone={zone} detail={d} />
     </div>
+  );
+}
+
+function TonePill({
+  zone,
+  level,
+}: {
+  zone: SkewZone;
+  level: number;
+}): JSX.Element {
+  const tone =
+    zone === 'high'
+      ? 'border-signal-red/40 bg-signal-red/10 text-signal-red'
+      : zone === 'elevated'
+        ? 'border-amber-400/40 bg-amber-50 text-amber-700'
+        : 'border-signal-green/40 bg-signal-green/10 text-signal-green';
+  const summary =
+    zone === 'high'
+      ? `🔴 機構避險 — OTM put 顯著走貴 (level ${level.toFixed(0)})`
+      : zone === 'elevated'
+        ? `🟡 尾部風險上升 — 機構開始買保險 (level ${level.toFixed(0)})`
+        : `🟢 尾部風險低 — 無顯著機構避險訊號 (level ${level.toFixed(0)})`;
+  return (
+    <section
+      aria-label="SKEW 判讀"
+      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${tone}`}
+    >
+      <span className="font-medium">{summary}</span>
+    </section>
   );
 }
 
@@ -234,7 +264,7 @@ function Watchpoints({
         >
           看點
         </Explainable>
-        (觸發轉態勢的關鍵 SKEW 值)
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 SKEW 值）</span>
       </h3>
       <ul className="flex flex-col gap-1.5">
         {points.map((p) => (

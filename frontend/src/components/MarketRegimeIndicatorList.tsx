@@ -426,8 +426,7 @@ function RegimeChartSection({ name }: RegimeChartSectionProps): JSX.Element {
 
   return (
     <div className="flex flex-col gap-2 px-3 py-3">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-stone-700">{data?.summary_zh ?? ''}</p>
+      <header className="flex flex-wrap items-center justify-end gap-2">
         <IndicatorRangeSelector value={range} onChange={setRange} indicatorLabel={name} />
       </header>
       {isLoading && (

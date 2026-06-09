@@ -100,11 +100,11 @@ def _classify_trend(change: float) -> str:
 
 
 def _classify_level(level: float, trend: str) -> tuple[SignalToneLiteral, str]:
+    _ = trend  # Trend is surfaced in detail; the headline is level + zone only.
     if level < _LOW_THRESHOLD:
-        return SignalTone.YELLOW, f"VIX 偏低 {level:.1f}（自滿警戒）"
+        return SignalTone.YELLOW, f"VIX {level:.1f}（偏低自滿）"
     if level <= _NORMAL_HIGH:
-        return SignalTone.GREEN, f"VIX 正常 {level:.1f}"
+        return SignalTone.GREEN, f"VIX {level:.1f}（正常）"
     if level <= _ELEVATED_HIGH:
-        return SignalTone.YELLOW, f"VIX 警戒 {level:.1f}"
-    emphasis = "走高" if trend == "rising" else "偏高"
-    return SignalTone.RED, f"VIX {emphasis} {level:.1f}（恐慌）"
+        return SignalTone.YELLOW, f"VIX {level:.1f}（警戒）"
+    return SignalTone.RED, f"VIX {level:.1f}（恐慌）"

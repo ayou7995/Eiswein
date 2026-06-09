@@ -46,14 +46,14 @@ def test_skew_normal_level_is_green() -> None:
     result = compute_skew(None, _ctx(_skew_frame(np.full(30, 120.0))))
     assert result.data_sufficient is True
     assert result.signal == SignalTone.GREEN
-    assert "正常" in result.short_label
+    assert "尾部風險低" in result.short_label
 
 
 def test_skew_elevated_level_is_yellow() -> None:
     # Settles at 138 → between 130 and 145 → YELLOW.
     result = compute_skew(None, _ctx(_skew_frame(np.full(30, 138.0))))
     assert result.signal == SignalTone.YELLOW
-    assert "升高" in result.short_label
+    assert "尾部風險上升" in result.short_label
 
 
 def test_skew_high_level_is_red() -> None:

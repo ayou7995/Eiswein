@@ -199,30 +199,64 @@ function DirectionPill({
 }
 
 function Watchpoints({ detail }: { detail: AdxDetail }): JSX.Element {
-  const items: Array<{ trigger: string; outcome: string; tone: 'green' | 'yellow' }> = [
+  const items: Array<{ trigger: string; outcome: string }> = [
     {
       trigger: `ADX 升破 ${detail.trend_threshold}`,
       outcome: '🟢 強趨勢確立,順勢追多/追空',
-      tone: 'green',
     },
     {
       trigger: `ADX 跌破 ${detail.no_trend_threshold}`,
       outcome: '🟡 盤整,切換到均值回歸策略',
-      tone: 'yellow',
     },
   ];
+  const zone =
+    detail.adx >= detail.trend_threshold
+      ? 'strong'
+      : detail.adx >= detail.no_trend_threshold
+        ? 'ambiguous'
+        : 'choppy';
   return (
-    <section
-      aria-label="ADX 看點"
-      className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
-    >
-      <h3 className="text-stone-500">看點 (觸發轉態勢的關鍵閾值)</h3>
-      <ul className="flex flex-col gap-1">
+    <section aria-label="ADX 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="ADX 強弱兩條閾值,雙向都會切換到不同策略框架："
+              rows={[
+                {
+                  condition: '🟢 強趨勢 (ADX ≥ 25)',
+                  result: '只看「跌破 20 → 切均值回歸」',
+                  current: zone === 'strong',
+                },
+                {
+                  condition: '🟡 未明朗 (20 ≤ ADX < 25)',
+                  result: '雙向 (升破 25 → 強趨勢 / 跌破 20 → 盤整)',
+                  current: zone === 'ambiguous',
+                },
+                {
+                  condition: '🟡 盤整 (ADX < 20)',
+                  result: '只看「升破 25 → 強趨勢確立」',
+                  current: zone === 'choppy',
+                },
+              ]}
+              note="閾值 20 / 25 是業界 Wilder ADX 強趨勢/盤整分界。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵閾值）</span>
+      </h3>
+      <ul className="flex flex-col gap-1.5">
         {items.map((it) => (
-          <li key={it.trigger} className="flex items-center gap-2">
-            <span className="font-mono text-stone-700">{it.trigger}</span>
-            <span aria-hidden="true">→</span>
-            <span className="text-stone-800">{it.outcome}</span>
+          <li
+            key={it.trigger}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+          >
+            <span className="text-stone-700">{it.trigger}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{it.outcome}</span>
           </li>
         ))}
       </ul>
