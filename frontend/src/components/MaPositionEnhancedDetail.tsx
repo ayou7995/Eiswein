@@ -99,27 +99,27 @@ const STRETCH_TONE: Record<Stretch, string> = {
 
 const CROSS_STATE_DISPLAY: Record<
   CrossState,
-  { emoji: string; label: string; tone: string }
+  { emoji: string; label: string; pillTone: string }
 > = {
   golden_cross_recent: {
     emoji: '🌟',
     label: '近 10 日黃金交叉（中期多頭起點）',
-    tone: 'text-signal-green',
+    pillTone: 'border-signal-green/40 bg-signal-green/10 text-signal-green',
   },
   death_cross_recent: {
     emoji: '⚠️',
     label: '近 10 日死亡交叉（規則仍可能綠但結構轉弱）',
-    tone: 'text-signal-red',
+    pillTone: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
   },
   golden_cross_established: {
     emoji: '🟢',
     label: '黃金交叉態勢（50MA > 200MA，已成立）',
-    tone: 'text-signal-green',
+    pillTone: 'border-signal-green/40 bg-signal-green/10 text-signal-green',
   },
   death_cross_established: {
     emoji: '🔴',
     label: '死亡交叉態勢（50MA < 200MA，已成立）',
-    tone: 'text-signal-red',
+    pillTone: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
   },
 };
 
@@ -329,7 +329,7 @@ function CrossStateRow({ detail }: { detail: BaseDetail }): JSX.Element {
   return (
     <section
       aria-label="均線交叉態勢"
-      className={`flex items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs ${cross.tone}`}
+      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${cross.pillTone}`}
     >
       <span aria-hidden="true">{cross.emoji}</span>
       <Explainable
