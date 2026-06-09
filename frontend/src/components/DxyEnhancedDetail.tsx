@@ -109,7 +109,67 @@ export function DxyEnhancedDetail({
         windowLabel="20MA 5 日變化"
         interpretations={TREND_INTERPRETATIONS}
       />
+      <Watchpoints detail={d} />
     </div>
+  );
+}
+
+function Watchpoints({ detail }: { detail: DxyDetail }): JSX.Element {
+  const zone: 'rising' | 'falling' | 'mixed' = detail.streak_rising
+    ? 'rising'
+    : detail.streak_falling
+      ? 'falling'
+      : 'mixed';
+  const items: Array<{ trigger: string; nextLabel: string }> =
+    zone === 'mixed'
+      ? [
+          { trigger: 'MA20 連 5 日上升', nextLabel: '🔴 走強確立 (科技股逆風)' },
+          { trigger: 'MA20 連 5 日下降', nextLabel: '🟢 走弱確立 (科技股順風)' },
+        ]
+      : zone === 'rising'
+        ? [{ trigger: 'MA20 streak 中斷 / 反向', nextLabel: '🟡 方向不明' }]
+        : [{ trigger: 'MA20 streak 中斷 / 反向', nextLabel: '🟡 方向不明' }];
+  return (
+    <section aria-label="DXY 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="DXY 趨勢看 20MA 連 5 日同方向 streak —"
+              rows={[
+                {
+                  condition: '🟡 方向不明',
+                  result: '雙向 (連 5 日↑ → 走強 / 連 5 日↓ → 走弱)',
+                  current: zone === 'mixed',
+                },
+                {
+                  condition: '🔴 走強 / 🟢 走弱',
+                  result: '只看「streak 中斷 → 方向不明」',
+                  current: zone === 'rising' || zone === 'falling',
+                },
+              ]}
+              note="5 日是業界 streak 慣例;太短會被雜訊主導,太長會錯過轉折。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 streak）</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {items.map((p) => (
+          <li
+            key={p.trigger}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
+          >
+            <span className="text-stone-700">{p.trigger}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

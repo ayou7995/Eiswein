@@ -99,10 +99,11 @@ def _detect_recent_cross(
 
 
 def _classify(*, cross: str, histogram: float) -> tuple[SignalToneLiteral, str]:
+    prefix = f"MACD hist {histogram:+.2f}"
     if cross == "bullish":
-        return SignalTone.GREEN, "MACD 金叉"
+        return SignalTone.GREEN, f"{prefix}（金叉）"
     if cross == "bearish":
-        return SignalTone.RED, "MACD 死叉"
+        return SignalTone.RED, f"{prefix}（死叉）"
     if histogram > 0:
-        return SignalTone.YELLOW, "MACD 柱狀轉正"
-    return SignalTone.YELLOW, "MACD 柱狀轉負"
+        return SignalTone.YELLOW, f"{prefix}（柱狀轉正）"
+    return SignalTone.YELLOW, f"{prefix}（柱狀轉負）"

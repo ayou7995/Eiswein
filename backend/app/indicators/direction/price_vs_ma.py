@@ -46,7 +46,10 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
     if price is None or ma50 is None or ma200 is None:
         return insufficient_result(NAME, data_as_of=data_as_of)
 
-    signal, short_label = _classify(price=price, ma50=ma50, ma200=ma200)
+    price_vs_ma50_pct = ((price - ma50) / ma50) * 100.0
+    signal, short_label = _classify(
+        price=price, ma50=ma50, ma200=ma200, price_vs_ma50_pct=price_vs_ma50_pct
+    )
     golden_cross, death_cross = detect_ma_crosses(ma50_series, ma200_series)
     return IndicatorResult(
         name=NAME,
@@ -58,7 +61,7 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
             "price": price,
             "ma50": ma50,
             "ma200": ma200,
-            "price_vs_ma50_pct": ((price - ma50) / ma50) * 100.0,
+            "price_vs_ma50_pct": price_vs_ma50_pct,
             "price_vs_ma200_pct": ((price - ma200) / ma200) * 100.0,
             "golden_cross_10d": golden_cross,
             "death_cross_10d": death_cross,
@@ -68,17 +71,20 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
     )
 
 
-def _classify(*, price: float, ma50: float, ma200: float) -> tuple[SignalToneLiteral, str]:
+def _classify(
+    *, price: float, ma50: float, ma200: float, price_vs_ma50_pct: float
+) -> tuple[SignalToneLiteral, str]:
     """Same 3-tier rule as the SPX market regime indicator (C1).
 
-    Labels are intentionally short and parallel to ``spx_ma`` so the
-    per-ticker UI can reuse the same Pros/Cons rendering — the surrounding
+    Labels follow the unified `[name] [value]（[zone]）` shape — the same
+    pattern spx_ma uses, just sans "SPX" prefix because the surrounding
     page context already tells the user this is about an individual stock.
     """
+    distance = f"距 50MA {price_vs_ma50_pct:+.2f}%"
     if price > ma50 and price > ma200:
-        return SignalTone.GREEN, "多頭排列"
+        return SignalTone.GREEN, f"{distance}（多頭排列）"
     # Price at-or-above the long-term MA is holding the line — YELLOW,
     # not RED. RED means strictly below 200MA.
     if price >= ma200:
-        return SignalTone.YELLOW, "中期多頭、短期偏弱"
-    return SignalTone.RED, "空頭趨勢"
+        return SignalTone.YELLOW, f"{distance}（中期多頭、短期偏弱）"
+    return SignalTone.RED, f"{distance}（空頭趨勢）"

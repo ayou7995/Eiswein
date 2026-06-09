@@ -194,17 +194,15 @@ def _classify(
     * YELLOW otherwise (no compression / no recent fire — UI shows
       momentum colour for context but the vote stays neutral)
     """
+    prefix = f"Squeeze 動能 {momentum:+.2f}%"
     if fired_up:
-        label = f"squeeze 向上點火 (動能 +{momentum:.2f}%)"
-        return SignalTone.GREEN, label
+        return SignalTone.GREEN, f"{prefix}（向上點火）"
     if fired_down:
-        label = f"squeeze 向下點火 (動能 {momentum:.2f}%)"
-        return SignalTone.RED, label
+        return SignalTone.RED, f"{prefix}（向下點火）"
     if squeeze_on:
-        label = "squeeze 醞釀中 (等待點火)"
-        return SignalTone.YELLOW, label
+        return SignalTone.YELLOW, f"{prefix}（醞釀中 · 等待點火）"
     direction = "正" if momentum >= 0 else "負"
-    return SignalTone.YELLOW, f"無壓縮 · 動能{direction} ({momentum:+.2f}%)"
+    return SignalTone.YELLOW, f"{prefix}（無壓縮 · 動能{direction}）"
 
 
 __all__ = ["NAME", "compute_ttm_squeeze"]

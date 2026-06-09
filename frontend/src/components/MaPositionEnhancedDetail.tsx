@@ -410,11 +410,11 @@ function Watchpoints({
         </Explainable>
         （觸發轉態勢的關鍵價位）
       </h3>
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-1">
         {points.map((p) => (
           <li
             key={`${p.level}-${p.direction}`}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
           >
             <span className="text-stone-700">
               {p.direction === 'up' ? '站上' : '跌破'} {LEVEL_LABEL[p.level]}

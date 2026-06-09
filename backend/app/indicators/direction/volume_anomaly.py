@@ -87,10 +87,11 @@ def _classify(
     ratio: float,
     direction: float,
 ) -> tuple[SignalToneLiteral, str]:
+    prefix = f"量比 {ratio:.1f}×"
     if not spike:
-        return SignalTone.YELLOW, f"量能正常 ({ratio:.1f}×)"
+        return SignalTone.YELLOW, f"{prefix}（量能正常）"
     if direction > 0:
-        return SignalTone.GREEN, f"放量上漲 ({ratio:.1f}×)"
+        return SignalTone.GREEN, f"{prefix}（放量上漲）"
     if direction < 0:
-        return SignalTone.RED, f"放量下跌 ({ratio:.1f}×)"
-    return SignalTone.YELLOW, f"放量但方向不明 ({ratio:.1f}×)"
+        return SignalTone.RED, f"{prefix}（放量下跌）"
+    return SignalTone.YELLOW, f"{prefix}（放量但方向不明）"

@@ -91,8 +91,9 @@ def _cumulative_return(close: pd.Series) -> float | None:
 
 def _classify(diff: float) -> tuple[SignalToneLiteral, str]:
     pct = diff * 100.0
+    prefix = f"相對大盤 {pct:+.1f}%"
     if diff > _STRONG_THRESHOLD:
-        return SignalTone.GREEN, f"相對大盤強 {pct:+.1f}%"
+        return SignalTone.GREEN, f"{prefix}（強）"
     if diff < -_STRONG_THRESHOLD:
-        return SignalTone.RED, f"相對大盤弱 {pct:+.1f}%"
-    return SignalTone.YELLOW, f"相對大盤持平 {pct:+.1f}%"
+        return SignalTone.RED, f"{prefix}（弱）"
+    return SignalTone.YELLOW, f"{prefix}（持平）"

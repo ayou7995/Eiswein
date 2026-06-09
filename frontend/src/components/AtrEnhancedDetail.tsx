@@ -107,7 +107,7 @@ export function AtrEnhancedDetail({
     <div className="flex flex-col gap-3 px-3 py-3 text-sm">
       <section aria-label="ATR % 位置條" className="flex flex-col gap-2 text-xs">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-stone-500">ATR 占收盤價百分比 (0-6%+)</h3>
+          <h3 className="text-stone-500">ATR 占收盤價百分比（0-6%+）</h3>
           <span className="text-stone-500">
             <span className="text-[10px] text-stone-400">ATR</span>
             <span className="ml-1 font-mono tabular-nums text-stone-900">
@@ -132,7 +132,74 @@ export function AtrEnhancedDetail({
 
       <TodayPill todayTr={d.today_tr} todayVsAtr={d.today_vs_atr} />
       <StopHint atr={d.atr} close={d.close} />
+      <Watchpoints atrPct={d.atr_pct} />
     </div>
+  );
+}
+
+function Watchpoints({ atrPct }: { atrPct: number }): JSX.Element {
+  const zone: 'calm' | 'normal_up' | 'elevated' =
+    atrPct >= 4 ? 'elevated' : atrPct >= 2 ? 'normal_up' : 'calm';
+  const items: Array<{ direction: 'up' | 'down'; threshold: number; nextLabel: string }> =
+    zone === 'calm'
+      ? [{ direction: 'up', threshold: 2, nextLabel: '🟡 波動正常偏上' }]
+      : zone === 'normal_up'
+        ? [
+            { direction: 'down', threshold: 2, nextLabel: '🟢 波動平靜' },
+            { direction: 'up', threshold: 4, nextLabel: '🔴 波動偏高 (部位減半)' },
+          ]
+        : [
+            { direction: 'down', threshold: 4, nextLabel: '🟡 波動正常偏上' },
+            { direction: 'down', threshold: 2, nextLabel: '🟢 波動平靜' },
+          ];
+  return (
+    <section aria-label="ATR 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="ATR% 兩條閾值決定部位大小框架："
+              rows={[
+                {
+                  condition: '🟢 波動平靜 (ATR% < 2%)',
+                  result: '只看「升至 2% → 波動正常偏上」',
+                  current: zone === 'calm',
+                },
+                {
+                  condition: '🟡 波動正常偏上 (2% ≤ ATR% < 4%)',
+                  result: '雙向 (跌至 2% → 平靜 / 升至 4% → 偏高,部位減半)',
+                  current: zone === 'normal_up',
+                },
+                {
+                  condition: '🔴 波動偏高 (ATR% ≥ 4%)',
+                  result: '兩條皆為「恢復條件」',
+                  current: zone === 'elevated',
+                },
+              ]}
+              note="2% / 4% 是業界波動分區慣例;個股 volatility 較高可能需要再上調。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 ATR%）</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {items.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
+          >
+            <span className="text-stone-700">
+              ATR% {p.direction === 'up' ? '升至' : '跌至'} {p.threshold.toFixed(0)}%
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -189,7 +256,7 @@ function StopHint({ atr, close }: { atr: number; close: number }): JSX.Element {
       aria-label="停損距離參考"
       className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
     >
-      <h3 className="text-stone-500">停損距離參考(2 ATR)</h3>
+      <h3 className="text-stone-500">停損距離參考（2 ATR）</h3>
       <p className="text-stone-700">
         若以 <span className="font-mono">close − 2 × ATR</span> 為停損 →{' '}
         <span className="font-mono text-stone-900">${stop.toFixed(2)}</span>{' '}

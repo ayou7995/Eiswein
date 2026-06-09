@@ -104,7 +104,99 @@ export function ChoEnhancedDetail({
         rising={rising}
       />
       <SlopeContext detail={d} />
+      <Watchpoints detail={d} />
     </div>
+  );
+}
+
+function Watchpoints({
+  detail,
+}: {
+  detail: z.infer<typeof choDetailSchema>;
+}): JSX.Element {
+  const zone: 'positive' | 'near_zero' | 'negative' =
+    Math.abs(detail.cho) < detail.flat_threshold
+      ? 'near_zero'
+      : detail.cho > 0
+        ? 'positive'
+        : 'negative';
+  const items: Array<{ direction: 'up' | 'down'; threshold: string; nextLabel: string }> =
+    zone === 'near_zero'
+      ? [
+          {
+            direction: 'up',
+            threshold: `+${formatCho(detail.flat_threshold)}`,
+            nextLabel: '🟢/🟡 買盤確立',
+          },
+          {
+            direction: 'down',
+            threshold: `−${formatCho(detail.flat_threshold)}`,
+            nextLabel: '🔴/🟡 賣盤確立',
+          },
+        ]
+      : zone === 'positive'
+        ? [
+            {
+              direction: 'down',
+              threshold: '0',
+              nextLabel: '🔴 賣盤確立 (零線跌破)',
+            },
+          ]
+        : [
+            {
+              direction: 'up',
+              threshold: '0',
+              nextLabel: '🟢 買盤確立 (零線突破)',
+            },
+          ];
+  return (
+    <section aria-label="CHO 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="CHO 零線是買/賣盤分界。Flat 區間(±flat_threshold)是「大戶觀望」中性區："
+              rows={[
+                {
+                  condition: '⚪ 接近零線',
+                  result: '雙向 (升至 +flat → 買盤 / 跌至 -flat → 賣盤)',
+                  current: zone === 'near_zero',
+                },
+                {
+                  condition: '🟢 CHO > 0',
+                  result: '只看「跌破 0 → 賣盤確立」',
+                  current: zone === 'positive',
+                },
+                {
+                  condition: '🔴 CHO < 0',
+                  result: '只看「突破 0 → 買盤確立」',
+                  current: zone === 'negative',
+                },
+              ]}
+              note="flat_threshold 隨成交量規模自動調整,跨市值股票仍可比較。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 CHO 值）</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {items.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
+          >
+            <span className="text-stone-700">
+              CHO {p.direction === 'up' ? '突破' : '跌破'} {p.threshold}
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

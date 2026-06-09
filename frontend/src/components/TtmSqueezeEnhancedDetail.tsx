@@ -113,7 +113,7 @@ export function TtmSqueezeEnhancedDetail({
         className="flex flex-col gap-2 text-xs"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-stone-500">動能 (% of close per bar, ±5%)</h3>
+          <h3 className="text-stone-500">動能（% of close per bar, ±5%）</h3>
           <span className="text-stone-500">
             <span className="text-[10px] text-stone-400">動能</span>
             <span className="ml-1 font-mono tabular-nums text-stone-900">
@@ -137,7 +137,80 @@ export function TtmSqueezeEnhancedDetail({
 
       <SqueezeStatePill detail={d} />
       <BandsTable detail={d} />
+      <Watchpoints detail={d} />
     </div>
+  );
+}
+
+function Watchpoints({
+  detail,
+}: {
+  detail: z.infer<typeof ttmDetailSchema>;
+}): JSX.Element {
+  const zone: 'fired_up' | 'fired_down' | 'loaded' | 'idle' = detail.fired_up
+    ? 'fired_up'
+    : detail.fired_down
+      ? 'fired_down'
+      : detail.squeeze_on
+        ? 'loaded'
+        : 'idle';
+  const items: Array<{ trigger: string; nextLabel: string }> =
+    zone === 'idle'
+      ? [{ trigger: 'BB 寬 < KC 寬 持續 6 根日', nextLabel: '🟡 squeeze 醞釀中' }]
+      : zone === 'loaded'
+        ? [
+            { trigger: '動能轉正 + BB 突破 KC', nextLabel: '🟢 向上點火 (順向追多)' },
+            { trigger: '動能轉負 + BB 突破 KC', nextLabel: '🔴 向下點火 (順向追空)' },
+          ]
+        : zone === 'fired_up'
+          ? [{ trigger: '動能轉負 / BB 再次縮回 KC', nextLabel: '🟡 再壓縮 (等下次點火)' }]
+          : [{ trigger: '動能轉正 / BB 再次縮回 KC', nextLabel: '🟡 再壓縮 (等下次點火)' }];
+  return (
+    <section aria-label="Squeeze 看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="TTM Squeeze 是狀態機:壓縮 → 點火 → 再壓縮 循環。"
+              rows={[
+                {
+                  condition: '⚪ 無壓縮 / 待醞釀',
+                  result: '只看「BB 寬 < KC 寬 持續 6 根日 → 醞釀」',
+                  current: zone === 'idle',
+                },
+                {
+                  condition: '🟡 squeeze 醞釀中',
+                  result: '雙向 (動能轉正 → 向上點火 / 動能轉負 → 向下點火)',
+                  current: zone === 'loaded',
+                },
+                {
+                  condition: '🟢/🔴 點火中',
+                  result: '只看「動能反向 / 再壓縮」',
+                  current: zone === 'fired_up' || zone === 'fired_down',
+                },
+              ]}
+              note="點火後的延續通常 6-10 根日;再壓縮代表能量重新累積,等下次點火。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵狀態）</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {items.map((p) => (
+          <li
+            key={p.trigger}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
+          >
+            <span className="text-stone-700">{p.trigger}</span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -188,7 +261,7 @@ function BandsTable({
       aria-label="壓縮率"
       className="flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs"
     >
-      <h3 className="text-stone-500">壓縮率 (BB 寬 / KC 寬)</h3>
+      <h3 className="text-stone-500">壓縮率（BB 寬 / KC 寬）</h3>
       <p className="text-stone-700">
         <span className="font-mono text-stone-900">{compressionPct.toFixed(0)}%</span>{' '}
         — 100% 以下代表布林通道完全縮在 Keltner 之內 (squeeze ON)。

@@ -253,14 +253,14 @@ function describeWeekly(
     return {
       emoji: '🟡',
       label: `週 RSI ${weekly.toFixed(1)} 未跟進日線超買，可能是短線雜訊`,
-      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
+      tone: 'border-amber-400/40 bg-amber-50 text-amber-700',
     };
   }
   if (daily < 30) {
     return {
       emoji: '🟡',
       label: `週 RSI ${weekly.toFixed(1)} 未跟進日線超賣，可能是短線雜訊`,
-      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
+      tone: 'border-amber-400/40 bg-amber-50 text-amber-700',
     };
   }
   return {

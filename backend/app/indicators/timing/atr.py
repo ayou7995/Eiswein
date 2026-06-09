@@ -103,15 +103,13 @@ def _classify(*, atr_pct: float, today_vs_atr: float | None) -> tuple[SignalTone
     down" — not "sell". The UI surfaces this as 「波動偏高」, never as
     a sell instruction."""
     unusual = today_vs_atr is not None and today_vs_atr >= 1.5
+    prefix = f"ATR {atr_pct:.1f}%"
 
     if atr_pct >= _ELEVATED_THRESHOLD_PCT:
-        suffix = "今日異常" if unusual else ""
-        label = f"波動偏高 ({atr_pct:.1f}%){suffix}"
-        return SignalTone.RED, label
+        zone = "波動偏高 · 今日異常" if unusual else "波動偏高"
+        return SignalTone.RED, f"{prefix}（{zone}）"
     if atr_pct >= _CALM_THRESHOLD_PCT:
-        suffix = " · 今日大震" if unusual else ""
-        label = f"波動正常偏上 ({atr_pct:.1f}%){suffix}"
-        return SignalTone.YELLOW, label
-    suffix = " · 今日異常震" if unusual else ""
-    label = f"波動平靜 ({atr_pct:.1f}%){suffix}"
-    return SignalTone.GREEN, label
+        zone = "波動正常偏上 · 今日大震" if unusual else "波動正常偏上"
+        return SignalTone.YELLOW, f"{prefix}（{zone}）"
+    zone = "波動平靜 · 今日異常震" if unusual else "波動平靜"
+    return SignalTone.GREEN, f"{prefix}（{zone}）"

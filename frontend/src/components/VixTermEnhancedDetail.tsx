@@ -208,11 +208,11 @@ function Watchpoints({
         </Explainable>
         <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵比值）</span>
       </h3>
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-1">
         {points.map((p) => (
           <li
             key={`${p.direction}-${p.threshold}`}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
           >
             <span className="text-stone-700">
               比 {p.direction === 'up' ? '突破' : '跌破'} {p.threshold.toFixed(2)}

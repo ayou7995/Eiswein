@@ -78,12 +78,13 @@ def compute_rsi(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
 
 
 def _classify(*, daily: float, weekly: float | None) -> tuple[SignalToneLiteral, str]:
+    prefix = f"RSI {daily:.0f}"
     if weekly is not None and daily > 70 and weekly > 70:
-        return SignalTone.RED, f"RSI 超買 {daily:.0f}（週線確認）"
+        return SignalTone.RED, f"{prefix}（超買 · 週線確認）"
     if weekly is not None and daily < 30 and weekly < 30:
-        return SignalTone.GREEN, f"RSI 超賣 {daily:.0f}（週線確認）"
+        return SignalTone.GREEN, f"{prefix}（超賣 · 週線確認）"
     if daily > 70:
-        return SignalTone.YELLOW, f"RSI 短線超買 {daily:.0f}"
+        return SignalTone.YELLOW, f"{prefix}（短線超買）"
     if daily < 30:
-        return SignalTone.YELLOW, f"RSI 短線超賣 {daily:.0f}"
-    return SignalTone.YELLOW, f"RSI 中性 {daily:.0f}"
+        return SignalTone.YELLOW, f"{prefix}（短線超賣）"
+    return SignalTone.YELLOW, f"{prefix}（中性）"

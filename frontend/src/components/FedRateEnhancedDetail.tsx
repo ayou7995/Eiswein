@@ -112,7 +112,71 @@ export function FedRateEnhancedDetail({
         interpretations={TREND_INTERPRETATIONS}
       />
       <LastFedActionSection currentRate={d.current} />
+      <Watchpoints detail={d} />
     </div>
+  );
+}
+
+function Watchpoints({ detail }: { detail: FedDetail }): JSX.Element {
+  const signal = classifySignal(detail);
+  const items: Array<{ direction: 'up' | 'down'; threshold: number; nextLabel: string }> =
+    signal === 'holding'
+      ? [
+          { direction: 'down', threshold: -HIKE_THRESHOLD, nextLabel: '🟢 降息中' },
+          { direction: 'up', threshold: HIKE_THRESHOLD, nextLabel: '🔴 升息中' },
+        ]
+      : signal === 'cutting'
+        ? [{ direction: 'up', threshold: -HIKE_THRESHOLD, nextLabel: '🟡 持平 (Fed 觀望)' }]
+        : [{ direction: 'down', threshold: HIKE_THRESHOLD, nextLabel: '🟡 持平 (Fed 觀望)' }];
+  return (
+    <section aria-label="Fed 利率看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="Fed 30 日 Δ 跨 ±0.25% 為政策週期切換點："
+              rows={[
+                {
+                  condition: '🟢 降息中 (Δ < -0.25)',
+                  result: '只看「Δ 回到 -0.25 以上 → 持平 (Fed 觀望)」',
+                  current: signal === 'cutting',
+                },
+                {
+                  condition: '🟡 持平 (|Δ| ≤ 0.25)',
+                  result: '雙向 (Δ ≤ -0.25 → 降息 / Δ ≥ +0.25 → 升息)',
+                  current: signal === 'holding',
+                },
+                {
+                  condition: '🔴 升息中 (Δ > +0.25)',
+                  result: '只看「Δ 回到 +0.25 以下 → 持平 (Fed 觀望)」',
+                  current: signal === 'hiking',
+                },
+              ]}
+              note="0.25% = 一次標準的 FOMC 升降息步幅。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 30 日 Δ）</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {items.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
+          >
+            <span className="text-stone-700">
+              30 日 Δ {p.direction === 'up' ? '突破' : '跌至'} {p.threshold >= 0 ? '+' : ''}
+              {p.threshold.toFixed(2)}
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -223,7 +287,7 @@ function describeLastAction(action: FedActionData): {
       label: `最近一次 ${dirLabel}：${action.last_change_date}（${days} 天前${isRecent ? '，週期啟動初期' : '，已進入暫停期'}）`,
       tone: isRecent
         ? 'border-signal-green/40 bg-signal-green/10 text-signal-green'
-        : 'border-amber-300 bg-amber-400/10 text-amber-700',
+        : 'border-amber-400/40 bg-amber-50 text-amber-700',
     };
   }
   return {
@@ -231,7 +295,7 @@ function describeLastAction(action: FedActionData): {
     label: `最近一次 ${dirLabel}：${action.last_change_date}（${days} 天前${isRecent ? '，週期啟動初期' : '，已進入暫停期'}）`,
     tone: isRecent
       ? 'border-signal-red/40 bg-signal-red/10 text-signal-red'
-      : 'border-amber-300 bg-amber-400/10 text-amber-700',
+      : 'border-amber-400/40 bg-amber-50 text-amber-700',
   };
 }
 

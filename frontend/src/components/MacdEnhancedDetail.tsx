@@ -32,8 +32,8 @@ const SUB_STATE_LABEL: Record<MacdSubState, string> = {
 const SUB_STATE_TONE: Record<MacdSubState, string> = {
   cross_up: 'border-signal-green/40 bg-signal-green/10 text-signal-green',
   cross_down: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
-  momentum_positive: 'border-amber-300 bg-amber-400/10 text-amber-700',
-  momentum_negative: 'border-amber-300 bg-amber-400/10 text-amber-700',
+  momentum_positive: 'border-amber-400/40 bg-amber-50 text-amber-700',
+  momentum_negative: 'border-amber-400/40 bg-amber-50 text-amber-700',
 };
 
 export interface MacdHeadlineLabels {
@@ -221,7 +221,7 @@ function Watchpoints({ subState }: { subState: MacdSubState }): JSX.Element {
         >
           看點
         </Explainable>
-        <span className="ml-1 text-stone-400">（histogram 動態）</span>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵 histogram 動態）</span>
       </h3>
       <ul className="flex flex-col gap-1">
         {points.map((p) => (

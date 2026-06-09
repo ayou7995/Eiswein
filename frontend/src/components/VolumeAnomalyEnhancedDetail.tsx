@@ -112,7 +112,59 @@ export function VolumeAnomalyEnhancedDetail({
     <div className="flex flex-col gap-3 px-3 py-3 text-sm">
       <RatioSection detail={d} />
       <DirectionBadge detail={d} />
+      <Watchpoints detail={d} />
     </div>
+  );
+}
+
+function Watchpoints({ detail: d }: { detail: VolumeDetail }): JSX.Element {
+  const items: Array<{ direction: 'up' | 'down'; threshold: number; nextLabel: string }> =
+    d.spike
+      ? [{ direction: 'down', threshold: SPIKE_THRESHOLD, nextLabel: '🟡 量能正常' }]
+      : [{ direction: 'up', threshold: SPIKE_THRESHOLD, nextLabel: '🟢/🔴 放量 (看當日漲跌)' }];
+  return (
+    <section aria-label="量能看點" className="flex flex-col gap-2 text-xs">
+      <h3 className="text-stone-500">
+        <Explainable
+          title="看點生成規則"
+          explanation={
+            <RuleTable
+              preface="量比閾值 2× (O'Neil 派標準) 是「放量」分界線："
+              rows={[
+                {
+                  condition: '🟡 量能正常 (ratio < 2)',
+                  result: '只看「量比升至 2× → 放量 (機構介入)」',
+                  current: !d.spike,
+                },
+                {
+                  condition: '🟢/🔴 放量 (ratio ≥ 2)',
+                  result: '只看「量比跌至 2× → 量能正常」(機構撤離)',
+                  current: d.spike,
+                },
+              ]}
+              note="O'Neil 認為「機構動倉必伴隨量擴」,所以 2× 是判讀大資金進出的最簡單閾值。"
+            />
+          }
+        >
+          看點
+        </Explainable>
+        <span className="ml-1 text-stone-400">（觸發轉態勢的關鍵量比）</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {items.map((p) => (
+          <li
+            key={`${p.direction}-${p.threshold}`}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 py-1"
+          >
+            <span className="text-stone-700">
+              量比 {p.direction === 'up' ? '升至' : '跌至'} {p.threshold.toFixed(1)}×
+            </span>
+            <span className="text-stone-400">→</span>
+            <span className="text-stone-700">{p.nextLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -221,7 +273,7 @@ function describeDirection(d: VolumeDetail): {
     return {
       emoji: '🟡',
       label: `今日收平（放量但方向不明）`,
-      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
+      tone: 'border-amber-400/40 bg-amber-50 text-amber-700',
     };
   }
   if (change > 0) {

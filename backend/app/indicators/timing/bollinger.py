@@ -48,9 +48,11 @@ def compute_bollinger(frame: pd.DataFrame, context: IndicatorContext) -> Indicat
     if upper is None or middle is None or lower is None or price is None:
         return insufficient_result(NAME, data_as_of=data_as_of)
 
-    signal, short_label = _classify(price=price, upper=upper, lower=lower, middle=middle)
     band_width = upper - lower if upper > lower else 0.0
     position = ((price - lower) / band_width) if band_width > 0 else 0.5
+    signal, short_label = _classify(
+        price=price, upper=upper, lower=lower, middle=middle, position=position
+    )
 
     return IndicatorResult(
         name=NAME,
@@ -77,11 +79,13 @@ def _classify(
     upper: float,
     lower: float,
     middle: float,
+    position: float,
 ) -> tuple[SignalToneLiteral, str]:
+    prefix = f"BB {position:.2f}"
     if price > upper:
-        return SignalTone.RED, "布林帶上緣超買"
+        return SignalTone.RED, f"{prefix}（上緣超買）"
     if price < lower:
-        return SignalTone.GREEN, "布林帶下緣超賣"
+        return SignalTone.GREEN, f"{prefix}（下緣超賣）"
     if price >= middle:
-        return SignalTone.YELLOW, "布林帶中軌上方"
-    return SignalTone.YELLOW, "布林帶中軌下方"
+        return SignalTone.YELLOW, f"{prefix}（中軌上方）"
+    return SignalTone.YELLOW, f"{prefix}（中軌下方）"

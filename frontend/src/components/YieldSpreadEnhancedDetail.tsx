@@ -228,7 +228,7 @@ function describeInversion(status: InversionStatus): {
     return {
       emoji: '🟡',
       label: `倒掛結束後 ${days} 天（最近一次：${since}）— 衰退風險窗口`,
-      tone: 'border-amber-300 bg-amber-400/10 text-amber-700',
+      tone: 'border-amber-400/40 bg-amber-50 text-amber-700',
     };
   }
   return {

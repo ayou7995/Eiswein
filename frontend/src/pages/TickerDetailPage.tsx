@@ -777,8 +777,7 @@ function IndicatorChartSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-stone-600">{query.data?.summary_zh ?? ''}</p>
+      <header className="flex flex-wrap items-center justify-end gap-2">
         <IndicatorRangeSelector
           value={range}
           onChange={setRange}
@@ -821,8 +820,7 @@ function MacroChartSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-stone-600">{query.data?.summary_zh ?? ''}</p>
+      <header className="flex flex-wrap items-center justify-end gap-2">
         <IndicatorRangeSelector
           value={range}
           onChange={setRange}

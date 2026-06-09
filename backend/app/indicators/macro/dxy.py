@@ -60,7 +60,10 @@ def compute_dxy(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     rising_streak = bool((diffs > 0).all())
     falling_streak = bool((diffs < 0).all())
 
-    signal, short_label = _classify(rising=rising_streak, falling=falling_streak)
+    ma20_change_5d = float(tail.iloc[-1] - tail.iloc[0])
+    signal, short_label = _classify(
+        rising=rising_streak, falling=falling_streak, ma20_change_5d=ma20_change_5d
+    )
 
     return IndicatorResult(
         name=NAME,
@@ -73,16 +76,19 @@ def compute_dxy(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
             "streak_rising": rising_streak,
             "streak_falling": falling_streak,
             "streak_days": _STREAK,
-            "ma20_change_last_5d": float(tail.iloc[-1] - tail.iloc[0]),
+            "ma20_change_last_5d": ma20_change_5d,
         },
         computed_at=datetime.now(UTC),
         data_as_of=data_as_of,
     )
 
 
-def _classify(*, rising: bool, falling: bool) -> tuple[SignalToneLiteral, str]:
+def _classify(
+    *, rising: bool, falling: bool, ma20_change_5d: float
+) -> tuple[SignalToneLiteral, str]:
+    prefix = f"DXY MA20 Δ5d {ma20_change_5d:+.2f}"
     if rising:
-        return SignalTone.RED, "DXY 走強（科技股逆風）"
+        return SignalTone.RED, f"{prefix}（走強 · 科技股逆風）"
     if falling:
-        return SignalTone.GREEN, "DXY 走弱（科技股順風）"
-    return SignalTone.YELLOW, "DXY 方向不明"
+        return SignalTone.GREEN, f"{prefix}（走弱 · 科技股順風）"
+    return SignalTone.YELLOW, f"{prefix}（方向不明）"

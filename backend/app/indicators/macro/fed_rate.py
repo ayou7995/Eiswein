@@ -77,8 +77,9 @@ def compute_fed_rate(frame: pd.DataFrame, context: IndicatorContext) -> Indicato
 
 
 def _classify(*, current: float, delta: float) -> tuple[SignalToneLiteral, str]:
+    prefix = f"Fed 利率 {current:.2f}% Δ{delta:+.2f}"
     if delta < _CUT_THRESHOLD:
-        return SignalTone.GREEN, f"Fed 降息中（{current:.2f}%，Δ{delta:+.2f}）"
+        return SignalTone.GREEN, f"{prefix}（降息中）"
     if delta > _HIKE_THRESHOLD:
-        return SignalTone.RED, f"Fed 升息中（{current:.2f}%，Δ{delta:+.2f}）"
-    return SignalTone.YELLOW, f"Fed 利率持平（{current:.2f}%）"
+        return SignalTone.RED, f"{prefix}（升息中）"
+    return SignalTone.YELLOW, f"{prefix}（持平）"

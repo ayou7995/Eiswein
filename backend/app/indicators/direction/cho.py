@@ -157,15 +157,15 @@ def _classify(
     cho_label = _format_magnitude(cho)
 
     if near_zero:
-        return SignalTone.YELLOW, f"CHO 接近零線 ({cho_label})"
+        return SignalTone.YELLOW, f"CHO {cho_label}（接近零線）"
     if cho > 0 and rising:
-        return SignalTone.GREEN, f"買盤加速 (CHO {cho_label} ↑)"
+        return SignalTone.GREEN, f"CHO {cho_label} ↑（買盤加速）"
     if cho < 0 and falling:
-        return SignalTone.RED, f"賣盤加速 (CHO {cho_label} ↓)"
+        return SignalTone.RED, f"CHO {cho_label} ↓（賣盤加速）"
     # Positive but slowing OR negative but slowing — momentum dissipating.
     arrow = "↓" if slope is not None and slope < 0 else "↑"
     side = "買盤" if cho > 0 else "賣盤"
-    return SignalTone.YELLOW, f"{side}減速 (CHO {cho_label} {arrow})"
+    return SignalTone.YELLOW, f"CHO {cho_label} {arrow}（{side}減速）"
 
 
 def _format_magnitude(value: float) -> str:
