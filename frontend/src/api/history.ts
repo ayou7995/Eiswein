@@ -35,6 +35,12 @@ export const accuracyBucketSchema = z.object({
   total: z.number().int().nonnegative(),
   correct: z.number().int().nonnegative(),
   accuracy_pct: z.number(),
+  // Phase 6 magnitude-weighted: avg % return per signal if you traded
+  // the implied position (long on BUY, short on SELL, cash on FLAT).
+  // Older snapshots default to 0.
+  avg_return_pct: z.number().default(0),
+  baseline_avg_return_pct: z.number().default(0),
+  delta_vs_baseline: z.number().default(0),
 });
 export type AccuracyBucket = z.infer<typeof accuracyBucketSchema>;
 

@@ -447,7 +447,13 @@ export function SignalAccuracySection({
                       準確率 ±95% CI
                     </th>
                     <th scope="col" className="px-3 py-2 text-right">
-                      vs SPY baseline
+                      vs SPY 命中
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-right">
+                      平均 % 報酬
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-right">
+                      vs SPY 報酬
                     </th>
                   </tr>
                 </thead>
@@ -523,6 +529,36 @@ export function SignalAccuracySection({
                               {delta.toFixed(1)}%
                             </>
                           )}
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-mono ${
+                            insufficient
+                              ? 'text-stone-400'
+                              : bucket.avg_return_pct > 0
+                                ? 'text-emerald-700'
+                                : bucket.avg_return_pct < 0
+                                  ? 'text-rose-700'
+                                  : 'text-stone-500'
+                          }`}
+                        >
+                          {insufficient
+                            ? '—'
+                            : `${bucket.avg_return_pct >= 0 ? '+' : ''}${bucket.avg_return_pct.toFixed(2)}%`}
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-mono ${
+                            insufficient
+                              ? 'text-stone-300'
+                              : bucket.delta_vs_baseline > 0
+                                ? 'text-emerald-700'
+                                : bucket.delta_vs_baseline < 0
+                                  ? 'text-rose-700'
+                                  : 'text-stone-500'
+                          }`}
+                        >
+                          {insufficient
+                            ? '—'
+                            : `${bucket.delta_vs_baseline >= 0 ? '+' : ''}${bucket.delta_vs_baseline.toFixed(2)}%`}
                         </td>
                       </tr>
                     );

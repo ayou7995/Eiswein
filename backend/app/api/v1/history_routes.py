@@ -229,6 +229,15 @@ class AccuracyBucket(BaseModel):
     total: int
     correct: int
     accuracy_pct: float
+    # Phase 6 (2026-06) magnitude-weighted accuracy. ``avg_return_pct`` is
+    # the average forward % return earned if you followed every signal in
+    # this bucket: long on BUY, short on SELL, cash (0%) on HOLD/WATCH.
+    # ``baseline_avg_return_pct`` is the matched SPY return over the same
+    # dates (long for BUY rows, short for SELL rows, 0 for FLAT rows).
+    # ``delta_vs_baseline`` is the alpha vs that baseline.
+    avg_return_pct: float = 0.0
+    baseline_avg_return_pct: float = 0.0
+    delta_vs_baseline: float = 0.0
 
 
 class SignalAccuracyBaseline(BaseModel):
@@ -274,13 +283,40 @@ class SignalAccuracyResponse(BaseModel):
 class _AccuracyEval:
     total: int
     correct: int
+    # Sum of per-signal % returns under the "follow the signal" trade rule
+    # (long on BUY, short on SELL, cash on FLAT). Divided by ``total`` to
+    # get the per-signal average return. Stored as a sum rather than a
+    # running average so per-bucket aggregation stays exact.
+    return_sum_pct: float = 0.0
+    spy_return_sum_pct: float = 0.0
 
     @property
     def pct(self) -> float:
         return round(100.0 * self.correct / self.total, 2) if self.total else 0.0
 
+    @property
+    def avg_return_pct(self) -> float:
+        return round(self.return_sum_pct / self.total, 3) if self.total else 0.0
+
+    @property
+    def spy_avg_return_pct(self) -> float:
+        return round(self.spy_return_sum_pct / self.total, 3) if self.total else 0.0
+
 
 _MoveClass = Literal["up", "down", "flat"]
+
+
+def _signal_return(expected: _MoveClass, start: Decimal, forward: Decimal) -> float:
+    """% return earned by trading the implied position.
+
+    BUY (expected="up"): long, P&L = (forward - start) / start
+    SELL (expected="down"): short, P&L = (start - forward) / start
+    FLAT (expected="flat"): cash, P&L = 0
+    """
+    if expected == "flat" or start <= 0:
+        return 0.0
+    raw = float((forward - start) / start * 100)
+    return raw if expected == "up" else -raw
 
 
 def _classify_move(start: Decimal, forward: Decimal) -> _MoveClass:
@@ -317,28 +353,37 @@ def _expected_move(action: ActionCategory) -> _MoveClass | None:
     return None
 
 
+@dataclass
+class _ActionRunning:
+    total: int = 0
+    correct: int = 0
+    return_sum_pct: float = 0.0
+    spy_return_sum_pct: float = 0.0
+
+
 def _eval_accuracy(
     *,
     snapshots: list[TickerSnapshot],
     price_by_date: dict[date, Decimal],
     horizon_days: int,
+    spy_price_by_date: dict[date, Decimal] | None = None,
 ) -> tuple[_AccuracyEval, dict[str, _AccuracyEval]]:
-    """Evaluate accuracy of directional calls against forward returns.
+    """Evaluate accuracy + magnitude-weighted returns against forward prices.
 
-    Uses the 3-class :func:`_classify_move` tagging:
+    3-class direction grading via :func:`_classify_move`. The same loop
+    additionally accumulates the per-signal % return assuming you traded
+    the implied position (long on BUY, short on SELL, cash on FLAT), plus
+    the matched SPY return over the same dates — so the response carries
+    both the hit-rate AND the "what % did you actually earn" reading.
 
-    * BUY-side action correct  ↔  forward price > start by > ``_FLAT_TOLERANCE_PCT``
-    * SELL-side action correct ↔  forward price < start by > ``_FLAT_TOLERANCE_PCT``
-    * FLAT-side action correct ↔  |forward - start| ≤ ``_FLAT_TOLERANCE_PCT``
-
-    Calls without enough forward data are skipped — they don't count as
-    correct or incorrect. Actions that don't map to any class (currently
-    none, future-proof) are also skipped.
+    Calls without enough forward data on EITHER side (stock or SPY when
+    a SPY frame is supplied) are skipped — they don't count as correct
+    or incorrect, nor toward the return sums.
     """
     sorted_dates = sorted(price_by_date.keys())
-    total = 0
-    correct = 0
-    per_action: dict[str, tuple[int, int]] = {}
+    sorted_spy_dates = sorted(spy_price_by_date.keys()) if spy_price_by_date else []
+    overall_running = _ActionRunning()
+    per_action: dict[str, _ActionRunning] = {}
 
     for snapshot in snapshots:
         action_str = snapshot.action
@@ -360,18 +405,45 @@ def _eval_accuracy(
         forward_price = price_by_date[forward_date]
         actual = _classify_move(start_price, forward_price)
         is_correct = actual == expected
+        signal_return = _signal_return(expected, start_price, forward_price)
 
-        total += 1
+        # Matched SPY return: same direction (long for BUY, short for SELL,
+        # 0 for FLAT) so the bucket-level comparison is fair.
+        spy_return = 0.0
+        if spy_price_by_date is not None:
+            spy_start = spy_price_by_date.get(snapshot.date)
+            spy_forward_date = _first_on_or_after(sorted_spy_dates, target_date)
+            if spy_start is not None and spy_forward_date is not None:
+                spy_forward = spy_price_by_date[spy_forward_date]
+                spy_return = _signal_return(expected, spy_start, spy_forward)
+
+        overall_running.total += 1
+        overall_running.return_sum_pct += signal_return
+        overall_running.spy_return_sum_pct += spy_return
         if is_correct:
-            correct += 1
-        t_count, c_count = per_action.get(action_str, (0, 0))
-        per_action[action_str] = (
-            t_count + 1,
-            c_count + (1 if is_correct else 0),
-        )
+            overall_running.correct += 1
+        bucket = per_action.setdefault(action_str, _ActionRunning())
+        bucket.total += 1
+        bucket.return_sum_pct += signal_return
+        bucket.spy_return_sum_pct += spy_return
+        if is_correct:
+            bucket.correct += 1
 
-    overall = _AccuracyEval(total=total, correct=correct)
-    buckets = {name: _AccuracyEval(total=t, correct=c) for name, (t, c) in per_action.items()}
+    overall = _AccuracyEval(
+        total=overall_running.total,
+        correct=overall_running.correct,
+        return_sum_pct=overall_running.return_sum_pct,
+        spy_return_sum_pct=overall_running.spy_return_sum_pct,
+    )
+    buckets = {
+        name: _AccuracyEval(
+            total=r.total,
+            correct=r.correct,
+            return_sum_pct=r.return_sum_pct,
+            spy_return_sum_pct=r.spy_return_sum_pct,
+        )
+        for name, r in per_action.items()
+    }
     return overall, buckets
 
 
@@ -501,12 +573,6 @@ def signal_accuracy(
     ).all()
     price_by_date = {r.date: Decimal(str(r.close)) for r in rows}
 
-    overall, buckets = _eval_accuracy(
-        snapshots=all_snapshots,
-        price_by_date=price_by_date,
-        horizon_days=int(horizon),
-    )
-
     # Same-period SPY drift baseline. We pull SPY closes once and reuse
     # the same forward-date lookup the accuracy eval uses, so the
     # baseline draws from the exact same date set the system was
@@ -518,6 +584,14 @@ def signal_accuracy(
         .order_by(DailyPrice.date.asc())
     ).all()
     spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    overall, buckets = _eval_accuracy(
+        snapshots=all_snapshots,
+        price_by_date=price_by_date,
+        horizon_days=int(horizon),
+        spy_price_by_date=spy_price_by_date,
+    )
+
     signal_dates = [s.date for s in all_snapshots]
     baseline = _eval_baseline(
         signal_dates=signal_dates,
@@ -533,7 +607,14 @@ def signal_accuracy(
         correct=overall.correct,
         accuracy_pct=overall.pct,
         by_action={
-            k: AccuracyBucket(total=v.total, correct=v.correct, accuracy_pct=v.pct)
+            k: AccuracyBucket(
+                total=v.total,
+                correct=v.correct,
+                accuracy_pct=v.pct,
+                avg_return_pct=v.avg_return_pct,
+                baseline_avg_return_pct=v.spy_avg_return_pct,
+                delta_vs_baseline=round(v.avg_return_pct - v.spy_avg_return_pct, 3),
+            )
             for k, v in buckets.items()
         },
         baseline=baseline_payload,
