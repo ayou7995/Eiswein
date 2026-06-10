@@ -389,12 +389,15 @@ function TickerHeader({
       aria-labelledby="ticker-heading"
       // Sticky so the operator always knows which symbol they're on as
       // they scroll through the ~5000-6000px of indicator detail below.
-      className="sticky top-0 z-10 -mx-4 flex flex-col gap-2 border-b border-stone-200 bg-stone-50/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+      className="sticky top-0 z-10 -mx-4 flex flex-col gap-1.5 border-b border-stone-200 bg-stone-50/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
     >
-      {/* Row 1 — primary: symbol + dual action badges + stats grid */}
-      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 id="ticker-heading" className="font-mono text-2xl font-semibold">
+      {/* Row 1 — hero: ticker + verdict + stop loss (the three things that drive action) */}
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1
+            id="ticker-heading"
+            className="font-mono text-3xl font-bold tracking-tight text-stone-900"
+          >
             {symbol}
           </h1>
           {signalLoading && <LoadingSpinner label="讀取訊號…" />}
@@ -413,44 +416,50 @@ function TickerHeader({
             <span className="text-xs text-stone-500">分析運算中</span>
           )}
         </div>
-        {signal && (
-          <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-xs">
-            {signal.stop_loss && (
-              <>
-                <dt className="text-stone-400">停損參考</dt>
-                <dd
-                  data-testid="stop-loss-pill"
-                  className="text-right font-mono text-stone-700"
-                >
-                  <Tooltip text="200MA × 0.97">
-                    <span className="cursor-help underline decoration-dotted decoration-stone-400 underline-offset-2">
-                      ${signal.stop_loss}
-                    </span>
-                  </Tooltip>
-                </dd>
-              </>
-            )}
-            <dt className="text-stone-400">最近交易日</dt>
-            <dd className="text-right font-mono text-stone-700">{signal.date}</dd>
-            <dt className="text-stone-400">市場態勢</dt>
-            <dd className="text-right text-stone-700">
-              {POSTURE_LABELS[signal.market_posture_at_compute] ??
-                signal.market_posture_at_compute}
-            </dd>
-            <dt className="text-stone-400">指標版本</dt>
-            <dd className="text-right font-mono text-stone-500">
-              {signal.indicator_version}
-            </dd>
-          </dl>
+        {signal?.stop_loss && (
+          <div
+            data-testid="stop-loss-pill"
+            className="flex items-baseline gap-2 rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm shadow-sm"
+          >
+            <span className="text-[11px] uppercase tracking-wide text-stone-400">
+              停損
+            </span>
+            <Tooltip text="200MA × 0.97">
+              <span className="cursor-help font-mono text-base font-semibold text-stone-900 underline decoration-dotted decoration-stone-300 underline-offset-4">
+                ${signal.stop_loss}
+              </span>
+            </Tooltip>
+          </div>
         )}
       </header>
-      {/* Row 2 — sub-row: catalyst + freshness chips */}
-      {(signal || freshness) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <NextCatalystChip symbol={symbol} />
-          {freshness && <DataFreshnessBadge freshness={freshness} />}
-        </div>
-      )}
+      {/* Row 2 — context strip: catalyst, freshness, market posture, last close, version
+            All small + muted with thin separators. Reads as a footer of metadata,
+            not as content competing with the verdict above. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-stone-500">
+        <NextCatalystChip symbol={symbol} />
+        {freshness && <DataFreshnessBadge freshness={freshness} />}
+        {signal && (
+          <>
+            <span className="text-stone-300">·</span>
+            <span>
+              最近交易日{' '}
+              <span className="font-mono text-stone-700">{signal.date}</span>
+            </span>
+            <span className="text-stone-300">·</span>
+            <span>
+              市場{' '}
+              <span className="text-stone-700">
+                {POSTURE_LABELS[signal.market_posture_at_compute] ??
+                  signal.market_posture_at_compute}
+              </span>
+            </span>
+            <span className="text-stone-300">·</span>
+            <span className="font-mono text-stone-400">
+              v{signal.indicator_version}
+            </span>
+          </>
+        )}
+      </div>
     </section>
   );
 }
