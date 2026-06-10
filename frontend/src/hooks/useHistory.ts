@@ -4,17 +4,21 @@ import {
   marketPostureHistory,
   pnlSimulation,
   postureAccuracy,
+  robustnessCheck,
   signalAccuracy,
   symbolAccuracyRanking,
   tickerSignalsHistory,
+  timeSplitValidation,
   type EventStudyResponse,
   type PnlSimulationResponse,
   type PostureAccuracyResponse,
   type PostureHistoryResponse,
+  type RobustnessCheckResponse,
   type SignalAccuracyHorizon,
   type SignalAccuracyResponse,
   type SymbolAccuracyRankingResponse,
   type TickerSignalsResponse,
+  type TimeSplitResponse,
 } from '../api/history';
 
 export function useMarketPostureHistory(
@@ -25,6 +29,47 @@ export function useMarketPostureHistory(
     queryFn: () => marketPostureHistory(days),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useRobustnessCheck(
+  symbol: string | null,
+  days?: number,
+): ReturnType<typeof useQuery<RobustnessCheckResponse>> {
+  return useQuery({
+    queryKey: ['history', 'robustness-check', symbol ?? '', days ?? 'all'] as const,
+    queryFn: () => {
+      if (!symbol) throw new Error('useRobustnessCheck called without symbol');
+      return robustnessCheck(symbol, days);
+    },
+    enabled: typeof symbol === 'string' && symbol.length > 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useTimeSplitValidation(
+  symbol: string | null,
+  days?: number,
+  splitPct?: number,
+): ReturnType<typeof useQuery<TimeSplitResponse>> {
+  return useQuery({
+    queryKey: [
+      'history',
+      'time-split',
+      symbol ?? '',
+      days ?? 'all',
+      splitPct ?? 60,
+    ] as const,
+    queryFn: () => {
+      if (!symbol) throw new Error('useTimeSplitValidation called without symbol');
+      return timeSplitValidation(symbol, days, splitPct);
+    },
+    enabled: typeof symbol === 'string' && symbol.length > 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 }
 

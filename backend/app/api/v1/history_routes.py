@@ -1381,6 +1381,9 @@ def _simulate_pnl(
     snapshots: list[TickerSnapshot],
     price_by_date: dict[date, Decimal],
     spy_price_by_date: dict[date, Decimal],
+    stop_loss_pct: float = _PNL_STOP_LOSS_PCT,
+    take_profit_pct: float = _PNL_TAKE_PROFIT_PCT,
+    target_allocation: dict[ActionCategory, float] | None = None,
 ) -> tuple[PnlSummary, list[PnlTrade], list[PnlDailyValue]]:
     """Walk the snapshot timeline with conviction sizing + SL/TP discipline.
 
@@ -1397,6 +1400,9 @@ def _simulate_pnl(
     """
     if not snapshots:
         return _empty_pnl_summary(), [], []
+
+    if target_allocation is None:
+        target_allocation = _PNL_TARGET_ALLOCATION
 
     snapshots_by_date = {s.date: s for s in snapshots}
     snap_dates = sorted(snapshots_by_date.keys())
@@ -1427,11 +1433,11 @@ def _simulate_pnl(
         # still triggers when total cycle is underwater.
         if not position.is_flat() and close > 0:
             cb = position.cost_basis
-            if cb > 0 and close <= cb * (1 - _PNL_STOP_LOSS_PCT):
+            if cb > 0 and close <= cb * (1 - stop_loss_pct):
                 trades.append(_close_position_to_trade(position, close, d, "stop_loss"))
                 cash += position.qty * close
                 position = _Position()
-            elif cb > 0 and close >= cb * (1 + _PNL_TAKE_PROFIT_PCT):
+            elif cb > 0 and close >= cb * (1 + take_profit_pct):
                 trades.append(_close_position_to_trade(position, close, d, "take_profit"))
                 cash += position.qty * close
                 position = _Position()
@@ -1444,7 +1450,7 @@ def _simulate_pnl(
             except ValueError:
                 action = None
             if action is not None:
-                target_pct = _PNL_TARGET_ALLOCATION.get(action)
+                target_pct = target_allocation.get(action)
                 if target_pct is not None:
                     current_position_value = position.qty * close
                     total_value = cash + current_position_value
@@ -1648,4 +1654,405 @@ def pnl_simulation(
         summary=summary,
         trades=trades,
         daily_values=daily_values,
+    )
+
+
+# --- /history/robustness-check -----------------------------------------
+# Sensitivity analysis: run the simulator across 50 parameter combinations
+# and report the alpha distribution. If alpha varies wildly (e.g. range
+# > 50 pp) the strategy is overfit to specific parameter values — any
+# single backtest number is misleading. If alpha is stable (range < 20
+# pp) the strategy has some structural edge that isn't pure parameter
+# fitting.
+
+# Sizing presets — "aggressive" matches current production constants,
+# "conservative" trims position sizes across the board. 5 SL x 5 TP x 2
+# sizings = 50 variants.
+_ROBUSTNESS_SL_VALUES: tuple[float, ...] = (0.05, 0.08, 0.10, 0.12, 0.15)
+_ROBUSTNESS_TP_VALUES: tuple[float, ...] = (0.10, 0.15, 0.20, 0.25, 0.30)
+_ROBUSTNESS_SIZINGS: dict[str, dict[ActionCategory, float]] = {
+    "aggressive": {
+        ActionCategory.STRONG_BUY: 1.00,
+        ActionCategory.BUY: 0.70,
+        ActionCategory.HOLD: 0.50,
+        ActionCategory.WATCH: 0.30,
+        ActionCategory.REDUCE: 0.30,
+        ActionCategory.EXIT: 0.00,
+    },
+    "conservative": {
+        ActionCategory.STRONG_BUY: 0.80,
+        ActionCategory.BUY: 0.60,
+        ActionCategory.HOLD: 0.40,
+        ActionCategory.WATCH: 0.25,
+        ActionCategory.REDUCE: 0.20,
+        ActionCategory.EXIT: 0.00,
+    },
+}
+
+
+class RobustnessRun(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stop_loss_pct: float
+    take_profit_pct: float
+    sizing: str  # 'aggressive' | 'conservative'
+    total_return_pct: float
+    spy_alpha_pct: float
+    stock_alpha_pct: float
+    sharpe_ratio: float
+    max_drawdown_pct: float
+    n_trades: int
+    win_rate_pct: float
+
+
+class RobustnessStat(BaseModel):
+    """Distribution of a metric across the 50 runs."""
+
+    model_config = ConfigDict(frozen=True)
+
+    metric: str  # 'spy_alpha_pct' / 'stock_alpha_pct' / 'sharpe_ratio' / 'max_drawdown_pct'
+    median: float
+    p10: float
+    p90: float
+    min_value: float
+    max_value: float
+    range_value: float  # max - min, the "sensitivity" of the metric to params
+    stdev: float
+
+
+class RobustnessCheckResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    days: int | None
+    n_runs: int
+    # Default-config result (current production params) for reference.
+    baseline_run: RobustnessRun
+    runs: list[RobustnessRun]
+    # Summary statistics per metric.
+    stats: dict[str, RobustnessStat]
+
+
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    k = (len(sorted_v) - 1) * p / 100
+    f = int(k)
+    c = min(f + 1, len(sorted_v) - 1)
+    return sorted_v[f] + (sorted_v[c] - sorted_v[f]) * (k - f)
+
+
+def _compute_robustness_stats(
+    runs: list[RobustnessRun],
+) -> dict[str, RobustnessStat]:
+    from statistics import median
+    from statistics import stdev as _stdev
+
+    stats: dict[str, RobustnessStat] = {}
+
+    for metric in (
+        "spy_alpha_pct",
+        "stock_alpha_pct",
+        "sharpe_ratio",
+        "max_drawdown_pct",
+        "total_return_pct",
+    ):
+        vals = [float(getattr(r, metric)) for r in runs]
+        if not vals:
+            continue
+        med = median(vals)
+        sd = _stdev(vals) if len(vals) > 1 else 0.0
+        mn = min(vals)
+        mx = max(vals)
+        stats[metric] = RobustnessStat(
+            metric=metric,
+            median=round(med, 3),
+            p10=round(_percentile(vals, 10), 3),
+            p90=round(_percentile(vals, 90), 3),
+            min_value=round(mn, 3),
+            max_value=round(mx, 3),
+            range_value=round(mx - mn, 3),
+            stdev=round(sd, 3),
+        )
+    return stats
+
+
+@router.get(
+    "/history/robustness-check",
+    response_model=RobustnessCheckResponse,
+    summary="Run PnL sim across 50 threshold combinations to check overfit risk",
+)
+def robustness_check(
+    symbol: str = Query(..., min_length=1, max_length=10),
+    days: int | None = Query(default=None, ge=30, le=730),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
+    session: Session = Depends(get_db_session),
+) -> RobustnessCheckResponse:
+    validated = validate_symbol_or_raise(symbol)
+    if watchlist.get(user_id=user_id, symbol=validated) is None:
+        raise NotFoundError(details={"symbol": validated})
+
+    all_snapshots = list(snapshots.list_for_symbol(validated))
+    if days is not None and all_snapshots:
+        latest = max(s.date for s in all_snapshots)
+        cutoff = latest - timedelta(days=days)
+        all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
+
+    stock_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == validated)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _BASELINE_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    price_by_date = {r.date: Decimal(str(r.close)) for r in stock_rows}
+    spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    if not all_snapshots:
+        baseline_empty = RobustnessRun(
+            stop_loss_pct=_PNL_STOP_LOSS_PCT,
+            take_profit_pct=_PNL_TAKE_PROFIT_PCT,
+            sizing="aggressive",
+            total_return_pct=0.0,
+            spy_alpha_pct=0.0,
+            stock_alpha_pct=0.0,
+            sharpe_ratio=0.0,
+            max_drawdown_pct=0.0,
+            n_trades=0,
+            win_rate_pct=0.0,
+        )
+        return RobustnessCheckResponse(
+            symbol=validated,
+            days=days,
+            n_runs=0,
+            baseline_run=baseline_empty,
+            runs=[],
+            stats={},
+        )
+
+    runs: list[RobustnessRun] = []
+    baseline_run: RobustnessRun | None = None
+    for sizing_name, allocation in _ROBUSTNESS_SIZINGS.items():
+        for sl in _ROBUSTNESS_SL_VALUES:
+            for tp in _ROBUSTNESS_TP_VALUES:
+                summary, _, _ = _simulate_pnl(
+                    snapshots=all_snapshots,
+                    price_by_date=price_by_date,
+                    spy_price_by_date=spy_price_by_date,
+                    stop_loss_pct=sl,
+                    take_profit_pct=tp,
+                    target_allocation=allocation,
+                )
+                run = RobustnessRun(
+                    stop_loss_pct=sl,
+                    take_profit_pct=tp,
+                    sizing=sizing_name,
+                    total_return_pct=summary.total_return_pct,
+                    spy_alpha_pct=summary.spy_alpha_pct,
+                    stock_alpha_pct=summary.stock_alpha_pct,
+                    sharpe_ratio=summary.sharpe_ratio,
+                    max_drawdown_pct=summary.max_drawdown_pct,
+                    n_trades=summary.n_trades,
+                    win_rate_pct=summary.win_rate_pct,
+                )
+                runs.append(run)
+                # Mark the "current production" config as baseline.
+                if (
+                    sl == _PNL_STOP_LOSS_PCT
+                    and tp == _PNL_TAKE_PROFIT_PCT
+                    and sizing_name == "aggressive"
+                ):
+                    baseline_run = run
+
+    if baseline_run is None:
+        baseline_run = runs[0]  # fallback — shouldn't happen
+
+    return RobustnessCheckResponse(
+        symbol=validated,
+        days=days,
+        n_runs=len(runs),
+        baseline_run=baseline_run,
+        runs=runs,
+        stats=_compute_robustness_stats(runs),
+    )
+
+
+# --- /history/time-split-validation ------------------------------------
+# Classic train/test overfit detector. Split the trailing window into a
+# train half + test half by chronological order, run the simulator on
+# each half, and compare. If alpha persists across the boundary the
+# strategy has some out-of-sample edge; if alpha is high in train and
+# near-zero or negative in test, you're looking at pure curve-fitting.
+
+
+class TimeSplitHalf(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    start_date: date
+    end_date: date
+    n_days: int
+    n_snapshots: int
+    total_return_pct: float
+    spy_alpha_pct: float
+    stock_alpha_pct: float
+    sharpe_ratio: float
+    max_drawdown_pct: float
+    n_trades: int
+    win_rate_pct: float
+
+
+class TimeSplitResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    days: int | None
+    split_pct: int  # share of days that went into the train half
+    split_date: date
+    train: TimeSplitHalf
+    test: TimeSplitHalf
+    # Diff = test - train. If train >> test → likely overfit.
+    spy_alpha_delta: float
+    stock_alpha_delta: float
+    sharpe_delta: float
+
+
+def _summarize_half(
+    *,
+    snaps: list[TickerSnapshot],
+    price_by_date: dict[date, Decimal],
+    spy_price_by_date: dict[date, Decimal],
+) -> TimeSplitHalf:
+    if not snaps:
+        return TimeSplitHalf(
+            start_date=date.today(),
+            end_date=date.today(),
+            n_days=0,
+            n_snapshots=0,
+            total_return_pct=0.0,
+            spy_alpha_pct=0.0,
+            stock_alpha_pct=0.0,
+            sharpe_ratio=0.0,
+            max_drawdown_pct=0.0,
+            n_trades=0,
+            win_rate_pct=0.0,
+        )
+    summary, _, daily = _simulate_pnl(
+        snapshots=snaps,
+        price_by_date=price_by_date,
+        spy_price_by_date=spy_price_by_date,
+    )
+    return TimeSplitHalf(
+        start_date=snaps[0].date,
+        end_date=snaps[-1].date,
+        n_days=len(daily),
+        n_snapshots=len(snaps),
+        total_return_pct=summary.total_return_pct,
+        spy_alpha_pct=summary.spy_alpha_pct,
+        stock_alpha_pct=summary.stock_alpha_pct,
+        sharpe_ratio=summary.sharpe_ratio,
+        max_drawdown_pct=summary.max_drawdown_pct,
+        n_trades=summary.n_trades,
+        win_rate_pct=summary.win_rate_pct,
+    )
+
+
+@router.get(
+    "/history/time-split-validation",
+    response_model=TimeSplitResponse,
+    summary="Run PnL sim on train half + test half separately for overfit detection",
+)
+def time_split_validation(
+    symbol: str = Query(..., min_length=1, max_length=10),
+    days: int | None = Query(default=None, ge=60, le=730),
+    split_pct: int = Query(default=60, ge=30, le=80),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
+    session: Session = Depends(get_db_session),
+) -> TimeSplitResponse:
+    validated = validate_symbol_or_raise(symbol)
+    if watchlist.get(user_id=user_id, symbol=validated) is None:
+        raise NotFoundError(details={"symbol": validated})
+
+    all_snapshots = sorted(
+        snapshots.list_for_symbol(validated), key=lambda s: s.date
+    )
+    if days is not None and all_snapshots:
+        latest = max(s.date for s in all_snapshots)
+        cutoff = latest - timedelta(days=days)
+        all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
+
+    stock_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == validated)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _BASELINE_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    price_by_date = {r.date: Decimal(str(r.close)) for r in stock_rows}
+    spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    if len(all_snapshots) < 30:
+        empty_half = TimeSplitHalf(
+            start_date=date.today(),
+            end_date=date.today(),
+            n_days=0,
+            n_snapshots=0,
+            total_return_pct=0.0,
+            spy_alpha_pct=0.0,
+            stock_alpha_pct=0.0,
+            sharpe_ratio=0.0,
+            max_drawdown_pct=0.0,
+            n_trades=0,
+            win_rate_pct=0.0,
+        )
+        return TimeSplitResponse(
+            symbol=validated,
+            days=days,
+            split_pct=split_pct,
+            split_date=date.today(),
+            train=empty_half,
+            test=empty_half,
+            spy_alpha_delta=0.0,
+            stock_alpha_delta=0.0,
+            sharpe_delta=0.0,
+        )
+
+    split_idx = max(1, int(len(all_snapshots) * split_pct / 100))
+    split_date = all_snapshots[split_idx].date
+    train_snaps = all_snapshots[:split_idx]
+    test_snaps = all_snapshots[split_idx:]
+
+    train_half = _summarize_half(
+        snaps=train_snaps,
+        price_by_date=price_by_date,
+        spy_price_by_date=spy_price_by_date,
+    )
+    test_half = _summarize_half(
+        snaps=test_snaps,
+        price_by_date=price_by_date,
+        spy_price_by_date=spy_price_by_date,
+    )
+
+    return TimeSplitResponse(
+        symbol=validated,
+        days=days,
+        split_pct=split_pct,
+        split_date=split_date,
+        train=train_half,
+        test=test_half,
+        spy_alpha_delta=round(test_half.spy_alpha_pct - train_half.spy_alpha_pct, 3),
+        stock_alpha_delta=round(
+            test_half.stock_alpha_pct - train_half.stock_alpha_pct, 3
+        ),
+        sharpe_delta=round(test_half.sharpe_ratio - train_half.sharpe_ratio, 3),
     )

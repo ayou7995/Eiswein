@@ -190,6 +190,100 @@ export function pnlSimulation(
   });
 }
 
+// --- /history/robustness-check --------------------------------------------
+
+export const robustnessRunSchema = z.object({
+  stop_loss_pct: z.number(),
+  take_profit_pct: z.number(),
+  sizing: z.string(),
+  total_return_pct: z.number(),
+  spy_alpha_pct: z.number(),
+  stock_alpha_pct: z.number(),
+  sharpe_ratio: z.number(),
+  max_drawdown_pct: z.number(),
+  n_trades: z.number().int(),
+  win_rate_pct: z.number(),
+});
+export type RobustnessRun = z.infer<typeof robustnessRunSchema>;
+
+export const robustnessStatSchema = z.object({
+  metric: z.string(),
+  median: z.number(),
+  p10: z.number(),
+  p90: z.number(),
+  min_value: z.number(),
+  max_value: z.number(),
+  range_value: z.number(),
+  stdev: z.number(),
+});
+export type RobustnessStat = z.infer<typeof robustnessStatSchema>;
+
+export const robustnessCheckResponseSchema = z.object({
+  symbol: z.string(),
+  days: z.number().int().nullable(),
+  n_runs: z.number().int(),
+  baseline_run: robustnessRunSchema,
+  runs: z.array(robustnessRunSchema),
+  stats: z.record(robustnessStatSchema),
+});
+export type RobustnessCheckResponse = z.infer<typeof robustnessCheckResponseSchema>;
+
+export function robustnessCheck(
+  symbol: string,
+  days?: number,
+): Promise<RobustnessCheckResponse> {
+  const search = new URLSearchParams({ symbol });
+  if (days !== undefined) search.set('days', String(days));
+  return apiRequest(`/api/v1/history/robustness-check?${search.toString()}`, {
+    method: 'GET',
+    schema: robustnessCheckResponseSchema,
+  });
+}
+
+// --- /history/time-split-validation --------------------------------------
+
+export const timeSplitHalfSchema = z.object({
+  start_date: z.string(),
+  end_date: z.string(),
+  n_days: z.number().int(),
+  n_snapshots: z.number().int(),
+  total_return_pct: z.number(),
+  spy_alpha_pct: z.number(),
+  stock_alpha_pct: z.number(),
+  sharpe_ratio: z.number(),
+  max_drawdown_pct: z.number(),
+  n_trades: z.number().int(),
+  win_rate_pct: z.number(),
+});
+export type TimeSplitHalf = z.infer<typeof timeSplitHalfSchema>;
+
+export const timeSplitResponseSchema = z.object({
+  symbol: z.string(),
+  days: z.number().int().nullable(),
+  split_pct: z.number().int(),
+  split_date: z.string(),
+  train: timeSplitHalfSchema,
+  test: timeSplitHalfSchema,
+  spy_alpha_delta: z.number(),
+  stock_alpha_delta: z.number(),
+  sharpe_delta: z.number(),
+});
+export type TimeSplitResponse = z.infer<typeof timeSplitResponseSchema>;
+
+export function timeSplitValidation(
+  symbol: string,
+  days?: number,
+  splitPct?: number,
+): Promise<TimeSplitResponse> {
+  const search = new URLSearchParams({ symbol });
+  if (days !== undefined) search.set('days', String(days));
+  if (splitPct !== undefined) search.set('split_pct', String(splitPct));
+  return apiRequest(`/api/v1/history/time-split-validation?${search.toString()}`, {
+    method: 'GET',
+    schema: timeSplitResponseSchema,
+  });
+}
+
 export const postureAccuracyResponseSchema = z.object({
   horizon: z.number().int(),
   days: z.number().int().nullable(),
