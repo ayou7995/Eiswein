@@ -15,7 +15,6 @@ import {
 } from '../components/charts/IndicatorBoundedLine';
 import { IndicatorVolumeBars } from '../components/charts/IndicatorVolumeBars';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { ActionBadgePair } from '../components/ActionBadgePair';
 import { NextCatalystChip } from '../components/NextCatalystChip';
 import { SignalBadge } from '../components/SignalBadge';
 import { Tooltip } from '../components/Tooltip';
@@ -88,6 +87,7 @@ import type {
   IndicatorSeriesName,
   IndicatorSeriesResponse,
 } from '../api/tickerIndicatorSeries';
+import type { ActionCategoryCode } from '../api/tickerSignal';
 import { EisweinApiError } from '../api/errors';
 
 // Per-ticker indicators grouped by HORIZON, not by semantic category. The
@@ -367,6 +367,124 @@ export function TickerDetailPage(): JSX.Element {
   );
 }
 
+// VerdictCard — designed for the sticky TickerHeader. Combines the three
+// pieces (timeframe label, action verdict with emoji, vote tally) into a
+// single tone-tinted card. Replaces the older "TimeframeChip + ActionBadge +
+// VoteTally underneath" pattern which read as chip-soup. ActionBadgePair
+// stays available for the sidebar where row-height matters.
+const VERDICT_PRESETS: Record<
+  ActionCategoryCode,
+  {
+    emoji: string;
+    label: string;
+    letter: string;
+    cardClasses: string;
+    textColor: string;
+  }
+> = {
+  strong_buy: {
+    emoji: '🟢🟢',
+    label: '強力買入',
+    letter: 'S',
+    cardClasses: 'border-signal-green/40 bg-signal-green/10',
+    textColor: 'text-signal-green',
+  },
+  buy: {
+    emoji: '🟢',
+    label: '買入',
+    letter: 'B',
+    cardClasses: 'border-signal-green/30 bg-signal-green/5',
+    textColor: 'text-signal-green',
+  },
+  hold: {
+    emoji: '✓',
+    label: '持有',
+    letter: 'H',
+    cardClasses: 'border-stone-200 bg-white',
+    textColor: 'text-stone-800',
+  },
+  watch: {
+    emoji: '👀',
+    label: '觀望',
+    letter: 'W',
+    cardClasses: 'border-stone-200 bg-white',
+    textColor: 'text-stone-700',
+  },
+  reduce: {
+    emoji: '⚠',
+    label: '減倉',
+    letter: 'D',
+    cardClasses: 'border-amber-300/60 bg-amber-50',
+    textColor: 'text-amber-800',
+  },
+  exit: {
+    emoji: '🔴🔴',
+    label: '出場',
+    letter: 'E',
+    cardClasses: 'border-signal-red/40 bg-signal-red/10',
+    textColor: 'text-signal-red',
+  },
+};
+
+const TOTAL_VOTES = 5;
+
+function VerdictCard({
+  timeframe,
+  period,
+  action,
+  timingBadge = null,
+  green,
+  red,
+}: {
+  timeframe: '中期' | '短期';
+  period: string;
+  action: ActionCategoryCode;
+  timingBadge?: string | null;
+  green: number;
+  red: number;
+}): JSX.Element {
+  const preset = VERDICT_PRESETS[action];
+  const neutral = Math.max(0, TOTAL_VOTES - green - red);
+  return (
+    <div
+      data-testid={`verdict-card-${timeframe === '中期' ? 'mid' : 'short'}`}
+      className={`flex flex-col gap-0.5 rounded-lg border px-3 py-1.5 ${preset.cardClasses}`}
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+        {timeframe}
+        <span className="mx-1 text-stone-300">·</span>
+        <span className="font-normal normal-case tracking-normal text-stone-400">
+          {period}
+        </span>
+      </div>
+      <div
+        className={`flex items-baseline gap-1.5 text-base font-bold leading-tight ${preset.textColor}`}
+      >
+        <span aria-hidden="true">{preset.emoji}</span>
+        <span>{preset.label}</span>
+        {timingBadge && (
+          <span
+            data-testid="action-badge-timing"
+            className="ml-0.5 rounded-full bg-white/70 px-1.5 py-px text-[10px] font-medium text-stone-700"
+          >
+            {timingBadge}
+          </span>
+        )}
+      </div>
+      <div
+        aria-label={`投票分布:${green} 綠、${red} 紅、${neutral} 中性`}
+        className="flex items-center gap-1 font-mono text-[11px] tabular-nums text-stone-500"
+      >
+        <span className="text-signal-green">{green}🟢</span>
+        <span className="text-stone-300">·</span>
+        <span className="text-signal-red">{red}🔴</span>
+        <span className="text-stone-300">·</span>
+        <span className="text-stone-500">{neutral}⚪</span>
+      </div>
+    </div>
+  );
+}
+
 interface TickerHeaderProps {
   symbol: string;
   signal: TickerSignalResponse | null;
@@ -402,15 +520,23 @@ function TickerHeader({
           </h1>
           {signalLoading && <LoadingSpinner label="讀取訊號…" />}
           {signal && (
-            <ActionBadgePair
-              midAction={signal.action}
-              midGreen={signal.direction_green_count}
-              midRed={signal.direction_red_count}
-              midTimingBadge={signal.timing_badge}
-              shortAction={signal.action_short}
-              shortGreen={signal.direction_short_green_count}
-              shortRed={signal.direction_short_red_count}
-            />
+            <div className="flex flex-wrap items-stretch gap-2">
+              <VerdictCard
+                timeframe="中期"
+                period="2-4 週"
+                action={signal.action}
+                timingBadge={signal.timing_badge}
+                green={signal.direction_green_count}
+                red={signal.direction_red_count}
+              />
+              <VerdictCard
+                timeframe="短期"
+                period="3-5 天"
+                action={signal.action_short}
+                green={signal.direction_short_green_count}
+                red={signal.direction_short_red_count}
+              />
+            </div>
           )}
           {pendingSignal && (
             <span className="text-xs text-stone-500">分析運算中</span>
