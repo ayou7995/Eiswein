@@ -367,77 +367,33 @@ export function TickerDetailPage(): JSX.Element {
   );
 }
 
-// VerdictCard — designed for the sticky TickerHeader. Combines the three
-// pieces (timeframe label, action verdict with emoji, vote tally) into a
-// single tone-tinted card. Replaces the older "TimeframeChip + ActionBadge +
-// VoteTally underneath" pattern which read as chip-soup. ActionBadgePair
-// stays available for the sidebar where row-height matters.
+// InlineVerdict — single-line, no card, no multi-row. Just typography +
+// tone-colored action label inline with the symbol. The previous Card
+// designs (multi-row stacked label / action / tally) read as too heavy
+// for what's just a quick scan. ActionBadgePair stays available for the
+// sidebar where the column layout is appropriate.
 const VERDICT_PRESETS: Record<
   ActionCategoryCode,
-  {
-    emoji: string;
-    label: string;
-    letter: string;
-    cardClasses: string;
-    textColor: string;
-  }
+  { emoji: string; label: string; textColor: string }
 > = {
-  strong_buy: {
-    emoji: '🟢🟢',
-    label: '強力買入',
-    letter: 'S',
-    cardClasses: 'border-signal-green/40 bg-signal-green/10',
-    textColor: 'text-signal-green',
-  },
-  buy: {
-    emoji: '🟢',
-    label: '買入',
-    letter: 'B',
-    cardClasses: 'border-signal-green/30 bg-signal-green/5',
-    textColor: 'text-signal-green',
-  },
-  hold: {
-    emoji: '✓',
-    label: '持有',
-    letter: 'H',
-    cardClasses: 'border-stone-200 bg-white',
-    textColor: 'text-stone-800',
-  },
-  watch: {
-    emoji: '👀',
-    label: '觀望',
-    letter: 'W',
-    cardClasses: 'border-stone-200 bg-white',
-    textColor: 'text-stone-700',
-  },
-  reduce: {
-    emoji: '⚠',
-    label: '減倉',
-    letter: 'D',
-    cardClasses: 'border-amber-300/60 bg-amber-50',
-    textColor: 'text-amber-800',
-  },
-  exit: {
-    emoji: '🔴🔴',
-    label: '出場',
-    letter: 'E',
-    cardClasses: 'border-signal-red/40 bg-signal-red/10',
-    textColor: 'text-signal-red',
-  },
+  strong_buy: { emoji: '🟢🟢', label: '強力買入', textColor: 'text-signal-green' },
+  buy: { emoji: '🟢', label: '買入', textColor: 'text-signal-green' },
+  hold: { emoji: '✓', label: '持有', textColor: 'text-stone-800' },
+  watch: { emoji: '👀', label: '觀望', textColor: 'text-stone-700' },
+  reduce: { emoji: '⚠', label: '減倉', textColor: 'text-amber-800' },
+  exit: { emoji: '🔴🔴', label: '出場', textColor: 'text-signal-red' },
 };
 
 const TOTAL_VOTES = 5;
 
-function VerdictCard({
+function InlineVerdict({
   timeframe,
-  period,
   action,
   timingBadge = null,
   green,
   red,
 }: {
   timeframe: '中期' | '短期';
-  period: string;
   action: ActionCategoryCode;
   timingBadge?: string | null;
   green: number;
@@ -446,42 +402,29 @@ function VerdictCard({
   const preset = VERDICT_PRESETS[action];
   const neutral = Math.max(0, TOTAL_VOTES - green - red);
   return (
-    <div
-      data-testid={`verdict-card-${timeframe === '中期' ? 'mid' : 'short'}`}
-      className={`flex flex-col gap-0.5 rounded-lg border px-3 py-1.5 ${preset.cardClasses}`}
+    <span
+      data-testid={`verdict-${timeframe === '中期' ? 'mid' : 'short'}`}
+      className="inline-flex items-baseline gap-1.5 whitespace-nowrap"
+      aria-label={`${timeframe} 判斷:${preset.label}, 投票 ${green} 綠 ${red} 紅 ${neutral} 中`}
     >
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+      <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
         {timeframe}
-        <span className="mx-1 text-stone-300">·</span>
-        <span className="font-normal normal-case tracking-normal text-stone-400">
-          {period}
+      </span>
+      <span className={`text-base font-bold ${preset.textColor}`}>
+        <span aria-hidden="true">{preset.emoji}</span> {preset.label}
+      </span>
+      {timingBadge && (
+        <span
+          data-testid="action-badge-timing"
+          className="rounded-full border border-stone-300 bg-white px-1.5 py-px text-[10px] font-medium text-stone-700"
+        >
+          {timingBadge}
         </span>
-      </div>
-      <div
-        className={`flex items-baseline gap-1.5 text-base font-bold leading-tight ${preset.textColor}`}
-      >
-        <span aria-hidden="true">{preset.emoji}</span>
-        <span>{preset.label}</span>
-        {timingBadge && (
-          <span
-            data-testid="action-badge-timing"
-            className="ml-0.5 rounded-full bg-white/70 px-1.5 py-px text-[10px] font-medium text-stone-700"
-          >
-            {timingBadge}
-          </span>
-        )}
-      </div>
-      <div
-        aria-label={`投票分布:${green} 綠、${red} 紅、${neutral} 中性`}
-        className="flex items-center gap-1 font-mono text-[11px] tabular-nums text-stone-500"
-      >
-        <span className="text-signal-green">{green}🟢</span>
-        <span className="text-stone-300">·</span>
-        <span className="text-signal-red">{red}🔴</span>
-        <span className="text-stone-300">·</span>
-        <span className="text-stone-500">{neutral}⚪</span>
-      </div>
-    </div>
+      )}
+      <span className="font-mono text-[11px] tabular-nums text-stone-500">
+        ({green}/{red}/{neutral})
+      </span>
+    </span>
   );
 }
 
@@ -509,9 +452,9 @@ function TickerHeader({
       // they scroll through the ~5000-6000px of indicator detail below.
       className="sticky top-0 z-10 -mx-4 flex flex-col gap-1.5 border-b border-stone-200 bg-stone-50/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
     >
-      {/* Row 1 — hero: ticker + verdict + stop loss (the three things that drive action) */}
-      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {/* Row 1 — single line: ticker + verdicts + stop loss, all inline */}
+      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
           <h1
             id="ticker-heading"
             className="font-mono text-3xl font-bold tracking-tight text-stone-900"
@@ -520,42 +463,38 @@ function TickerHeader({
           </h1>
           {signalLoading && <LoadingSpinner label="讀取訊號…" />}
           {signal && (
-            <div className="flex flex-wrap items-stretch gap-2">
-              <VerdictCard
+            <>
+              <InlineVerdict
                 timeframe="中期"
-                period="2-4 週"
                 action={signal.action}
                 timingBadge={signal.timing_badge}
                 green={signal.direction_green_count}
                 red={signal.direction_red_count}
               />
-              <VerdictCard
+              <InlineVerdict
                 timeframe="短期"
-                period="3-5 天"
                 action={signal.action_short}
                 green={signal.direction_short_green_count}
                 red={signal.direction_short_red_count}
               />
-            </div>
+            </>
           )}
           {pendingSignal && (
             <span className="text-xs text-stone-500">分析運算中</span>
           )}
         </div>
         {signal?.stop_loss && (
-          <div
+          <span
             data-testid="stop-loss-pill"
-            className="flex items-baseline gap-2 rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm shadow-sm"
+            className="text-sm text-stone-600"
           >
-            <span className="text-[11px] uppercase tracking-wide text-stone-400">
-              停損
-            </span>
+            停損參考{' '}
             <Tooltip text="200MA × 0.97">
-              <span className="cursor-help font-mono text-base font-semibold text-stone-900 underline decoration-dotted decoration-stone-300 underline-offset-4">
+              <span className="cursor-help font-mono font-semibold text-stone-900 underline decoration-dotted decoration-stone-400 underline-offset-2">
                 ${signal.stop_loss}
               </span>
             </Tooltip>
-          </div>
+          </span>
         )}
       </header>
       {/* Row 2 — context strip: catalyst, freshness, market posture, last close, version
