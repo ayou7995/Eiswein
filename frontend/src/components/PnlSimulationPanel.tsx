@@ -21,6 +21,8 @@ const ACTION_LABEL: Record<string, string> = {
 
 const EXIT_REASON_LABEL: Record<string, string> = {
   signal_exit: '訊號出場',
+  stop_loss: '🛑 停損 (-10%)',
+  take_profit: '💰 止盈 (+20%)',
   end_of_window: '期末平倉',
 };
 
@@ -42,7 +44,7 @@ export function PnlSimulationPanel({
             title="PnL Simulation 怎麼讀"
             explanation={
               <RuleTable
-                preface="模擬「假設我從頭照訊號操作 N 天,$10,000 起始資金,N 天後變多少錢?」交易規則 (v2):buy / strong_buy / hold + 沒部位 → 全倉進場(hold 也算進場是因為「持有」訊號隱含「現在應該在場」);reduce/exit + 有部位 → 全部平倉;watch → 不變動(觀望 = 維持現狀)。沒有止損機制。"
+                preface="模擬「假設我從頭照訊號操作 N 天,$10,000 起始資金,N 天後變多少錢?」交易規則 (v3 — 訊號分級倉位 + 停損止盈):每個訊號對應一個目標倉位比例 (strong_buy=100% / buy=70% / hold=50% / watch=30% / reduce=30% / exit=0%),每日 rebalance 朝目標調整(漂移 > 5% 才調)。停損規則:成本價 -10% 自動平倉;止盈規則:成本價 +20% 自動平倉。"
                 rows={[
                   {
                     condition: 'vs SPY Alpha',
@@ -53,6 +55,16 @@ export function PnlSimulationPanel({
                     condition: 'vs 股票 B&H Alpha',
                     result:
                       '策略總報酬 − 直接買這檔 buy-and-hold。正值 = 訊號真的幫了你;負值 = 直接買股票放著比較好,訊號反而扣分。',
+                  },
+                  {
+                    condition: '🛑 停損出場',
+                    result:
+                      '股價跌至成本價 -10% 自動全部平倉。限制單筆最大損失。',
+                  },
+                  {
+                    condition: '💰 止盈出場',
+                    result:
+                      '股價漲至成本價 +20% 自動全部平倉。鎖定獲利,避免回吐。',
                   },
                   {
                     condition: 'Sharpe Ratio',
@@ -88,7 +100,7 @@ export function PnlSimulationPanel({
           </Explainable>
         </h3>
         <p className="text-xs text-stone-500">
-          假設你從 $10,000 起始,看到訊號就照做。策略 vs SPY buy-and-hold 比較。
+          $10,000 起始 · 訊號分級倉位 (strong_buy 100% / buy 70% / hold 50% / watch 30% / reduce 30% / exit 0%) · 停損 -10% · 止盈 +20%
         </p>
       </header>
 
@@ -131,7 +143,7 @@ export function PnlSimulationPanel({
 
       <p className="text-[11px] text-stone-400">
         ⚠ Look-ahead bias 提醒:策略用「今天的指標公式」回算過去 2 年,每次
-        INDICATOR_VERSION bump 都會重算。沒有 slippage、手續費、稅務模型;沒有止損機制。真實
+        INDICATOR_VERSION bump 都會重算。沒有 slippage、手續費、稅務模型(實際交易頻繁的策略會被費用吃掉部分報酬)。真實
         forward-test 結果需要鎖死公式後等 6+ 個月才能比對。
       </p>
     </div>

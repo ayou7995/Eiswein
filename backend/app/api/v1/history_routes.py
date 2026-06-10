@@ -1185,27 +1185,35 @@ def event_study(
 
 # --- /history/pnl-simulation ---------------------------------------------
 
-# Trading rule (v2 — fix HOLD/WATCH semantics from MVP):
-# * BUY / STRONG_BUY / HOLD + flat → go long all-in on close.
-#   HOLD joins as an entry trigger because the indicator's "持有" literally
-#   means "the appropriate state is to be in this position"; the previous
-#   "do nothing" interpretation kept the simulator in cash for long stretches
-#   (in-market 36-41%) when the indicator was effectively saying "you should
-#   be holding this".
-# * REDUCE / EXIT + in position → close all on close.
-# * WATCH → no-op (maintain current state — flat stays flat, position stays
-#   long). "觀望" is explicitly "wait and see, don't change anything".
-# End-of-window unwind: any open position closes at the last close.
-# No stop loss in the MVP — the snapshot's recommended stop is advisory
-# only; the operator usually applies it manually.
+# Trading rule (v3 — conviction-based sizing + SL/TP discipline):
+# Each ActionCategory maps to a target portfolio allocation. The simulator
+# rebalances daily toward the target whenever the signal changes — buys
+# when below target, sells partially when above. This replaces the v2
+# all-or-nothing entry-trigger model with a continuous sizing scheme that
+# uses the full 6-class conviction signal the indicator emits.
+#
+# Stop-loss and take-profit rules add discipline that pure signal-following
+# lacked: any position automatically closes at -10% from cost basis (SL)
+# or +20% (TP), whichever hits first. After such a forced exit the
+# strategy resumes following signals normally.
+#
+# "watch" maps to 30% (small position, "wait and see"), "reduce" also to
+# 30% — the difference between watch and reduce is the predicted direction
+# (watch = uncertain, reduce = bearish), but the position-sizing impact is
+# the same conservative stance.
 _PNL_STARTING_CAPITAL = 10_000.0
-_PNL_ENTRY_TRIGGERS: frozenset[ActionCategory] = frozenset(
-    {ActionCategory.STRONG_BUY, ActionCategory.BUY, ActionCategory.HOLD}
-)
-_PNL_SELL_TRIGGERS: frozenset[ActionCategory] = frozenset(
-    {ActionCategory.REDUCE, ActionCategory.EXIT}
-)
 _TRADING_DAYS_PER_YEAR = 252
+_PNL_STOP_LOSS_PCT = 0.10  # -10 % below cost basis triggers SL exit
+_PNL_TAKE_PROFIT_PCT = 0.20  # +20 % above cost basis triggers TP exit
+_PNL_REBALANCE_THRESHOLD = 0.05  # ±5 pp drift before bothering to rebalance
+_PNL_TARGET_ALLOCATION: dict[ActionCategory, float] = {
+    ActionCategory.STRONG_BUY: 1.00,
+    ActionCategory.BUY: 0.70,
+    ActionCategory.HOLD: 0.50,
+    ActionCategory.WATCH: 0.30,
+    ActionCategory.REDUCE: 0.30,
+    ActionCategory.EXIT: 0.00,
+}
 
 
 class PnlTrade(BaseModel):
@@ -1269,11 +1277,49 @@ class PnlSimulationResponse(BaseModel):
 
 
 @dataclass
-class _OpenPosition:
-    entry_date: date
-    entry_price: float
-    entry_action: str
-    qty: float
+class _Position:
+    """In-flight position cycle. A cycle runs from first non-zero qty until
+    qty returns to zero (signal exit, SL, TP, or end-of-window).
+
+    Multiple buys / partial sells can happen within a cycle. Cost basis is
+    the weighted average price of shares currently held; the SL/TP
+    triggers compare daily close to this cost basis.
+    """
+
+    qty: float = 0.0
+    total_invested: float = 0.0  # cumulative $ put in this cycle
+    total_qty_bought: float = 0.0
+    total_qty_sold: float = 0.0
+    total_proceeds: float = 0.0  # cumulative $ taken out from partial sells
+    entry_date: date | None = None
+    entry_action: str = ""
+
+    @property
+    def cost_basis(self) -> float:
+        """Weighted average cost per share across all buys this cycle."""
+        return (
+            self.total_invested / self.total_qty_bought
+            if self.total_qty_bought > 0
+            else 0.0
+        )
+
+    def is_flat(self) -> bool:
+        # Float epsilon — partial sells can leave 1e-10 fragments.
+        return self.qty <= 1e-9
+
+    def open_cycle(self, date_: date, action: str) -> None:
+        self.entry_date = date_
+        self.entry_action = action
+
+    def buy(self, qty: float, price: float) -> None:
+        self.qty += qty
+        self.total_qty_bought += qty
+        self.total_invested += qty * price
+
+    def sell(self, qty: float, price: float) -> None:
+        self.qty -= qty
+        self.total_qty_sold += qty
+        self.total_proceeds += qty * price
 
 
 def _empty_pnl_summary() -> PnlSummary:
@@ -1297,17 +1343,57 @@ def _empty_pnl_summary() -> PnlSummary:
     )
 
 
+def _close_position_to_trade(
+    p: _Position, close_price: float, exit_date: date, reason: str
+) -> PnlTrade:
+    """Convert an in-flight cycle into a PnlTrade row at full closeout.
+
+    Cycle-aware: weighted entry_price = total cost basis, weighted
+    exit_price = avg of all proceeds (partial sells + final close),
+    pnl_pct = realized return on total invested in this cycle.
+    """
+    final_proceeds = p.qty * close_price
+    total_proceeds = p.total_proceeds + final_proceeds
+    total_qty_sold = p.total_qty_sold + p.qty
+    pnl_abs = total_proceeds - p.total_invested
+    pnl_pct = (
+        (pnl_abs / p.total_invested) * 100 if p.total_invested > 0 else 0.0
+    )
+    avg_exit_price = (
+        total_proceeds / total_qty_sold if total_qty_sold > 0 else close_price
+    )
+    return PnlTrade(
+        entry_date=p.entry_date or exit_date,
+        entry_price=round(p.cost_basis, 4),
+        entry_action=p.entry_action,
+        exit_date=exit_date,
+        exit_price=round(avg_exit_price, 4),
+        exit_reason=reason,
+        qty=round(p.total_qty_bought, 6),
+        pnl_pct=round(pnl_pct, 3),
+        pnl_abs=round(pnl_abs, 2),
+        holding_days=(exit_date - p.entry_date).days if p.entry_date else 0,
+    )
+
+
 def _simulate_pnl(
     *,
     snapshots: list[TickerSnapshot],
     price_by_date: dict[date, Decimal],
     spy_price_by_date: dict[date, Decimal],
 ) -> tuple[PnlSummary, list[PnlTrade], list[PnlDailyValue]]:
-    """Walk the snapshot timeline applying the trading rule day by day.
+    """Walk the snapshot timeline with conviction sizing + SL/TP discipline.
 
-    Mark-to-market account value is recorded each day for Sharpe + max
-    drawdown computation. Returns are computed against the SPY drift
-    baseline (lump-sum buy SPY at start, hold to end).
+    Each day, in order:
+    1. Check stop-loss / take-profit; force-close if hit.
+    2. Apply today's signal → rebalance toward target allocation
+       (only if drift > _PNL_REBALANCE_THRESHOLD to keep transactions sane).
+    3. Mark to market for Sharpe + Max DD bookkeeping.
+
+    End-of-window: close any open position at the last close. Mark-to-market
+    account value is recorded each day for risk metric computation.
+    Returns are reported against both SPY buy-and-hold AND the symbol's
+    own buy-and-hold (the fairer per-symbol benchmark).
     """
     if not snapshots:
         return _empty_pnl_summary(), [], []
@@ -1317,15 +1403,12 @@ def _simulate_pnl(
     start_date = snap_dates[0]
     end_date = snap_dates[-1]
 
-    # Walk every date with a price, filtered to the snapshot window. This
-    # carries mark-to-market continuously even on days without a snapshot
-    # row (rare but possible if the snapshot writer skipped a day).
     all_dates = sorted(d for d in price_by_date if start_date <= d <= end_date)
     if not all_dates:
         return _empty_pnl_summary(), [], []
 
     cash = _PNL_STARTING_CAPITAL
-    position: _OpenPosition | None = None
+    position = _Position()
     trades: list[PnlTrade] = []
     daily_values: list[PnlDailyValue] = []
     days_in_market = 0
@@ -1338,44 +1421,67 @@ def _simulate_pnl(
 
     for d in all_dates:
         close = float(price_by_date[d])
+
+        # Step 1: SL/TP discipline check (before signal). Compares close
+        # to cost basis (weighted average) so adding-down a losing position
+        # still triggers when total cycle is underwater.
+        if not position.is_flat() and close > 0:
+            cb = position.cost_basis
+            if cb > 0 and close <= cb * (1 - _PNL_STOP_LOSS_PCT):
+                trades.append(_close_position_to_trade(position, close, d, "stop_loss"))
+                cash += position.qty * close
+                position = _Position()
+            elif cb > 0 and close >= cb * (1 + _PNL_TAKE_PROFIT_PCT):
+                trades.append(_close_position_to_trade(position, close, d, "take_profit"))
+                cash += position.qty * close
+                position = _Position()
+
+        # Step 2: apply today's signal → rebalance toward target allocation.
         snap = snapshots_by_date.get(d)
-        if snap is not None:
+        if snap is not None and close > 0:
             try:
                 action = ActionCategory(snap.action)
             except ValueError:
                 action = None
-            if action in _PNL_ENTRY_TRIGGERS and position is None and close > 0:
-                qty = cash / close
-                position = _OpenPosition(
-                    entry_date=d,
-                    entry_price=close,
-                    entry_action=snap.action,
-                    qty=qty,
-                )
-                cash = 0.0
-            elif action in _PNL_SELL_TRIGGERS and position is not None:
-                proceeds = position.qty * close
-                pnl_abs = proceeds - position.qty * position.entry_price
-                pnl_pct = (close / position.entry_price - 1) * 100
-                trades.append(
-                    PnlTrade(
-                        entry_date=position.entry_date,
-                        entry_price=round(position.entry_price, 4),
-                        entry_action=position.entry_action,
-                        exit_date=d,
-                        exit_price=round(close, 4),
-                        exit_reason="signal_exit",
-                        qty=round(position.qty, 6),
-                        pnl_pct=round(pnl_pct, 3),
-                        pnl_abs=round(pnl_abs, 2),
-                        holding_days=(d - position.entry_date).days,
-                    )
-                )
-                cash = proceeds
-                position = None
+            if action is not None:
+                target_pct = _PNL_TARGET_ALLOCATION.get(action)
+                if target_pct is not None:
+                    current_position_value = position.qty * close
+                    total_value = cash + current_position_value
+                    if total_value > 0:
+                        current_pct = current_position_value / total_value
+                        drift = abs(current_pct - target_pct)
+                        if drift > _PNL_REBALANCE_THRESHOLD or target_pct == 0:
+                            target_value = target_pct * total_value
+                            delta_value = target_value - current_position_value
+                            if delta_value > 0:
+                                # Buy more — open cycle if flat.
+                                buy_qty = delta_value / close
+                                if position.is_flat():
+                                    position.open_cycle(d, snap.action)
+                                position.buy(buy_qty, close)
+                                cash -= delta_value
+                            elif delta_value < 0:
+                                sell_qty = min(-delta_value / close, position.qty)
+                                if (
+                                    target_pct == 0
+                                    or position.qty - sell_qty <= 1e-9
+                                ):
+                                    # Full close → record trade and reset.
+                                    trades.append(
+                                        _close_position_to_trade(
+                                            position, close, d, "signal_exit"
+                                        )
+                                    )
+                                    cash += position.qty * close
+                                    position = _Position()
+                                else:
+                                    position.sell(sell_qty, close)
+                                    cash += sell_qty * close
 
-        if position is not None:
-            account_value = position.qty * close
+        # Step 3: mark to market.
+        if not position.is_flat():
+            account_value = cash + position.qty * close
             days_in_market += 1
         else:
             account_value = cash
@@ -1395,35 +1501,27 @@ def _simulate_pnl(
             )
         )
 
-    # End-of-window unwind: close any open position at the last close.
-    if position is not None:
-        last_close = float(price_by_date[end_date])
-        proceeds = position.qty * last_close
-        pnl_abs = proceeds - position.qty * position.entry_price
-        pnl_pct = (last_close / position.entry_price - 1) * 100
+    # End-of-window unwind: any open position closes at the last *priced*
+    # close (snap date may exceed the last available price row by 1-2 days
+    # in dev when the daily_update writer was ahead of yfinance).
+    if not position.is_flat() and all_dates:
+        last_priced_date = all_dates[-1]
+        last_close = float(price_by_date[last_priced_date])
         trades.append(
-            PnlTrade(
-                entry_date=position.entry_date,
-                entry_price=round(position.entry_price, 4),
-                entry_action=position.entry_action,
-                exit_date=end_date,
-                exit_price=round(last_close, 4),
-                exit_reason="end_of_window",
-                qty=round(position.qty, 6),
-                pnl_pct=round(pnl_pct, 3),
-                pnl_abs=round(pnl_abs, 2),
-                holding_days=(end_date - position.entry_date).days,
+            _close_position_to_trade(
+                position, last_close, last_priced_date, "end_of_window"
             )
         )
-        cash = proceeds
-        position = None
+        cash += position.qty * last_close
+        position = _Position()
 
     final_value = cash
     total_return_pct = (final_value / _PNL_STARTING_CAPITAL - 1) * 100
-    spy_end = float(spy_price_by_date.get(end_date, 0))
+    last_priced_date = all_dates[-1] if all_dates else end_date
+    spy_end = float(spy_price_by_date.get(last_priced_date, 0))
     spy_total_return = (spy_end / spy_start - 1) * 100 if spy_start > 0 else 0.0
     spy_alpha = total_return_pct - spy_total_return
-    stock_end = float(price_by_date[end_date])
+    stock_end = float(price_by_date[last_priced_date])
     stock_total_return = (
         (stock_end / stock_start - 1) * 100 if stock_start > 0 else 0.0
     )
