@@ -87,6 +87,44 @@ export const postureAccuracyBucketSchema = z.object({
 });
 export type PostureAccuracyBucket = z.infer<typeof postureAccuracyBucketSchema>;
 
+// --- /history/event-study ---------------------------------------------------
+
+export const eventStudyHorizonStatSchema = z.object({
+  horizon_days: z.number().int().positive(),
+  n_events: z.number().int().nonnegative(),
+  avg_ar_pct: z.number(),
+  stdev_pct: z.number(),
+  t_stat: z.number(),
+  p_value: z.number(),
+});
+export type EventStudyHorizonStat = z.infer<typeof eventStudyHorizonStatSchema>;
+
+export const eventStudyBucketSchema = z.object({
+  action: z.string(),
+  n_events_total: z.number().int().nonnegative(),
+  horizons: z.array(eventStudyHorizonStatSchema),
+});
+export type EventStudyBucket = z.infer<typeof eventStudyBucketSchema>;
+
+export const eventStudyResponseSchema = z.object({
+  symbol: z.string(),
+  days: z.number().int().nullable(),
+  by_action: z.record(eventStudyBucketSchema),
+});
+export type EventStudyResponse = z.infer<typeof eventStudyResponseSchema>;
+
+export function eventStudy(
+  symbol: string,
+  days?: number,
+): Promise<EventStudyResponse> {
+  const search = new URLSearchParams({ symbol });
+  if (days !== undefined) search.set('days', String(days));
+  return apiRequest(`/api/v1/history/event-study?${search.toString()}`, {
+    method: 'GET',
+    schema: eventStudyResponseSchema,
+  });
+}
+
 export const postureAccuracyResponseSchema = z.object({
   horizon: z.number().int(),
   days: z.number().int().nullable(),

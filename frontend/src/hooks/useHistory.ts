@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  eventStudy,
   marketPostureHistory,
   postureAccuracy,
   signalAccuracy,
   symbolAccuracyRanking,
   tickerSignalsHistory,
+  type EventStudyResponse,
   type PostureAccuracyResponse,
   type PostureHistoryResponse,
   type SignalAccuracyHorizon,
@@ -21,6 +23,23 @@ export function useMarketPostureHistory(
     queryFn: () => marketPostureHistory(days),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useEventStudy(
+  symbol: string | null,
+  days?: number,
+): ReturnType<typeof useQuery<EventStudyResponse>> {
+  return useQuery({
+    queryKey: ['history', 'event-study', symbol ?? '', days ?? 'all'] as const,
+    queryFn: () => {
+      if (!symbol) throw new Error('useEventStudy called without symbol');
+      return eventStudy(symbol, days);
+    },
+    enabled: typeof symbol === 'string' && symbol.length > 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 }
 

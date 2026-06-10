@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { LoadingSpinner } from './LoadingSpinner';
 import { TickerSignalTimelineChart } from './charts/TickerSignalTimelineChart';
 import { Explainable, RuleTable } from './Explainable';
+import { EventStudyPanel } from './EventStudyPanel';
 import {
   SIGNAL_ACCURACY_HORIZONS,
   type SignalAccuracyHorizon,
@@ -288,9 +289,12 @@ interface SignalAccuracySectionProps {
 // scroll path) and HistoryPage can drop it in favour of the new ranking
 // card. Window selector (90/180/365D) drives both the chart AND the
 // stats so the user always reads a consistent slice.
+type AccuracyTab = 'hit_rate' | 'event_study';
+
 export function SignalAccuracySection({
   symbol,
 }: SignalAccuracySectionProps): JSX.Element {
+  const [tab, setTab] = useState<AccuracyTab>('hit_rate');
   const [horizon, setHorizon] = useState<SignalAccuracyHorizon>(20);
   const [timelineDays, setTimelineDays] = useState<number>(180);
   const { data, isLoading, isError, refetch } = useSignalAccuracy(
@@ -380,7 +384,40 @@ export function SignalAccuracySection({
             data={timelineQuery.data?.data ?? []}
             windowDays={timelineDays}
           />
-          <div className="flex flex-wrap items-center gap-3 border-t border-stone-200 pt-3">
+          {/* Tabs: 命中率 (Hit Rate) | Event Study (academic-style t-test) */}
+          <div
+            role="tablist"
+            aria-label="準確率評估方法"
+            className="flex gap-1 border-b border-stone-200"
+          >
+            {(['hit_rate', 'event_study'] as const).map((t) => {
+              const active = t === tab;
+              const label = t === 'hit_rate' ? '命中率' : 'Event Study';
+              return (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={active}
+                  type="button"
+                  onClick={() => setTab(t)}
+                  data-testid={`accuracy-tab-${t}`}
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium transition ${
+                    active
+                      ? 'border-sky-600 text-sky-700'
+                      : 'border-transparent text-stone-500 hover:text-stone-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {tab === 'event_study' && (
+            <EventStudyPanel symbol={symbol} days={timelineDays} />
+          )}
+          {tab === 'hit_rate' && (
+            <>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <span className="text-xs text-stone-500">命中 horizon</span>
             <div
               role="radiogroup"
@@ -566,6 +603,8 @@ export function SignalAccuracySection({
                 </tbody>
               </table>
             </div>
+          )}
+            </>
           )}
         </div>
       )}

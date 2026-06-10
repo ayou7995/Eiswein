@@ -986,3 +986,198 @@ def symbol_accuracy_ranking(
         data=entries,
         baseline=_baseline_to_schema(aggregate),
     )
+
+
+# --- /history/event-study ------------------------------------------------
+
+# Event study horizon points. 1 / 5 / 20 / 60 trading days mirror the
+# academic convention (t+1 = next bar, t+5 ~ one week, t+20 ~ one month,
+# t+60 ~ one quarter). Calendar days vs trading days: we use calendar
+# offsets but resolve forward via ``_first_on_or_after`` so weekends
+# slip to the next trading day — same as the accuracy code.
+_EVENT_STUDY_HORIZONS: tuple[int, ...] = (1, 5, 20, 60)
+
+# Actions to bucket. Excludes strong_buy/exit because they're rare
+# (typically <30 events even on 2-year DBs); reduce captures the
+# sell-side signal universe. The bucket label maps to the snapshot
+# action string verbatim — the frontend re-labels into 中文 via the
+# same ACTION_LABEL it uses for the per-action accuracy table.
+_EVENT_STUDY_BUCKETS: tuple[str, ...] = ("buy", "reduce", "hold", "watch")
+
+
+class EventStudyHorizonStat(BaseModel):
+    """Per-horizon t-test on the abnormal-return distribution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    horizon_days: int
+    n_events: int
+    avg_ar_pct: float  # mean abnormal return % (stock return - SPY return)
+    stdev_pct: float
+    t_stat: float
+    # 2-sided p-value under the standard-normal approximation. For
+    # n_events ≥ 30 this is close enough to the t-distribution; for
+    # smaller N the frontend renders "N<30 不下結論" and ignores p.
+    p_value: float
+
+
+class EventStudyBucket(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    action: str
+    n_events_total: int
+    horizons: list[EventStudyHorizonStat]
+
+
+class EventStudyResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    days: int | None
+    by_action: dict[str, EventStudyBucket]
+
+
+def _normal_two_sided_p(t: float) -> float:
+    """2-sided p-value under the standard-normal distribution.
+
+    Avoids importing scipy for a single use. NormalDist is in stdlib
+    since 3.8. The tails-approximation breaks down beyond |t| ≈ 8 but
+    the result is already 0 to 16 dp by then.
+    """
+    from statistics import NormalDist
+
+    return round(2.0 * (1.0 - NormalDist().cdf(abs(t))), 6)
+
+
+def _compute_event_study(
+    *,
+    snapshots: list[TickerSnapshot],
+    price_by_date: dict[date, Decimal],
+    spy_price_by_date: dict[date, Decimal],
+) -> dict[str, EventStudyBucket]:
+    """Build the per-action x per-horizon event-study table.
+
+    For each event at date D and each horizon h:
+        stock_return = (close[D+h] - close[D]) / close[D]
+        spy_return   = (SPY[D+h]    - SPY[D])   / SPY[D]
+        abnormal_return = stock_return - spy_return
+
+    The bucket aggregates the ARs and runs a 1-sample t-test against
+    H0: AR = 0. Statistically significant alpha → the indicator
+    captured a directional move beyond market drift.
+    """
+    from statistics import mean, stdev
+
+    sorted_stock_dates = sorted(price_by_date.keys())
+    sorted_spy_dates = sorted(spy_price_by_date.keys())
+
+    # Bucket → horizon → list of AR observations.
+    ars: dict[str, dict[int, list[float]]] = {
+        b: {h: [] for h in _EVENT_STUDY_HORIZONS} for b in _EVENT_STUDY_BUCKETS
+    }
+    bucket_totals: dict[str, int] = dict.fromkeys(_EVENT_STUDY_BUCKETS, 0)
+
+    for snap in snapshots:
+        action_str = snap.action
+        if action_str not in ars:
+            continue
+        bucket_totals[action_str] += 1
+        start_stock = price_by_date.get(snap.date)
+        start_spy = spy_price_by_date.get(snap.date)
+        if start_stock is None or start_spy is None or start_stock <= 0 or start_spy <= 0:
+            continue
+        for h in _EVENT_STUDY_HORIZONS:
+            target = snap.date + timedelta(days=h)
+            stock_fwd_date = _first_on_or_after(sorted_stock_dates, target)
+            spy_fwd_date = _first_on_or_after(sorted_spy_dates, target)
+            if stock_fwd_date is None or spy_fwd_date is None:
+                continue
+            stock_ret = float((price_by_date[stock_fwd_date] - start_stock) / start_stock)
+            spy_ret = float((spy_price_by_date[spy_fwd_date] - start_spy) / start_spy)
+            ars[action_str][h].append(stock_ret - spy_ret)
+
+    out: dict[str, EventStudyBucket] = {}
+    for action, by_h in ars.items():
+        horizons: list[EventStudyHorizonStat] = []
+        for h in _EVENT_STUDY_HORIZONS:
+            sample = by_h[h]
+            n = len(sample)
+            if n == 0:
+                horizons.append(
+                    EventStudyHorizonStat(
+                        horizon_days=h,
+                        n_events=0,
+                        avg_ar_pct=0.0,
+                        stdev_pct=0.0,
+                        t_stat=0.0,
+                        p_value=1.0,
+                    )
+                )
+                continue
+            m = mean(sample)
+            sd = stdev(sample) if n > 1 else 0.0
+            se = sd / (n**0.5) if sd > 0 else 0.0
+            t = (m / se) if se > 0 else 0.0
+            horizons.append(
+                EventStudyHorizonStat(
+                    horizon_days=h,
+                    n_events=n,
+                    avg_ar_pct=round(m * 100, 3),
+                    stdev_pct=round(sd * 100, 3),
+                    t_stat=round(t, 3),
+                    p_value=_normal_two_sided_p(t),
+                )
+            )
+        out[action] = EventStudyBucket(
+            action=action,
+            n_events_total=bucket_totals[action],
+            horizons=horizons,
+        )
+    return out
+
+
+@router.get(
+    "/history/event-study",
+    response_model=EventStudyResponse,
+    summary="Event-study abnormal returns + t-test for each action bucket",
+)
+def event_study(
+    symbol: str = Query(..., min_length=1, max_length=10),
+    days: int | None = Query(default=None, ge=30, le=730),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
+    session: Session = Depends(get_db_session),
+) -> EventStudyResponse:
+    validated = validate_symbol_or_raise(symbol)
+    if watchlist.get(user_id=user_id, symbol=validated) is None:
+        raise NotFoundError(details={"symbol": validated})
+
+    all_snapshots = list(snapshots.list_for_symbol(validated))
+    if days is not None and all_snapshots:
+        latest = max(s.date for s in all_snapshots)
+        cutoff = latest - timedelta(days=days)
+        all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
+
+    if not all_snapshots:
+        return EventStudyResponse(symbol=validated, days=days, by_action={})
+
+    stock_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == validated)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _BASELINE_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    price_by_date = {r.date: Decimal(str(r.close)) for r in stock_rows}
+    spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    by_action = _compute_event_study(
+        snapshots=all_snapshots,
+        price_by_date=price_by_date,
+        spy_price_by_date=spy_price_by_date,
+    )
+    return EventStudyResponse(symbol=validated, days=days, by_action=by_action)
