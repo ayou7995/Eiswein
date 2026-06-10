@@ -3,6 +3,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { TickerSignalTimelineChart } from './charts/TickerSignalTimelineChart';
 import { Explainable, RuleTable } from './Explainable';
 import { EventStudyPanel } from './EventStudyPanel';
+import { PnlSimulationPanel } from './PnlSimulationPanel';
 import {
   SIGNAL_ACCURACY_HORIZONS,
   type SignalAccuracyHorizon,
@@ -289,7 +290,7 @@ interface SignalAccuracySectionProps {
 // scroll path) and HistoryPage can drop it in favour of the new ranking
 // card. Window selector (90/180/365D) drives both the chart AND the
 // stats so the user always reads a consistent slice.
-type AccuracyTab = 'hit_rate' | 'event_study';
+type AccuracyTab = 'hit_rate' | 'event_study' | 'pnl_simulation';
 
 export function SignalAccuracySection({
   symbol,
@@ -384,15 +385,20 @@ export function SignalAccuracySection({
             data={timelineQuery.data?.data ?? []}
             windowDays={timelineDays}
           />
-          {/* Tabs: 命中率 (Hit Rate) | Event Study (academic-style t-test) */}
+          {/* Tabs: 命中率 (hit rate) | Event Study (t-test) | PnL Simulation (backtest) */}
           <div
             role="tablist"
             aria-label="準確率評估方法"
             className="flex gap-1 border-b border-stone-200"
           >
-            {(['hit_rate', 'event_study'] as const).map((t) => {
+            {(['hit_rate', 'event_study', 'pnl_simulation'] as const).map((t) => {
               const active = t === tab;
-              const label = t === 'hit_rate' ? '命中率' : 'Event Study';
+              const label =
+                t === 'hit_rate'
+                  ? '命中率'
+                  : t === 'event_study'
+                    ? 'Event Study'
+                    : 'PnL Simulation';
               return (
                 <button
                   key={t}
@@ -414,6 +420,9 @@ export function SignalAccuracySection({
           </div>
           {tab === 'event_study' && (
             <EventStudyPanel symbol={symbol} days={timelineDays} />
+          )}
+          {tab === 'pnl_simulation' && (
+            <PnlSimulationPanel symbol={symbol} days={timelineDays} />
           )}
           {tab === 'hit_rate' && (
             <>

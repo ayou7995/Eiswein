@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import {
   eventStudy,
   marketPostureHistory,
+  pnlSimulation,
   postureAccuracy,
   signalAccuracy,
   symbolAccuracyRanking,
   tickerSignalsHistory,
   type EventStudyResponse,
+  type PnlSimulationResponse,
   type PostureAccuracyResponse,
   type PostureHistoryResponse,
   type SignalAccuracyHorizon,
@@ -23,6 +25,23 @@ export function useMarketPostureHistory(
     queryFn: () => marketPostureHistory(days),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function usePnlSimulation(
+  symbol: string | null,
+  days?: number,
+): ReturnType<typeof useQuery<PnlSimulationResponse>> {
+  return useQuery({
+    queryKey: ['history', 'pnl-simulation', symbol ?? '', days ?? 'all'] as const,
+    queryFn: () => {
+      if (!symbol) throw new Error('usePnlSimulation called without symbol');
+      return pnlSimulation(symbol, days);
+    },
+    enabled: typeof symbol === 'string' && symbol.length > 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 }
 

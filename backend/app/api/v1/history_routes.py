@@ -1181,3 +1181,345 @@ def event_study(
         spy_price_by_date=spy_price_by_date,
     )
     return EventStudyResponse(symbol=validated, days=days, by_action=by_action)
+
+
+# --- /history/pnl-simulation ---------------------------------------------
+
+# Trading rule:
+# * BUY / STRONG_BUY + flat   → go long all-in on close
+# * REDUCE / EXIT  + in position → close all on close
+# * HOLD / WATCH               → do nothing (carry position OR sit in cash)
+# End-of-window unwind: any open position closes at the last close.
+# No stop loss in the MVP — the snapshot's recommended stop is advisory
+# only; the operator usually applies it manually. We can add a stop-loss
+# variant as a comparison later.
+_PNL_STARTING_CAPITAL = 10_000.0
+_PNL_BUY_TRIGGERS: frozenset[ActionCategory] = frozenset(
+    {ActionCategory.STRONG_BUY, ActionCategory.BUY}
+)
+_PNL_SELL_TRIGGERS: frozenset[ActionCategory] = frozenset(
+    {ActionCategory.REDUCE, ActionCategory.EXIT}
+)
+_TRADING_DAYS_PER_YEAR = 252
+
+
+class PnlTrade(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    entry_date: date
+    entry_price: float
+    entry_action: str
+    exit_date: date
+    exit_price: float
+    exit_reason: str  # 'signal_exit' | 'end_of_window'
+    qty: float
+    pnl_pct: float
+    pnl_abs: float
+    holding_days: int
+
+
+class PnlSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    starting_capital: float
+    final_value: float
+    total_return_pct: float
+    spy_total_return_pct: float
+    alpha_pct: float  # total_return - spy_total_return
+    n_trades: int
+    n_winners: int
+    n_losers: int
+    win_rate_pct: float
+    avg_win_pct: float
+    avg_loss_pct: float
+    sharpe_ratio: float  # annualized via sqrt(252)
+    max_drawdown_pct: float  # most negative peak-to-trough drawdown
+    days_in_market_pct: float  # share of days holding a position
+
+
+class PnlDailyValue(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    strategy_value: float  # mark-to-market account value
+    spy_baseline_value: float  # $10,000 in SPY bought at start
+
+
+class PnlSimulationResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    days: int | None
+    summary: PnlSummary
+    trades: list[PnlTrade]
+    daily_values: list[PnlDailyValue]
+
+
+@dataclass
+class _OpenPosition:
+    entry_date: date
+    entry_price: float
+    entry_action: str
+    qty: float
+
+
+def _empty_pnl_summary() -> PnlSummary:
+    return PnlSummary(
+        starting_capital=_PNL_STARTING_CAPITAL,
+        final_value=_PNL_STARTING_CAPITAL,
+        total_return_pct=0.0,
+        spy_total_return_pct=0.0,
+        alpha_pct=0.0,
+        n_trades=0,
+        n_winners=0,
+        n_losers=0,
+        win_rate_pct=0.0,
+        avg_win_pct=0.0,
+        avg_loss_pct=0.0,
+        sharpe_ratio=0.0,
+        max_drawdown_pct=0.0,
+        days_in_market_pct=0.0,
+    )
+
+
+def _simulate_pnl(
+    *,
+    snapshots: list[TickerSnapshot],
+    price_by_date: dict[date, Decimal],
+    spy_price_by_date: dict[date, Decimal],
+) -> tuple[PnlSummary, list[PnlTrade], list[PnlDailyValue]]:
+    """Walk the snapshot timeline applying the trading rule day by day.
+
+    Mark-to-market account value is recorded each day for Sharpe + max
+    drawdown computation. Returns are computed against the SPY drift
+    baseline (lump-sum buy SPY at start, hold to end).
+    """
+    if not snapshots:
+        return _empty_pnl_summary(), [], []
+
+    snapshots_by_date = {s.date: s for s in snapshots}
+    snap_dates = sorted(snapshots_by_date.keys())
+    start_date = snap_dates[0]
+    end_date = snap_dates[-1]
+
+    # Walk every date with a price, filtered to the snapshot window. This
+    # carries mark-to-market continuously even on days without a snapshot
+    # row (rare but possible if the snapshot writer skipped a day).
+    all_dates = sorted(d for d in price_by_date if start_date <= d <= end_date)
+    if not all_dates:
+        return _empty_pnl_summary(), [], []
+
+    cash = _PNL_STARTING_CAPITAL
+    position: _OpenPosition | None = None
+    trades: list[PnlTrade] = []
+    daily_values: list[PnlDailyValue] = []
+    days_in_market = 0
+
+    spy_start = float(spy_price_by_date.get(start_date) or 0)
+
+    for d in all_dates:
+        close = float(price_by_date[d])
+        snap = snapshots_by_date.get(d)
+        if snap is not None:
+            try:
+                action = ActionCategory(snap.action)
+            except ValueError:
+                action = None
+            if action in _PNL_BUY_TRIGGERS and position is None and close > 0:
+                qty = cash / close
+                position = _OpenPosition(
+                    entry_date=d,
+                    entry_price=close,
+                    entry_action=snap.action,
+                    qty=qty,
+                )
+                cash = 0.0
+            elif action in _PNL_SELL_TRIGGERS and position is not None:
+                proceeds = position.qty * close
+                pnl_abs = proceeds - position.qty * position.entry_price
+                pnl_pct = (close / position.entry_price - 1) * 100
+                trades.append(
+                    PnlTrade(
+                        entry_date=position.entry_date,
+                        entry_price=round(position.entry_price, 4),
+                        entry_action=position.entry_action,
+                        exit_date=d,
+                        exit_price=round(close, 4),
+                        exit_reason="signal_exit",
+                        qty=round(position.qty, 6),
+                        pnl_pct=round(pnl_pct, 3),
+                        pnl_abs=round(pnl_abs, 2),
+                        holding_days=(d - position.entry_date).days,
+                    )
+                )
+                cash = proceeds
+                position = None
+
+        if position is not None:
+            account_value = position.qty * close
+            days_in_market += 1
+        else:
+            account_value = cash
+        spy_close = float(spy_price_by_date.get(d, 0))
+        spy_value = (
+            _PNL_STARTING_CAPITAL * (spy_close / spy_start)
+            if spy_start > 0 and spy_close > 0
+            else _PNL_STARTING_CAPITAL
+        )
+        daily_values.append(
+            PnlDailyValue(
+                date=d,
+                strategy_value=round(account_value, 2),
+                spy_baseline_value=round(spy_value, 2),
+            )
+        )
+
+    # End-of-window unwind: close any open position at the last close.
+    if position is not None:
+        last_close = float(price_by_date[end_date])
+        proceeds = position.qty * last_close
+        pnl_abs = proceeds - position.qty * position.entry_price
+        pnl_pct = (last_close / position.entry_price - 1) * 100
+        trades.append(
+            PnlTrade(
+                entry_date=position.entry_date,
+                entry_price=round(position.entry_price, 4),
+                entry_action=position.entry_action,
+                exit_date=end_date,
+                exit_price=round(last_close, 4),
+                exit_reason="end_of_window",
+                qty=round(position.qty, 6),
+                pnl_pct=round(pnl_pct, 3),
+                pnl_abs=round(pnl_abs, 2),
+                holding_days=(end_date - position.entry_date).days,
+            )
+        )
+        cash = proceeds
+        position = None
+
+    final_value = cash
+    total_return_pct = (final_value / _PNL_STARTING_CAPITAL - 1) * 100
+    spy_end = float(spy_price_by_date.get(end_date, 0))
+    spy_total_return = (spy_end / spy_start - 1) * 100 if spy_start > 0 else 0.0
+    alpha = total_return_pct - spy_total_return
+
+    n_trades = len(trades)
+    winners = [t for t in trades if t.pnl_pct > 0]
+    losers = [t for t in trades if t.pnl_pct < 0]
+    win_rate = (len(winners) / n_trades * 100) if n_trades else 0.0
+    avg_win = (sum(t.pnl_pct for t in winners) / len(winners)) if winners else 0.0
+    avg_loss = (sum(t.pnl_pct for t in losers) / len(losers)) if losers else 0.0
+
+    # Daily returns from mark-to-market values for Sharpe.
+    daily_returns: list[float] = []
+    for i in range(1, len(daily_values)):
+        prev = daily_values[i - 1].strategy_value
+        curr = daily_values[i].strategy_value
+        if prev > 0:
+            daily_returns.append(curr / prev - 1)
+    if len(daily_returns) > 1:
+        mean_ret = sum(daily_returns) / len(daily_returns)
+        var_ret = sum((r - mean_ret) ** 2 for r in daily_returns) / (
+            len(daily_returns) - 1
+        )
+        stdev_ret = var_ret**0.5
+        sharpe = (
+            (mean_ret / stdev_ret) * (_TRADING_DAYS_PER_YEAR**0.5)
+            if stdev_ret > 0
+            else 0.0
+        )
+    else:
+        sharpe = 0.0
+
+    # Max drawdown via running peak / trough.
+    peak = daily_values[0].strategy_value
+    max_dd = 0.0
+    for dv in daily_values:
+        if dv.strategy_value > peak:
+            peak = dv.strategy_value
+        if peak > 0:
+            dd = (dv.strategy_value - peak) / peak * 100
+            if dd < max_dd:
+                max_dd = dd
+
+    total_days = len(daily_values)
+    days_in_market_pct = (
+        days_in_market / total_days * 100 if total_days else 0.0
+    )
+
+    summary = PnlSummary(
+        starting_capital=_PNL_STARTING_CAPITAL,
+        final_value=round(final_value, 2),
+        total_return_pct=round(total_return_pct, 2),
+        spy_total_return_pct=round(spy_total_return, 2),
+        alpha_pct=round(alpha, 2),
+        n_trades=n_trades,
+        n_winners=len(winners),
+        n_losers=len(losers),
+        win_rate_pct=round(win_rate, 2),
+        avg_win_pct=round(avg_win, 2),
+        avg_loss_pct=round(avg_loss, 2),
+        sharpe_ratio=round(sharpe, 2),
+        max_drawdown_pct=round(max_dd, 2),
+        days_in_market_pct=round(days_in_market_pct, 2),
+    )
+    return summary, trades, daily_values
+
+
+@router.get(
+    "/history/pnl-simulation",
+    response_model=PnlSimulationResponse,
+    summary="Backtest a per-symbol strategy that follows the indicator signals",
+)
+def pnl_simulation(
+    symbol: str = Query(..., min_length=1, max_length=10),
+    days: int | None = Query(default=None, ge=30, le=730),
+    user_id: int = Depends(current_user_id),
+    watchlist: WatchlistRepository = Depends(get_watchlist_repository),
+    snapshots: TickerSnapshotRepository = Depends(get_ticker_snapshot_repository),
+    session: Session = Depends(get_db_session),
+) -> PnlSimulationResponse:
+    validated = validate_symbol_or_raise(symbol)
+    if watchlist.get(user_id=user_id, symbol=validated) is None:
+        raise NotFoundError(details={"symbol": validated})
+
+    all_snapshots = list(snapshots.list_for_symbol(validated))
+    if days is not None and all_snapshots:
+        latest = max(s.date for s in all_snapshots)
+        cutoff = latest - timedelta(days=days)
+        all_snapshots = [s for s in all_snapshots if s.date >= cutoff]
+
+    if not all_snapshots:
+        return PnlSimulationResponse(
+            symbol=validated,
+            days=days,
+            summary=_empty_pnl_summary(),
+            trades=[],
+            daily_values=[],
+        )
+
+    stock_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == validated)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    spy_rows = session.execute(
+        select(DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol == _BASELINE_SYMBOL)
+        .order_by(DailyPrice.date.asc())
+    ).all()
+    price_by_date = {r.date: Decimal(str(r.close)) for r in stock_rows}
+    spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
+
+    summary, trades, daily_values = _simulate_pnl(
+        snapshots=all_snapshots,
+        price_by_date=price_by_date,
+        spy_price_by_date=spy_price_by_date,
+    )
+    return PnlSimulationResponse(
+        symbol=validated,
+        days=days,
+        summary=summary,
+        trades=trades,
+        daily_values=daily_values,
+    )

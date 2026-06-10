@@ -125,6 +125,68 @@ export function eventStudy(
   });
 }
 
+// --- /history/pnl-simulation -----------------------------------------------
+
+export const pnlTradeSchema = z.object({
+  entry_date: z.string(),
+  entry_price: z.number(),
+  entry_action: z.string(),
+  exit_date: z.string(),
+  exit_price: z.number(),
+  exit_reason: z.string(),
+  qty: z.number(),
+  pnl_pct: z.number(),
+  pnl_abs: z.number(),
+  holding_days: z.number().int().nonnegative(),
+});
+export type PnlTrade = z.infer<typeof pnlTradeSchema>;
+
+export const pnlSummarySchema = z.object({
+  starting_capital: z.number(),
+  final_value: z.number(),
+  total_return_pct: z.number(),
+  spy_total_return_pct: z.number(),
+  alpha_pct: z.number(),
+  n_trades: z.number().int().nonnegative(),
+  n_winners: z.number().int().nonnegative(),
+  n_losers: z.number().int().nonnegative(),
+  win_rate_pct: z.number(),
+  avg_win_pct: z.number(),
+  avg_loss_pct: z.number(),
+  sharpe_ratio: z.number(),
+  max_drawdown_pct: z.number(),
+  days_in_market_pct: z.number(),
+});
+export type PnlSummary = z.infer<typeof pnlSummarySchema>;
+
+export const pnlDailyValueSchema = z.object({
+  date: z.string(),
+  strategy_value: z.number(),
+  spy_baseline_value: z.number(),
+});
+export type PnlDailyValue = z.infer<typeof pnlDailyValueSchema>;
+
+export const pnlSimulationResponseSchema = z.object({
+  symbol: z.string(),
+  days: z.number().int().nullable(),
+  summary: pnlSummarySchema,
+  trades: z.array(pnlTradeSchema),
+  daily_values: z.array(pnlDailyValueSchema),
+});
+export type PnlSimulationResponse = z.infer<typeof pnlSimulationResponseSchema>;
+
+export function pnlSimulation(
+  symbol: string,
+  days?: number,
+): Promise<PnlSimulationResponse> {
+  const search = new URLSearchParams({ symbol });
+  if (days !== undefined) search.set('days', String(days));
+  return apiRequest(`/api/v1/history/pnl-simulation?${search.toString()}`, {
+    method: 'GET',
+    schema: pnlSimulationResponseSchema,
+  });
+}
+
 export const postureAccuracyResponseSchema = z.object({
   horizon: z.number().int(),
   days: z.number().int().nullable(),
