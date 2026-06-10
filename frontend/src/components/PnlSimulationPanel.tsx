@@ -42,12 +42,17 @@ export function PnlSimulationPanel({
             title="PnL Simulation 怎麼讀"
             explanation={
               <RuleTable
-                preface="模擬「假設我從頭照訊號操作 N 天,$10,000 起始資金,2 年下來變多少錢?」交易規則:看到 buy/strong_buy → 全倉進場;看到 reduce/exit → 全部平倉;其他訊號 → 不動。沒有止損機制(MVP)。"
+                preface="模擬「假設我從頭照訊號操作 N 天,$10,000 起始資金,N 天後變多少錢?」交易規則 (v2):buy / strong_buy / hold + 沒部位 → 全倉進場(hold 也算進場是因為「持有」訊號隱含「現在應該在場」);reduce/exit + 有部位 → 全部平倉;watch → 不變動(觀望 = 維持現狀)。沒有止損機制。"
                 rows={[
                   {
-                    condition: 'Alpha vs SPY',
+                    condition: 'vs SPY Alpha',
                     result:
-                      '策略總報酬 − SPY 同期 buy-and-hold 報酬。正值 = 跑贏大盤;負值 = 不如直接買 SPY。',
+                      '策略總報酬 − SPY buy-and-hold 報酬。正值 = 跑贏大盤;負值 = 不如直接買 SPY ETF 放著。',
+                  },
+                  {
+                    condition: 'vs 股票 B&H Alpha',
+                    result:
+                      '策略總報酬 − 直接買這檔 buy-and-hold。正值 = 訊號真的幫了你;負值 = 直接買股票放著比較好,訊號反而扣分。',
                   },
                   {
                     condition: 'Sharpe Ratio',
@@ -134,22 +139,29 @@ export function PnlSimulationPanel({
 }
 
 function SummaryCard({ summary }: { summary: PnlSummary }): JSX.Element {
-  const alphaPositive = summary.alpha_pct >= 0;
+  const spyAlphaPositive = summary.spy_alpha_pct >= 0;
+  const stockAlphaPositive = summary.stock_alpha_pct >= 0;
   const drawdownSevere = summary.max_drawdown_pct <= -30;
   const sharpeGood = summary.sharpe_ratio >= 1;
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <Metric
-        label="總報酬"
+        label="策略總報酬"
         primaryValue={`${summary.total_return_pct >= 0 ? '+' : ''}${summary.total_return_pct.toFixed(2)}%`}
         secondaryValue={`$${summary.starting_capital.toLocaleString()} → $${summary.final_value.toLocaleString()}`}
         tone={summary.total_return_pct > 0 ? 'green' : summary.total_return_pct < 0 ? 'red' : 'neutral'}
       />
       <Metric
-        label="vs SPY (Alpha)"
-        primaryValue={`${alphaPositive ? '+' : ''}${summary.alpha_pct.toFixed(2)}%`}
+        label="vs SPY"
+        primaryValue={`${spyAlphaPositive ? '+' : ''}${summary.spy_alpha_pct.toFixed(2)}%`}
         secondaryValue={`SPY 同期 ${summary.spy_total_return_pct >= 0 ? '+' : ''}${summary.spy_total_return_pct.toFixed(2)}%`}
-        tone={alphaPositive ? 'green' : 'red'}
+        tone={spyAlphaPositive ? 'green' : 'red'}
+      />
+      <Metric
+        label="vs 股票 B&H"
+        primaryValue={`${stockAlphaPositive ? '+' : ''}${summary.stock_alpha_pct.toFixed(2)}%`}
+        secondaryValue={`直接買股票 ${summary.stock_total_return_pct >= 0 ? '+' : ''}${summary.stock_total_return_pct.toFixed(2)}%`}
+        tone={stockAlphaPositive ? 'green' : 'red'}
       />
       <Metric
         label="Sharpe (年化)"
@@ -172,17 +184,11 @@ function SummaryCard({ summary }: { summary: PnlSummary }): JSX.Element {
         tone={drawdownSevere ? 'red' : summary.max_drawdown_pct <= -15 ? 'neutral' : 'green'}
       />
       <Metric
-        label="交易次數"
-        primaryValue={String(summary.n_trades)}
-        secondaryValue={`${summary.n_winners}W / ${summary.n_losers}L`}
-        tone="neutral"
-      />
-      <Metric
         label="勝率"
         primaryValue={summary.n_trades > 0 ? `${summary.win_rate_pct.toFixed(1)}%` : '—'}
         secondaryValue={
           summary.n_trades > 0
-            ? `平均賺 ${summary.avg_win_pct >= 0 ? '+' : ''}${summary.avg_win_pct.toFixed(2)}% / 賠 ${summary.avg_loss_pct.toFixed(2)}%`
+            ? `${summary.n_winners}W / ${summary.n_losers}L · 賺 ${summary.avg_win_pct >= 0 ? '+' : ''}${summary.avg_win_pct.toFixed(1)}% / 賠 ${summary.avg_loss_pct.toFixed(1)}%`
             : '尚無交易'
         }
         tone={summary.win_rate_pct >= 50 ? 'green' : summary.win_rate_pct >= 30 ? 'neutral' : 'red'}
@@ -190,17 +196,17 @@ function SummaryCard({ summary }: { summary: PnlSummary }): JSX.Element {
       <Metric
         label="In-Market %"
         primaryValue={`${summary.days_in_market_pct.toFixed(1)}%`}
-        secondaryValue="有持倉的天數比例"
+        secondaryValue={`${summary.n_trades} 筆交易;有持倉的天數比例`}
         tone="neutral"
       />
       <Metric
-        label="期望值 (每筆)"
+        label="每筆期望值"
         primaryValue={
           summary.n_trades > 0
             ? `${(summary.win_rate_pct / 100 * summary.avg_win_pct + (1 - summary.win_rate_pct / 100) * summary.avg_loss_pct).toFixed(2)}%`
             : '—'
         }
-        secondaryValue="期望值 = 勝率×平均賺 + 敗率×平均賠"
+        secondaryValue="勝率×平均賺 + 敗率×平均賠"
         tone={
           summary.n_trades > 0 &&
           summary.win_rate_pct / 100 * summary.avg_win_pct +
@@ -248,6 +254,7 @@ interface EquityCurvePoint {
   date: string;
   strategy_value: number;
   spy_baseline_value: number;
+  stock_baseline_value: number;
 }
 
 function EquityCurve({ data }: { data: ReadonlyArray<EquityCurvePoint> }): JSX.Element {
@@ -257,6 +264,7 @@ function EquityCurve({ data }: { data: ReadonlyArray<EquityCurvePoint> }): JSX.E
         date: d.date,
         strategy: d.strategy_value,
         spy: d.spy_baseline_value,
+        stock: d.stock_baseline_value,
       })),
     [data],
   );
@@ -266,21 +274,28 @@ function EquityCurve({ data }: { data: ReadonlyArray<EquityCurvePoint> }): JSX.E
       className="flex flex-col gap-2 rounded-md border border-stone-200 bg-stone-50 p-3"
     >
       <h4 className="text-xs font-medium text-stone-700">
-        資金曲線 — 策略 vs SPY buy-and-hold
+        資金曲線 — 策略 vs SPY B&H vs 股票 B&H
       </h4>
       <IndicatorMultiLine
         series={series}
         lines={[
           { key: 'strategy', label: '策略', color: '#0284c7', width: 2 },
           {
+            key: 'stock',
+            label: '股票 B&H',
+            color: '#16a34a',
+            width: 1,
+            style: 'dashed',
+          },
+          {
             key: 'spy',
-            label: 'SPY baseline',
+            label: 'SPY B&H',
             color: '#9ca3af',
             width: 1,
             style: 'dashed',
           },
         ]}
-        ariaLabel="策略資金曲線 vs SPY 同期報酬"
+        ariaLabel="策略資金曲線 vs SPY 與股票 buy-and-hold"
       />
     </section>
   );

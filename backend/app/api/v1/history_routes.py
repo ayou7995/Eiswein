@@ -1185,17 +1185,22 @@ def event_study(
 
 # --- /history/pnl-simulation ---------------------------------------------
 
-# Trading rule:
-# * BUY / STRONG_BUY + flat   → go long all-in on close
-# * REDUCE / EXIT  + in position → close all on close
-# * HOLD / WATCH               → do nothing (carry position OR sit in cash)
+# Trading rule (v2 — fix HOLD/WATCH semantics from MVP):
+# * BUY / STRONG_BUY / HOLD + flat → go long all-in on close.
+#   HOLD joins as an entry trigger because the indicator's "持有" literally
+#   means "the appropriate state is to be in this position"; the previous
+#   "do nothing" interpretation kept the simulator in cash for long stretches
+#   (in-market 36-41%) when the indicator was effectively saying "you should
+#   be holding this".
+# * REDUCE / EXIT + in position → close all on close.
+# * WATCH → no-op (maintain current state — flat stays flat, position stays
+#   long). "觀望" is explicitly "wait and see, don't change anything".
 # End-of-window unwind: any open position closes at the last close.
 # No stop loss in the MVP — the snapshot's recommended stop is advisory
-# only; the operator usually applies it manually. We can add a stop-loss
-# variant as a comparison later.
+# only; the operator usually applies it manually.
 _PNL_STARTING_CAPITAL = 10_000.0
-_PNL_BUY_TRIGGERS: frozenset[ActionCategory] = frozenset(
-    {ActionCategory.STRONG_BUY, ActionCategory.BUY}
+_PNL_ENTRY_TRIGGERS: frozenset[ActionCategory] = frozenset(
+    {ActionCategory.STRONG_BUY, ActionCategory.BUY, ActionCategory.HOLD}
 )
 _PNL_SELL_TRIGGERS: frozenset[ActionCategory] = frozenset(
     {ActionCategory.REDUCE, ActionCategory.EXIT}
@@ -1225,7 +1230,14 @@ class PnlSummary(BaseModel):
     final_value: float
     total_return_pct: float
     spy_total_return_pct: float
-    alpha_pct: float  # total_return - spy_total_return
+    spy_alpha_pct: float  # total_return - spy_total_return
+    # v2: stock buy-and-hold baseline. The "fairer" comparison for a
+    # per-symbol strategy — answers "should I follow signals or just
+    # buy-and-hold this stock". Positive stock_alpha = signals add value
+    # vs lazy buy-and-hold of the same name; negative = signals hurt
+    # vs holding through every dip.
+    stock_total_return_pct: float
+    stock_alpha_pct: float  # total_return - stock_total_return
     n_trades: int
     n_winners: int
     n_losers: int
@@ -1243,6 +1255,7 @@ class PnlDailyValue(BaseModel):
     date: date
     strategy_value: float  # mark-to-market account value
     spy_baseline_value: float  # $10,000 in SPY bought at start
+    stock_baseline_value: float  # $10,000 in this stock bought at start
 
 
 class PnlSimulationResponse(BaseModel):
@@ -1269,7 +1282,9 @@ def _empty_pnl_summary() -> PnlSummary:
         final_value=_PNL_STARTING_CAPITAL,
         total_return_pct=0.0,
         spy_total_return_pct=0.0,
-        alpha_pct=0.0,
+        spy_alpha_pct=0.0,
+        stock_total_return_pct=0.0,
+        stock_alpha_pct=0.0,
         n_trades=0,
         n_winners=0,
         n_losers=0,
@@ -1316,6 +1331,10 @@ def _simulate_pnl(
     days_in_market = 0
 
     spy_start = float(spy_price_by_date.get(start_date) or 0)
+    stock_start = float(price_by_date[start_date])
+    stock_baseline_qty = (
+        _PNL_STARTING_CAPITAL / stock_start if stock_start > 0 else 0.0
+    )
 
     for d in all_dates:
         close = float(price_by_date[d])
@@ -1325,7 +1344,7 @@ def _simulate_pnl(
                 action = ActionCategory(snap.action)
             except ValueError:
                 action = None
-            if action in _PNL_BUY_TRIGGERS and position is None and close > 0:
+            if action in _PNL_ENTRY_TRIGGERS and position is None and close > 0:
                 qty = cash / close
                 position = _OpenPosition(
                     entry_date=d,
@@ -1366,11 +1385,13 @@ def _simulate_pnl(
             if spy_start > 0 and spy_close > 0
             else _PNL_STARTING_CAPITAL
         )
+        stock_value = stock_baseline_qty * close
         daily_values.append(
             PnlDailyValue(
                 date=d,
                 strategy_value=round(account_value, 2),
                 spy_baseline_value=round(spy_value, 2),
+                stock_baseline_value=round(stock_value, 2),
             )
         )
 
@@ -1401,7 +1422,12 @@ def _simulate_pnl(
     total_return_pct = (final_value / _PNL_STARTING_CAPITAL - 1) * 100
     spy_end = float(spy_price_by_date.get(end_date, 0))
     spy_total_return = (spy_end / spy_start - 1) * 100 if spy_start > 0 else 0.0
-    alpha = total_return_pct - spy_total_return
+    spy_alpha = total_return_pct - spy_total_return
+    stock_end = float(price_by_date[end_date])
+    stock_total_return = (
+        (stock_end / stock_start - 1) * 100 if stock_start > 0 else 0.0
+    )
+    stock_alpha = total_return_pct - stock_total_return
 
     n_trades = len(trades)
     winners = [t for t in trades if t.pnl_pct > 0]
@@ -1452,7 +1478,9 @@ def _simulate_pnl(
         final_value=round(final_value, 2),
         total_return_pct=round(total_return_pct, 2),
         spy_total_return_pct=round(spy_total_return, 2),
-        alpha_pct=round(alpha, 2),
+        spy_alpha_pct=round(spy_alpha, 2),
+        stock_total_return_pct=round(stock_total_return, 2),
+        stock_alpha_pct=round(stock_alpha, 2),
         n_trades=n_trades,
         n_winners=len(winners),
         n_losers=len(losers),

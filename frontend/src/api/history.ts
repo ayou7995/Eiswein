@@ -146,7 +146,9 @@ export const pnlSummarySchema = z.object({
   final_value: z.number(),
   total_return_pct: z.number(),
   spy_total_return_pct: z.number(),
-  alpha_pct: z.number(),
+  spy_alpha_pct: z.number(),
+  stock_total_return_pct: z.number(),
+  stock_alpha_pct: z.number(),
   n_trades: z.number().int().nonnegative(),
   n_winners: z.number().int().nonnegative(),
   n_losers: z.number().int().nonnegative(),
@@ -163,6 +165,7 @@ export const pnlDailyValueSchema = z.object({
   date: z.string(),
   strategy_value: z.number(),
   spy_baseline_value: z.number(),
+  stock_baseline_value: z.number(),
 });
 export type PnlDailyValue = z.infer<typeof pnlDailyValueSchema>;
 
