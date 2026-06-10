@@ -54,11 +54,21 @@ _VALID_HORIZONS: frozenset[int] = frozenset({5, 20, 60, 120})
 # bull-market tailwind doesn't masquerade as system skill.
 _BASELINE_SYMBOL = "SPY"
 
-# Actions that express a directional view the accuracy score can test.
-# HOLD/WATCH are explicitly excluded — they're "no call" outcomes that
-# shouldn't count against or for the system. REDUCE/EXIT vote "down".
+# Actions that express a 3-class directional view the accuracy score can test:
+# BUY-side expects price to rise, SELL-side expects price to fall, FLAT-side
+# (HOLD/WATCH) expects price to stay inside ±_FLAT_TOLERANCE_PCT — that's
+# also a "directional call", just for "no big move". Counting flat hits as
+# evaluable signals roughly 6x the gradeable sample (from ~16% to ~100%
+# of stored snapshots in dev DB) without compromising honesty.
 _BUY_ACTIONS: frozenset[ActionCategory] = frozenset({ActionCategory.STRONG_BUY, ActionCategory.BUY})
 _SELL_ACTIONS: frozenset[ActionCategory] = frozenset({ActionCategory.REDUCE, ActionCategory.EXIT})
+_FLAT_ACTIONS: frozenset[ActionCategory] = frozenset({ActionCategory.HOLD, ActionCategory.WATCH})
+
+# ±2 % band over the chosen horizon counts as "flat" for grading. 2 %
+# is wider than typical 20-day noise on SPX-style names; for high-beta
+# small caps it may classify too aggressively, but symmetric error is
+# preferable to the binary up/down classification that came before.
+_FLAT_TOLERANCE_PCT = 2.0
 
 
 # --- /history/market-posture ---------------------------------------------
@@ -222,13 +232,14 @@ class AccuracyBucket(BaseModel):
 
 
 class SignalAccuracyBaseline(BaseModel):
-    """Same-period SPY drift baseline.
+    """Same-period SPY drift baseline, 3-class.
 
-    For each date in the user's signal sample we ask "did SPY itself rise
-    over the same horizon?". The resulting "always-buy" accuracy gives
-    the user a market-tailwind benchmark — a system that beats SPY drift
-    is genuinely directional; one that trails it is just noise around
-    market beta.
+    For each date in the user's signal sample we tag SPY's own forward
+    move as up / down / flat (same ±2 % tolerance as the user's grading).
+    The resulting distribution gives the frontend three matched
+    benchmarks: BUY actions vs ``spy_up_pct``, SELL vs ``spy_down_pct``,
+    HOLD/WATCH vs ``spy_flat_pct``. A system that exceeds the matching
+    baseline on any class is genuinely directional in that class.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -236,6 +247,12 @@ class SignalAccuracyBaseline(BaseModel):
     total: int
     spy_up_count: int
     spy_up_pct: float
+    # Phase 6 (2026-06): per-class breakdown so HOLD/WATCH/normal
+    # signals have a meaningful baseline to compare against.
+    spy_down_count: int = 0
+    spy_down_pct: float = 0.0
+    spy_flat_count: int = 0
+    spy_flat_pct: float = 0.0
 
 
 class SignalAccuracyResponse(BaseModel):
@@ -263,6 +280,43 @@ class _AccuracyEval:
         return round(100.0 * self.correct / self.total, 2) if self.total else 0.0
 
 
+_MoveClass = Literal["up", "down", "flat"]
+
+
+def _classify_move(start: Decimal, forward: Decimal) -> _MoveClass:
+    """3-class direction tagging with a ±``_FLAT_TOLERANCE_PCT`` band.
+
+    Used by both ticker-level accuracy (BUY/SELL/HOLD action grading) and
+    market-posture accuracy (offensive/defensive/normal). The tolerance
+    band lets HOLD/WATCH and ``normal`` posture actually be gradeable —
+    a "no big move" call should hit when the market obliges.
+    """
+    if start <= 0:
+        return "flat"
+    pct = float((forward - start) / start * 100)
+    if pct > _FLAT_TOLERANCE_PCT:
+        return "up"
+    if pct < -_FLAT_TOLERANCE_PCT:
+        return "down"
+    return "flat"
+
+
+def _expected_move(action: ActionCategory) -> _MoveClass | None:
+    """Map an ActionCategory to the move class the action implicitly predicts.
+
+    Returns ``None`` for actions outside the buy/sell/flat sets — currently
+    none, but kept future-proof in case a new category lands without
+    a directional view.
+    """
+    if action in _BUY_ACTIONS:
+        return "up"
+    if action in _SELL_ACTIONS:
+        return "down"
+    if action in _FLAT_ACTIONS:
+        return "flat"
+    return None
+
+
 def _eval_accuracy(
     *,
     snapshots: list[TickerSnapshot],
@@ -271,12 +325,15 @@ def _eval_accuracy(
 ) -> tuple[_AccuracyEval, dict[str, _AccuracyEval]]:
     """Evaluate accuracy of directional calls against forward returns.
 
-    A buy-side action is "correct" if the price on
-    ``snapshot.date + horizon_days`` (or the nearest later trading
-    day in our data) is strictly greater than the close on
-    ``snapshot.date``. Sell-side is the opposite. Calls without enough
-    forward data are skipped entirely — they don't count as correct
-    OR incorrect.
+    Uses the 3-class :func:`_classify_move` tagging:
+
+    * BUY-side action correct  ↔  forward price > start by > ``_FLAT_TOLERANCE_PCT``
+    * SELL-side action correct ↔  forward price < start by > ``_FLAT_TOLERANCE_PCT``
+    * FLAT-side action correct ↔  |forward - start| ≤ ``_FLAT_TOLERANCE_PCT``
+
+    Calls without enough forward data are skipped — they don't count as
+    correct or incorrect. Actions that don't map to any class (currently
+    none, future-proof) are also skipped.
     """
     sorted_dates = sorted(price_by_date.keys())
     total = 0
@@ -289,8 +346,9 @@ def _eval_accuracy(
             action = ActionCategory(action_str)
         except ValueError:
             continue
-        if action not in _BUY_ACTIONS and action not in _SELL_ACTIONS:
-            continue  # HOLD / WATCH don't express a directional view
+        expected = _expected_move(action)
+        if expected is None:
+            continue
 
         start_price = price_by_date.get(snapshot.date)
         if start_price is None:
@@ -300,10 +358,8 @@ def _eval_accuracy(
         if forward_date is None:
             continue
         forward_price = price_by_date[forward_date]
-
-        went_up = forward_price > start_price
-        call_was_up = action in _BUY_ACTIONS
-        is_correct = went_up == call_was_up
+        actual = _classify_move(start_price, forward_price)
+        is_correct = actual == expected
 
         total += 1
         if is_correct:
@@ -329,22 +385,33 @@ def _first_on_or_after(sorted_dates: list[date], target: date) -> date | None:
     return None
 
 
+@dataclass(frozen=True)
+class _BaselineCounts:
+    total: int
+    up: int
+    down: int
+    flat: int
+
+
 def _eval_baseline(
     *,
     signal_dates: list[date],
     spy_price_by_date: dict[date, Decimal],
     horizon_days: int,
-) -> tuple[int, int]:
+) -> _BaselineCounts:
     """SPY drift baseline over the same dates the user's signals fired.
 
-    Returns ``(total, up_count)`` where ``total`` is the number of dates
-    we could resolve a forward price for, and ``up_count`` is how many
-    of those saw SPY rise. Same skip rule as :func:`_eval_accuracy` —
-    dates without enough forward data are dropped, not penalised.
+    Returns SPY's own up/down/flat distribution (3-class, same ±tolerance
+    band as the user's grading) so the frontend can compare each per-action
+    bucket against the matching baseline (BUY vs SPY up%, SELL vs SPY
+    down%, HOLD/WATCH vs SPY flat%). Same skip rule as :func:`_eval_accuracy`
+    — dates without enough forward data are dropped, not penalised.
     """
     sorted_spy_dates = sorted(spy_price_by_date.keys())
     total = 0
     up = 0
+    down = 0
+    flat = 0
     for d in signal_dates:
         start_price = spy_price_by_date.get(d)
         if start_price is None:
@@ -353,10 +420,15 @@ def _eval_baseline(
         forward_date = _first_on_or_after(sorted_spy_dates, target_date)
         if forward_date is None:
             continue
-        if spy_price_by_date[forward_date] > start_price:
+        actual = _classify_move(start_price, spy_price_by_date[forward_date])
+        if actual == "up":
             up += 1
+        elif actual == "down":
+            down += 1
+        else:
+            flat += 1
         total += 1
-    return total, up
+    return _BaselineCounts(total=total, up=up, down=down, flat=flat)
 
 
 @router.get(
@@ -447,12 +519,12 @@ def signal_accuracy(
     ).all()
     spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
     signal_dates = [s.date for s in all_snapshots]
-    baseline_total, baseline_up = _eval_baseline(
+    baseline = _eval_baseline(
         signal_dates=signal_dates,
         spy_price_by_date=spy_price_by_date,
         horizon_days=int(horizon),
     )
-    baseline_pct = round(100.0 * baseline_up / baseline_total, 2) if baseline_total else 0.0
+    baseline_payload = _baseline_to_schema(baseline)
 
     return SignalAccuracyResponse(
         symbol=validated,
@@ -464,11 +536,22 @@ def signal_accuracy(
             k: AccuracyBucket(total=v.total, correct=v.correct, accuracy_pct=v.pct)
             for k, v in buckets.items()
         },
-        baseline=SignalAccuracyBaseline(
-            total=baseline_total,
-            spy_up_count=baseline_up,
-            spy_up_pct=baseline_pct,
-        ),
+        baseline=baseline_payload,
+    )
+
+
+def _baseline_to_schema(b: _BaselineCounts) -> SignalAccuracyBaseline:
+    """Convert :class:`_BaselineCounts` to the wire schema with rounded pcts."""
+    if b.total == 0:
+        return SignalAccuracyBaseline(total=0, spy_up_count=0, spy_up_pct=0.0)
+    return SignalAccuracyBaseline(
+        total=b.total,
+        spy_up_count=b.up,
+        spy_up_pct=round(100.0 * b.up / b.total, 2),
+        spy_down_count=b.down,
+        spy_down_pct=round(100.0 * b.down / b.total, 2),
+        spy_flat_count=b.flat,
+        spy_flat_pct=round(100.0 * b.flat / b.total, 2),
     )
 
 
@@ -479,6 +562,7 @@ def signal_accuracy(
 # directional view (excluded from the score).
 _POSTURE_BUY: frozenset[str] = frozenset({"offensive"})
 _POSTURE_SELL: frozenset[str] = frozenset({"defensive"})
+_POSTURE_FLAT: frozenset[str] = frozenset({"normal"})
 
 
 class PostureAccuracyBucket(BaseModel):
@@ -556,8 +640,11 @@ def posture_accuracy(
 
     for snap in snap_rows:
         posture = snap.posture
-        # Symmetric to ActionCategory: only directional postures count.
-        if posture not in _POSTURE_BUY and posture not in _POSTURE_SELL:
+        if (
+            posture not in _POSTURE_BUY
+            and posture not in _POSTURE_SELL
+            and posture not in _POSTURE_FLAT
+        ):
             continue
         start_price = spy_price_by_date.get(snap.date)
         if start_price is None:
@@ -566,11 +653,14 @@ def posture_accuracy(
         forward_date = _first_on_or_after(sorted_spy_dates, target_date)
         if forward_date is None:
             continue
-        forward_price = spy_price_by_date[forward_date]
-
-        went_up = forward_price > start_price
-        call_was_up = posture in _POSTURE_BUY
-        is_correct = went_up == call_was_up
+        actual = _classify_move(start_price, spy_price_by_date[forward_date])
+        if posture in _POSTURE_BUY:
+            expected: _MoveClass = "up"
+        elif posture in _POSTURE_SELL:
+            expected = "down"
+        else:
+            expected = "flat"
+        is_correct = actual == expected
 
         total += 1
         if is_correct:
@@ -581,12 +671,11 @@ def posture_accuracy(
     # Same-period SPY drift baseline — uses the same date list as the
     # accuracy itself so the comparison is window-aligned.
     baseline_dates = [r.date for r in snap_rows]
-    baseline_total, baseline_up = _eval_baseline(
+    baseline = _eval_baseline(
         signal_dates=baseline_dates,
         spy_price_by_date=spy_price_by_date,
         horizon_days=int(horizon),
     )
-    baseline_pct = round(100.0 * baseline_up / baseline_total, 2) if baseline_total else 0.0
 
     overall_pct = round(100.0 * correct / total, 2) if total else 0.0
     return PostureAccuracyResponse(
@@ -603,11 +692,7 @@ def posture_accuracy(
             )
             for k, (t, c) in per_posture.items()
         },
-        baseline=SignalAccuracyBaseline(
-            total=baseline_total,
-            spy_up_count=baseline_up,
-            spy_up_pct=baseline_pct,
-        ),
+        baseline=_baseline_to_schema(baseline),
     )
 
 
@@ -764,8 +849,7 @@ def symbol_accuracy_ranking(
     spy_price_by_date = {r.date: Decimal(str(r.close)) for r in spy_rows}
 
     entries: list[SymbolAccuracyEntry] = []
-    aggregate_baseline_total = 0
-    aggregate_baseline_up = 0
+    aggregate = _BaselineCounts(total=0, up=0, down=0, flat=0)
 
     for sym in symbols:
         all_snapshots = list(snapshots.list_for_symbol(sym))
@@ -801,28 +885,23 @@ def symbol_accuracy_ranking(
         )
 
         # Same-period SPY drift baseline contribution.
-        b_total, b_up = _eval_baseline(
+        b = _eval_baseline(
             signal_dates=[s.date for s in all_snapshots],
             spy_price_by_date=spy_price_by_date,
             horizon_days=int(horizon),
         )
-        aggregate_baseline_total += b_total
-        aggregate_baseline_up += b_up
+        aggregate = _BaselineCounts(
+            total=aggregate.total + b.total,
+            up=aggregate.up + b.up,
+            down=aggregate.down + b.down,
+            flat=aggregate.flat + b.flat,
+        )
 
     entries.sort(key=lambda e: (-e.accuracy_pct, -e.total_signals, e.symbol))
 
-    baseline_pct = (
-        round(100.0 * aggregate_baseline_up / aggregate_baseline_total, 2)
-        if aggregate_baseline_total
-        else 0.0
-    )
     return SymbolAccuracyRankingResponse(
         horizon=horizon_literal,
         days=days,
         data=entries,
-        baseline=SignalAccuracyBaseline(
-            total=aggregate_baseline_total,
-            spy_up_count=aggregate_baseline_up,
-            spy_up_pct=baseline_pct,
-        ),
+        baseline=_baseline_to_schema(aggregate),
     )

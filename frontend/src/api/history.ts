@@ -54,6 +54,12 @@ export const signalAccuracyBaselineSchema = z.object({
   total: z.number().int().nonnegative(),
   spy_up_count: z.number().int().nonnegative(),
   spy_up_pct: z.number(),
+  // Phase 6 (2026-06): 3-class baseline so HOLD/WATCH/normal signals
+  // have a meaningful comparison. Defaulted to 0 for pre-upgrade snapshots.
+  spy_down_count: z.number().int().nonnegative().default(0),
+  spy_down_pct: z.number().default(0),
+  spy_flat_count: z.number().int().nonnegative().default(0),
+  spy_flat_pct: z.number().default(0),
 });
 export type SignalAccuracyBaseline = z.infer<typeof signalAccuracyBaselineSchema>;
 

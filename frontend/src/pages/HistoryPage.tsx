@@ -25,6 +25,7 @@ const POSTURE_LABEL_ZH: Record<string, string> = {
 };
 
 const Z_95 = 1.96;
+const MIN_SAMPLE_SIZE = 30;
 function confidenceMargin(correct: number, total: number): number | null {
   if (total === 0) return null;
   const p = correct / total;
@@ -224,6 +225,12 @@ function MarketPostureSection({
               horizon={horizon}
               baselinePct={accuracyData.baseline.spy_up_pct}
               baselineTotal={accuracyData.baseline.total}
+              sampleBreakdown={Object.entries(accuracyData.by_posture).map(
+                ([posture, bucket]) => ({
+                  label: POSTURE_LABEL_ZH[posture] ?? posture,
+                  total: bucket.total,
+                }),
+              )}
               testId="posture-accuracy-headline"
             />
             {accuracyData.total_signals === 0 ? (
@@ -256,9 +263,14 @@ function MarketPostureSection({
                     {Object.entries(accuracyData.by_posture).map(
                       ([posture, bucket]) => {
                         const isDefensive = posture === 'defensive';
+                        const isNormal = posture === 'normal';
+                        // 3-class baseline: offensive vs SPY up,
+                        // defensive vs SPY down, normal vs SPY flat.
                         const baselinePct = isDefensive
-                          ? 100 - accuracyData.baseline.spy_up_pct
-                          : accuracyData.baseline.spy_up_pct;
+                          ? accuracyData.baseline.spy_down_pct
+                          : isNormal
+                            ? accuracyData.baseline.spy_flat_pct
+                            : accuracyData.baseline.spy_up_pct;
                         const delta = bucket.accuracy_pct - baselinePct;
                         const margin = confidenceMargin(
                           bucket.correct,
@@ -266,6 +278,7 @@ function MarketPostureSection({
                         );
                         const ciClears =
                           margin !== null && Math.abs(delta) > margin;
+                        const insufficient = bucket.total < MIN_SAMPLE_SIZE;
                         return (
                           <tr key={posture} className="bg-white">
                             <th
@@ -280,25 +293,47 @@ function MarketPostureSection({
                             <td className="px-3 py-2 text-right font-mono text-stone-700">
                               {bucket.correct}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono text-stone-800">
-                              {bucket.accuracy_pct.toFixed(1)}%
-                              {margin !== null && (
-                                <span className="ml-1 text-[10px] text-stone-500">
-                                  ±{margin.toFixed(1)}%
+                            <td
+                              className={`px-3 py-2 text-right font-mono ${
+                                insufficient
+                                  ? 'text-stone-400'
+                                  : 'text-stone-800'
+                              }`}
+                            >
+                              {insufficient ? (
+                                <span className="text-xs">
+                                  資料不足 (N&lt;{MIN_SAMPLE_SIZE})
                                 </span>
+                              ) : (
+                                <>
+                                  {bucket.accuracy_pct.toFixed(1)}%
+                                  {margin !== null && (
+                                    <span className="ml-1 text-[10px] text-stone-500">
+                                      ±{margin.toFixed(1)}%
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </td>
                             <td
                               className={`px-3 py-2 text-right font-mono ${
-                                ciClears && delta > 0
-                                  ? 'text-emerald-700'
-                                  : ciClears && delta < 0
-                                    ? 'text-rose-700'
-                                    : 'text-stone-500'
+                                insufficient
+                                  ? 'text-stone-300'
+                                  : ciClears && delta > 0
+                                    ? 'text-emerald-700'
+                                    : ciClears && delta < 0
+                                      ? 'text-rose-700'
+                                      : 'text-stone-500'
                               }`}
                             >
-                              {delta >= 0 ? '+' : ''}
-                              {delta.toFixed(1)}%
+                              {insufficient ? (
+                                '—'
+                              ) : (
+                                <>
+                                  {delta >= 0 ? '+' : ''}
+                                  {delta.toFixed(1)}%
+                                </>
+                              )}
                             </td>
                           </tr>
                         );
@@ -315,6 +350,11 @@ function MarketPostureSection({
   );
 }
 
+interface SampleBreakdownEntry {
+  label: string;
+  total: number;
+}
+
 interface AccuracyHeadlineProps {
   accuracyPct: number;
   correct: number;
@@ -322,6 +362,7 @@ interface AccuracyHeadlineProps {
   horizon: number;
   baselinePct: number;
   baselineTotal: number;
+  sampleBreakdown?: ReadonlyArray<SampleBreakdownEntry>;
   testId?: string;
 }
 
@@ -332,34 +373,65 @@ function AccuracyHeadline({
   horizon,
   baselinePct,
   baselineTotal,
+  sampleBreakdown,
   testId = 'accuracy-headline',
 }: AccuracyHeadlineProps): JSX.Element {
   const margin = confidenceMargin(correct, total);
-  const headlineTone =
-    margin !== null && accuracyPct - margin >= baselinePct
+  const insufficient = total < MIN_SAMPLE_SIZE;
+  const headlineTone = insufficient
+    ? 'text-stone-400'
+    : margin !== null && accuracyPct - margin >= baselinePct
       ? 'text-emerald-700'
       : 'text-stone-900';
   return (
     <div className="flex flex-col gap-2" data-testid={testId}>
       <div className="flex flex-wrap items-baseline gap-3">
-        <span className={`text-3xl font-semibold ${headlineTone}`}>
-          {accuracyPct.toFixed(1)}%
-        </span>
-        {margin !== null && (
-          <span className="text-sm text-stone-500">±{margin.toFixed(1)}%</span>
+        {insufficient ? (
+          <span className={`text-2xl font-semibold ${headlineTone}`}>
+            資料不足
+          </span>
+        ) : (
+          <>
+            <span className={`text-3xl font-semibold ${headlineTone}`}>
+              {accuracyPct.toFixed(1)}%
+            </span>
+            {margin !== null && (
+              <span className="text-sm text-stone-500">
+                ±{margin.toFixed(1)}%
+              </span>
+            )}
+          </>
         )}
         <span className="text-xs text-stone-500">
-          {correct} / {total} 次命中（{horizon} 日）
+          {correct} / {total} 次命中（{horizon} 日;{insufficient
+            ? `< ${MIN_SAMPLE_SIZE} 樣本不顯示百分比`
+            : '95% CI'}）
         </span>
       </div>
-      {baselineTotal > 0 && (
+      {sampleBreakdown && sampleBreakdown.length > 0 && (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-stone-500">
+          <span className="text-stone-400">樣本拆分</span>
+          {sampleBreakdown.map((s, idx) => (
+            <span key={s.label}>
+              <span className="text-stone-600">{s.label}</span>{' '}
+              <span className="font-mono tabular-nums text-stone-700">
+                {s.total}
+              </span>
+              {idx < sampleBreakdown.length - 1 && (
+                <span className="ml-1 text-stone-300">·</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {baselineTotal > 0 && !insufficient && (
         <div className="flex flex-wrap items-baseline gap-2 text-xs text-stone-500">
           <span>同期 SPY 上漲 baseline</span>
           <span className="font-mono tabular-nums text-stone-700">
             {baselinePct.toFixed(1)}%
           </span>
           <span className="text-stone-400">
-            （{baselineTotal} 個樣本日 — 「always-buy SPY」會對的比例）
+            （{baselineTotal} 個樣本日）
           </span>
         </div>
       )}

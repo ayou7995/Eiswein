@@ -85,17 +85,21 @@ describe('HistoryPage', () => {
           body: {
             horizon: 20,
             days: 90,
-            total_signals: 4,
-            correct: 3,
+            total_signals: 60,
+            correct: 45,
             accuracy_pct: 75.0,
             by_posture: {
-              offensive: { total: 3, correct: 2, accuracy_pct: 66.7 },
-              defensive: { total: 1, correct: 1, accuracy_pct: 100.0 },
+              offensive: { total: 40, correct: 30, accuracy_pct: 75.0 },
+              defensive: { total: 20, correct: 15, accuracy_pct: 75.0 },
             },
             baseline: {
-              total: 4,
-              spy_up_count: 2,
+              total: 60,
+              spy_up_count: 30,
               spy_up_pct: 50.0,
+              spy_down_count: 20,
+              spy_down_pct: 33.3,
+              spy_flat_count: 10,
+              spy_flat_pct: 16.7,
             },
           },
         };
