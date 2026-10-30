@@ -146,3 +146,76 @@ async def test_naive_expires_at_is_treated_as_utc(
     assert sent == 1
     kwargs = send_mock.call_args.kwargs
     assert kwargs["expires_at"].tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_recently_expired_credential_gets_one_expired_notice(
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+) -> None:
+    user_id = _seed_user(session_factory)
+    with session_factory() as session:
+        BrokerCredentialRepository(session, settings.encryption_key_bytes()).store_refresh_token(
+            user_id=user_id,
+            broker="schwab",
+            refresh_token="x",
+            expires_at=datetime.now(UTC) - timedelta(hours=3),
+        )
+        session.commit()
+
+    with patch.object(token_reminder, "send_token_expiry_alert", return_value=True) as send_mock:
+        sent = await token_reminder.run(
+            session_factory=session_factory,
+            settings=settings,
+        )
+    assert sent == 1
+    kwargs = send_mock.call_args.kwargs
+    assert kwargs["expired"] is True
+    assert kwargs["days_remaining"] == 0
+
+
+@pytest.mark.asyncio
+async def test_long_expired_credential_is_not_re_alerted(
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+) -> None:
+    user_id = _seed_user(session_factory)
+    with session_factory() as session:
+        BrokerCredentialRepository(session, settings.encryption_key_bytes()).store_refresh_token(
+            user_id=user_id,
+            broker="schwab",
+            refresh_token="x",
+            expires_at=datetime.now(UTC) - timedelta(days=30),
+        )
+        session.commit()
+
+    with patch.object(token_reminder, "send_token_expiry_alert") as send_mock:
+        sent = await token_reminder.run(
+            session_factory=session_factory,
+            settings=settings,
+        )
+    assert sent == 0
+    send_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_not_yet_expired_credential_is_not_flagged_expired(
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+) -> None:
+    user_id = _seed_user(session_factory)
+    with session_factory() as session:
+        BrokerCredentialRepository(session, settings.encryption_key_bytes()).store_refresh_token(
+            user_id=user_id,
+            broker="schwab",
+            refresh_token="x",
+            expires_at=datetime.now(UTC) + timedelta(hours=5),
+        )
+        session.commit()
+
+    with patch.object(token_reminder, "send_token_expiry_alert", return_value=True) as send_mock:
+        await token_reminder.run(
+            session_factory=session_factory,
+            settings=settings,
+        )
+    assert send_mock.call_args.kwargs["expired"] is False

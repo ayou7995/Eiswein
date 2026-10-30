@@ -178,8 +178,12 @@ def send_token_expiry_alert(
     expires_at: datetime,
     broker: str,
     settings: Settings,
+    expired: bool = False,
 ) -> bool:
     """Render + send the token-expiry alert.
+
+    ``expired=True`` switches the wording to "has expired" for the one
+    notice sent after the token is already dead.
 
     Same contract as :func:`send_daily_summary`: never raises, returns
     ``True`` on successful send.
@@ -202,13 +206,21 @@ def send_token_expiry_alert(
         "days_remaining": max(days_remaining, 0),
         "expires_at": expires_at.strftime("%Y-%m-%d %H:%M UTC"),
         "broker": broker,
+        "expired": expired,
     }
     html_body = _env.get_template("token_alert.html").render(**ctx)
-    text_body = (
-        f"Eiswein: {broker} refresh token 將於 {ctx['days_remaining']} 天後到期"
-        f"（{ctx['expires_at']}）。請登入 Eiswein → 設定 → 重新連接。"
-    )
-    subject = f"[Eiswein] Broker token expires in {ctx['days_remaining']} day(s)"
+    if expired:
+        text_body = (
+            f"Eiswein: {broker} refresh token 已於 {ctx['expires_at']} 到期。"
+            "請登入 Eiswein → 設定 → 重新連接。"
+        )
+        subject = "[Eiswein] Broker token expired"
+    else:
+        text_body = (
+            f"Eiswein: {broker} refresh token 將於 {ctx['days_remaining']} 天後到期"
+            f"（{ctx['expires_at']}）。請登入 Eiswein → 設定 → 重新連接。"
+        )
+        subject = f"[Eiswein] Broker token expires in {ctx['days_remaining']} day(s)"
     return _dispatch(
         settings=settings,
         sender=sender,

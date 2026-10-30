@@ -1,7 +1,9 @@
 """Broker refresh-token expiry reminder job (Phase 6, I14).
 
 Scans ``BrokerCredential.expires_at`` for any row with ``<=2 days``
-remaining and sends a single alert email per expiring row. The
+remaining and sends a single alert email per expiring row. A row that
+has already expired gets one "expired" notice on the first run after
+expiry and is then left alone. The
 Schwab OAuth integration proper lands in a later phase — until then,
 this job is a no-op on the empty table (the log line makes that
 visible).
@@ -10,9 +12,11 @@ The dedup story is intentionally simple for v1:
 
 * The scheduler ticks once a day, so one alert per credential per
   day is fine.
-* We don't persist an "alert_sent_at" column yet — if a user lets
-  the token continue to expire for three days, they get three
-  reminders. Acceptable for a single-user personal tool.
+* We don't persist an "alert_sent_at" column yet, so the stop
+  condition is time based: rows that expired more than
+  ``_EXPIRED_GRACE`` ago are skipped. Without that lower bound a dead
+  credential that never gets cleaned up would be re-alerted every day
+  forever ("expires in 0 day(s)").
 """
 
 from __future__ import annotations
@@ -32,6 +36,9 @@ logger = structlog.get_logger("eiswein.jobs.token_reminder")
 JOB_NAME = "token_reminder"
 
 _WARNING_WINDOW = timedelta(days=2)
+# The scheduler ticks once a day, so a one-day grace gives exactly one
+# "expired" notice per credential.
+_EXPIRED_GRACE = timedelta(days=1)
 
 
 async def run(
@@ -39,6 +46,7 @@ async def run(
     session_factory: sessionmaker[Session],
     settings: Settings,
     window: timedelta = _WARNING_WINDOW,
+    expired_grace: timedelta = _EXPIRED_GRACE,
     clock: type[datetime] = datetime,
 ) -> int:
     """Send alerts for credentials expiring within ``window``.
@@ -51,7 +59,12 @@ async def run(
 
     try:
         with session_factory() as session:
-            rows = _collect_expiring(session=session, window=window, now=clock.now(UTC))
+            rows = _collect_expiring(
+                session=session,
+                window=window,
+                expired_grace=expired_grace,
+                now=clock.now(UTC),
+            )
     except Exception as exc:
         logger.warning(
             "job_failed",
@@ -74,12 +87,15 @@ async def run(
         if cred.expires_at is None:
             continue
         expires_at = _ensure_utc(cred.expires_at)
+        if expires_at <= now - expired_grace:
+            continue
         days_remaining = max((expires_at - now).days, 0)
         ok = send_token_expiry_alert(
             days_remaining=days_remaining,
             expires_at=expires_at,
             broker=cred.broker,
             settings=settings,
+            expired=expires_at <= now,
         )
         if ok:
             sent += 1
@@ -97,12 +113,15 @@ def _collect_expiring(
     *,
     session: Session,
     window: timedelta,
+    expired_grace: timedelta,
     now: datetime,
 ) -> list[BrokerCredential]:
     threshold = now + window
+    floor = now - expired_grace
     stmt = select(BrokerCredential).where(
         BrokerCredential.expires_at.is_not(None),
         BrokerCredential.expires_at <= threshold,
+        BrokerCredential.expires_at > floor,
     )
     return list(session.execute(stmt).scalars().all())
 
