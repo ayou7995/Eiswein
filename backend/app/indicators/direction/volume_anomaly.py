@@ -41,9 +41,7 @@ def compute_volume_anomaly(frame: pd.DataFrame, context: IndicatorContext) -> In
         return insufficient_result(NAME)
     data_as_of = frame_as_of(frame)
     if len(frame) < _WINDOW + 2:
-        return insufficient_result(
-            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(frame)}, data_as_of=data_as_of)
 
     volume = frame["volume"].astype("float64")
     close = frame["close"].astype("float64")

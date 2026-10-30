@@ -33,9 +33,7 @@ def compute_price_vs_ma(frame: pd.DataFrame, context: IndicatorContext) -> Indic
     close = frame["close"]
     data_as_of = frame_as_of(frame)
     if len(close) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(close)}, data_as_of=data_as_of)
 
     ma50_series = sma(close, 50)
     ma200_series = sma(close, 200)

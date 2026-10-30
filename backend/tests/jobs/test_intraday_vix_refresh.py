@@ -160,11 +160,7 @@ async def test_run_handles_missing_bar_gracefully(
     await run(session_factory=session_factory, data_source=fake_source)  # type: ignore[arg-type]
 
     with session_factory() as session:
-        rows = (
-            session.query(MacroIndicator)
-            .filter(MacroIndicator.date == bar_when.date())
-            .all()
-        )
+        rows = session.query(MacroIndicator).filter(MacroIndicator.date == bar_when.date()).all()
     series = {r.series_id: r.value for r in rows}
     assert "VIXCLS" in series
     assert "VXVCLS" not in series

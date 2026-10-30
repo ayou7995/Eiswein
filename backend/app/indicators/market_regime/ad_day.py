@@ -43,9 +43,7 @@ def compute_ad_day(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorR
     data_as_of = frame_as_of(frame)
     # Need prior-day volume for the first window bar → +1.
     if len(frame) < _WINDOW + 1:
-        return insufficient_result(
-            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(frame)}, data_as_of=data_as_of)
 
     window = frame.tail(_WINDOW + 1).copy()
     close = window["close"].astype("float64")

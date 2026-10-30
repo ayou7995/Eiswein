@@ -61,9 +61,7 @@ def compute_cho(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
         return insufficient_result(NAME)
     data_as_of = frame_as_of(frame)
     if len(frame) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(frame)}, data_as_of=data_as_of)
 
     high = frame["high"].astype("float64")
     low = frame["low"].astype("float64")
@@ -126,9 +124,7 @@ def _chaikin_oscillator(
     mfm = mfm.fillna(0.0)
     money_flow_volume = mfm * volume
     ad_line = money_flow_volume.cumsum()
-    return ad_line.ewm(span=fast, adjust=False).mean() - ad_line.ewm(
-        span=slow, adjust=False
-    ).mean()
+    return ad_line.ewm(span=fast, adjust=False).mean() - ad_line.ewm(span=slow, adjust=False).mean()
 
 
 def _slope(series: pd.Series, *, lookback: int) -> float | None:

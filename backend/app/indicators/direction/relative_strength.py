@@ -42,9 +42,7 @@ def compute_relative_strength(frame: pd.DataFrame, context: IndicatorContext) ->
     # Cross-source: we're only as fresh as the worse-lagged input.
     data_as_of = _min_date(frame_as_of(frame), frame_as_of(spx))
     if len(frame) < _WINDOW + 1 or len(spx) < _WINDOW + 1:
-        return insufficient_result(
-            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(frame)}, data_as_of=data_as_of)
 
     ticker_return = _cumulative_return(frame["close"])
     spx_return = _cumulative_return(spx["close"])

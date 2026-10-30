@@ -908,9 +908,7 @@ SPX_ADX_MIN_BARS: Final[int] = SERIES_DAYS + 2 * _SPX_ADX_LENGTH
 
 def build_spx_adx_payload(frame: pd.DataFrame, days: int = SERIES_DAYS) -> dict[str, object]:
     """``spx_adx`` series + zh-TW one-liner mirroring the per-ticker shape."""
-    result = wilder_adx(
-        frame["high"], frame["low"], frame["close"], length=_SPX_ADX_LENGTH
-    )
+    result = wilder_adx(frame["high"], frame["low"], frame["close"], length=_SPX_ADX_LENGTH)
 
     tail_adx = result.adx.iloc[-days:]
     tail_plus = result.plus_di.iloc[-days:]
@@ -987,9 +985,7 @@ _SPX_ADX_DIRECTION_LABEL_ZH: Final[dict[_SpxAdxDirection, str]] = {
 }
 
 
-def _spx_adx_summary(
-    *, adx: float | None, zone: _SpxAdxZone, direction: _SpxAdxDirection
-) -> str:
+def _spx_adx_summary(*, adx: float | None, zone: _SpxAdxZone, direction: _SpxAdxDirection) -> str:
     if adx is None:
         return "ADX 資料不足"
     zone_label = _SPX_ADX_ZONE_LABEL_ZH[zone]
@@ -1062,9 +1058,7 @@ def _vix_term_zone(ratio: float | None) -> _VixTermZone:
     return "inverted"
 
 
-def _vix_term_summary(
-    *, ratio: float | None, vix: float | None, vix3m: float | None
-) -> str:
+def _vix_term_summary(*, ratio: float | None, vix: float | None, vix3m: float | None) -> str:
     if ratio is None or vix is None or vix3m is None:
         return "VIX 期限結構資料不足"
     if ratio >= _VIX_INVERSION_THRESHOLD:
@@ -1150,9 +1144,7 @@ def _build_ratio_payload(
         {
             "date": _index_to_date(idx),
             numerator_key: _round_or_none(_safe_float(tail_joined[numerator_key].loc[idx])),
-            denominator_key: _round_or_none(
-                _safe_float(tail_joined[denominator_key].loc[idx])
-            ),
+            denominator_key: _round_or_none(_safe_float(tail_joined[denominator_key].loc[idx])),
             "ratio": _round_or_none(_safe_float(tail_ratio.loc[idx]), ndigits=5),
         }
         for idx in tail_joined.index
@@ -1280,9 +1272,7 @@ _SKEW_ZONE_LABEL_ZH: Final[dict[_SkewZone, str]] = {
 }
 
 
-def _skew_summary(
-    *, level: float, zone: _SkewZone, percentile: float | None
-) -> str:
+def _skew_summary(*, level: float, zone: _SkewZone, percentile: float | None) -> str:
     label = _SKEW_ZONE_LABEL_ZH[zone]
     pct_phrase = (
         f"，過去 1 年 {int(round(percentile * 100))}% 百分位"
@@ -1420,9 +1410,7 @@ _UNRATE_ZONE_LABEL_ZH: Final[dict[_UnrateZone, str]] = {
 }
 
 
-def _unrate_summary(
-    *, current_rate: float, sahm_value: float | None, zone: _UnrateZone
-) -> str:
+def _unrate_summary(*, current_rate: float, sahm_value: float | None, zone: _UnrateZone) -> str:
     label = _UNRATE_ZONE_LABEL_ZH[zone]
     if sahm_value is None:
         return f"失業率 {current_rate:.1f}%（{label}）"

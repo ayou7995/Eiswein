@@ -840,9 +840,7 @@ def get_market_indicator_series(
         unrate_series = build_macro_value_series(macro.get_all_for_series("UNRATE"))
         if unrate_series.empty or len(unrate_series.dropna()) < UNRATE_MIN_MONTHS:
             raise _insufficient(name)
-        return UnrateSeriesResponse.model_validate(
-            build_unrate_payload(unrate_series, window)
-        )
+        return UnrateSeriesResponse.model_validate(build_unrate_payload(unrate_series, window))
 
     # fed_rate: SUPPORTED_MARKET_INDICATORS already gates this branch.
     fed_series = build_macro_value_series(macro.get_all_for_series(FED_FUNDS_MACRO_SERIES))

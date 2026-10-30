@@ -40,9 +40,7 @@ def compute_macd(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorRes
     close = frame["close"]
     data_as_of = frame_as_of(frame)
     if len(close) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(close)}, data_as_of=data_as_of)
 
     result = compute_macd_series(close)
     macd_value = last_float(result.macd_line)

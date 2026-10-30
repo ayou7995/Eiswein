@@ -44,9 +44,7 @@ def compute_rsi(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     close = frame["close"].astype("float64")
     data_as_of = frame_as_of(frame)
     if len(close) < _MIN_DAILY_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(close)}, data_as_of=data_as_of)
 
     daily_rsi = wilder_rsi(close, _LENGTH)
     daily_value = last_float(daily_rsi)

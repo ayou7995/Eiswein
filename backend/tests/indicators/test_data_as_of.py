@@ -235,13 +235,12 @@ def test_fed_rate_propagates_monthly_frame_as_of() -> None:
     assert result.data_as_of == fed_frame.index[-1].date()
 
 
-
-
 # --- rsp_spy / hyg_ief: cross-source min ----------------------------------
 
 
 def test_rsp_spy_propagates_min_of_spy_and_rsp() -> None:
     from app.indicators.market_regime.rsp_spy import compute_rsp_spy
+
     spy_long = _ohlcv(400.0 + np.arange(40, dtype="float64") * 0.5, start="2026-04-01")
     rsp_short = _ohlcv(200.0 + np.arange(30, dtype="float64") * 0.7, start="2026-04-01")
     ctx = IndicatorContext(today=date(2026, 6, 6), spx_frame=spy_long, rsp_frame=rsp_short)
@@ -251,6 +250,7 @@ def test_rsp_spy_propagates_min_of_spy_and_rsp() -> None:
 
 def test_hyg_ief_propagates_min_of_hyg_and_ief() -> None:
     from app.indicators.market_regime.hyg_ief import compute_hyg_ief
+
     hyg_long = _ohlcv(80.0 + np.arange(40, dtype="float64") * 0.1, start="2026-04-01")
     ief_short = _ohlcv(np.full(30, 95.0), start="2026-04-01")
     ctx = IndicatorContext(today=date(2026, 6, 6), hyg_frame=hyg_long, ief_frame=ief_short)
@@ -260,6 +260,7 @@ def test_hyg_ief_propagates_min_of_hyg_and_ief() -> None:
 
 def test_skew_propagates_skew_frame_as_of() -> None:
     from app.indicators.market_regime.skew import compute_skew
+
     skew_frame = _ohlcv(np.full(20, 120.0), start="2026-05-01")
     ctx = IndicatorContext(today=date(2026, 6, 6), skew_frame=skew_frame)
     result = compute_skew(None, ctx)
@@ -270,6 +271,7 @@ def test_unrate_propagates_macro_frame_as_of() -> None:
     """UNRATE monthly publication lag flows through honestly — FRED's
     latest UNRATE observation is at least a few weeks behind ``today``."""
     from app.indicators.market_regime.unrate import compute_unrate
+
     monthly_idx = pd.date_range("2025-01-01", periods=15, freq="MS")
     unrate_frame = pd.DataFrame({"value": [3.7] * 15}, index=monthly_idx)
     ctx = IndicatorContext(today=date(2026, 6, 6), macro_frames={"UNRATE": unrate_frame})

@@ -234,9 +234,7 @@ def test_split_bulk_frame_empty_returns_empty_per_symbol() -> None:
 def _bulk_frame_with_today(symbols: list[str], today_et) -> pd.DataFrame:
     """Like ``_bulk_frame`` but the last bar is today (NYSE tz)."""
     yesterday = pd.Timestamp(today_et) - pd.Timedelta(days=1)
-    idx = pd.DatetimeIndex(
-        [yesterday, pd.Timestamp(today_et)], tz="America/New_York"
-    )
+    idx = pd.DatetimeIndex([yesterday, pd.Timestamp(today_et)], tz="America/New_York")
     rows = []
     columns: list[tuple[str, str]] = []
     for sym in symbols:
@@ -285,9 +283,9 @@ async def test_history_cache_strips_today_before_writing(
             row_dates = cached.index.tz_convert("America/New_York").date
         else:
             row_dates = cached.index.date
-        assert today_et.date() not in set(row_dates), (
-            "cache contains today's partial bar — would trap stale state until tomorrow"
-        )
+        assert today_et.date() not in set(
+            row_dates
+        ), "cache contains today's partial bar — would trap stale state until tomorrow"
 
 
 @pytest.mark.asyncio
@@ -321,9 +319,9 @@ async def test_bulk_download_composes_cached_history_with_fresh_today(
     # the parquet cache exists for the history.
     calls_before = call_count["n"]
     await source.bulk_download(["SPY"], period="2y")
-    assert call_count["n"] > calls_before, (
-        "today's bar must be refetched on every call, not served from cache"
-    )
+    assert (
+        call_count["n"] > calls_before
+    ), "today's bar must be refetched on every call, not served from cache"
 
 
 @pytest.mark.asyncio
@@ -345,6 +343,6 @@ async def test_fetch_today_running_never_caches(
     await source.fetch_today_running(["SPY"])
     await source.fetch_today_running(["SPY"])
     assert call_count["n"] == 2, "fetch_today_running must not cache"
-    assert not list((tmp_path / "yfinance").glob("*.parquet")), (
-        "fetch_today_running must not write any cache files"
-    )
+    assert not list(
+        (tmp_path / "yfinance").glob("*.parquet")
+    ), "fetch_today_running must not write any cache files"

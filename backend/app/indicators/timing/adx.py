@@ -72,9 +72,7 @@ def compute_adx(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
         return insufficient_result(NAME)
     data_as_of = frame_as_of(frame)
     if len(frame) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(frame)}, data_as_of=data_as_of)
 
     result = wilder_adx(frame["high"], frame["low"], frame["close"], length=_LENGTH)
     adx_value = last_float(result.adx)

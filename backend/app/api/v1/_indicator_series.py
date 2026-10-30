@@ -1103,9 +1103,10 @@ def build_cho_payload(
     mfm = mfm.fillna(0.0)
     money_flow_volume = mfm * volume
     ad_line = money_flow_volume.cumsum()
-    cho_series = ad_line.ewm(span=_CHO_FAST, adjust=False).mean() - ad_line.ewm(
-        span=_CHO_SLOW, adjust=False
-    ).mean()
+    cho_series = (
+        ad_line.ewm(span=_CHO_FAST, adjust=False).mean()
+        - ad_line.ewm(span=_CHO_SLOW, adjust=False).mean()
+    )
 
     tail = cho_series.iloc[-days:]
     series = [

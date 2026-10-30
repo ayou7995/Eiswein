@@ -57,9 +57,7 @@ def compute_skew(_frame: object, context: IndicatorContext) -> IndicatorResult:
     series = skew["close"].astype("float64").dropna()
     data_as_of = frame_as_of(skew)
     if len(series) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(series)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(series)}, data_as_of=data_as_of)
 
     level = float(series.iloc[-1])
     prior = float(series.iloc[-(_TREND_WINDOW + 1)])

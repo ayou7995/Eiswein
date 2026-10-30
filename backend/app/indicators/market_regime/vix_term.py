@@ -62,9 +62,7 @@ def compute_vix_term(_frame: object, context: IndicatorContext) -> IndicatorResu
     # Cross-source min: as-of date is whichever FRED series last published.
     data_as_of = _min_date(frame_as_of(vix_frame), frame_as_of(vix3m_frame))
     if len(vix_frame) < _MIN_BARS or len(vix3m_frame) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars_vix": len(vix_frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars_vix": len(vix_frame)}, data_as_of=data_as_of)
 
     vix_value = last_float(vix_frame["value"])
     vix3m_value = last_float(vix3m_frame["value"])

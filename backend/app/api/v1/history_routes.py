@@ -1297,11 +1297,7 @@ class _Position:
     @property
     def cost_basis(self) -> float:
         """Weighted average cost per share across all buys this cycle."""
-        return (
-            self.total_invested / self.total_qty_bought
-            if self.total_qty_bought > 0
-            else 0.0
-        )
+        return self.total_invested / self.total_qty_bought if self.total_qty_bought > 0 else 0.0
 
     def is_flat(self) -> bool:
         # Float epsilon — partial sells can leave 1e-10 fragments.
@@ -1356,12 +1352,8 @@ def _close_position_to_trade(
     total_proceeds = p.total_proceeds + final_proceeds
     total_qty_sold = p.total_qty_sold + p.qty
     pnl_abs = total_proceeds - p.total_invested
-    pnl_pct = (
-        (pnl_abs / p.total_invested) * 100 if p.total_invested > 0 else 0.0
-    )
-    avg_exit_price = (
-        total_proceeds / total_qty_sold if total_qty_sold > 0 else close_price
-    )
+    pnl_pct = (pnl_abs / p.total_invested) * 100 if p.total_invested > 0 else 0.0
+    avg_exit_price = total_proceeds / total_qty_sold if total_qty_sold > 0 else close_price
     return PnlTrade(
         entry_date=p.entry_date or exit_date,
         entry_price=round(p.cost_basis, 4),
@@ -1421,9 +1413,7 @@ def _simulate_pnl(
 
     spy_start = float(spy_price_by_date.get(start_date) or 0)
     stock_start = float(price_by_date[start_date])
-    stock_baseline_qty = (
-        _PNL_STARTING_CAPITAL / stock_start if stock_start > 0 else 0.0
-    )
+    stock_baseline_qty = _PNL_STARTING_CAPITAL / stock_start if stock_start > 0 else 0.0
 
     for d in all_dates:
         close = float(price_by_date[d])
@@ -1469,15 +1459,10 @@ def _simulate_pnl(
                                 cash -= delta_value
                             elif delta_value < 0:
                                 sell_qty = min(-delta_value / close, position.qty)
-                                if (
-                                    target_pct == 0
-                                    or position.qty - sell_qty <= 1e-9
-                                ):
+                                if target_pct == 0 or position.qty - sell_qty <= 1e-9:
                                     # Full close → record trade and reset.
                                     trades.append(
-                                        _close_position_to_trade(
-                                            position, close, d, "signal_exit"
-                                        )
+                                        _close_position_to_trade(position, close, d, "signal_exit")
                                     )
                                     cash += position.qty * close
                                     position = _Position()
@@ -1514,9 +1499,7 @@ def _simulate_pnl(
         last_priced_date = all_dates[-1]
         last_close = float(price_by_date[last_priced_date])
         trades.append(
-            _close_position_to_trade(
-                position, last_close, last_priced_date, "end_of_window"
-            )
+            _close_position_to_trade(position, last_close, last_priced_date, "end_of_window")
         )
         cash += position.qty * last_close
         position = _Position()
@@ -1528,9 +1511,7 @@ def _simulate_pnl(
     spy_total_return = (spy_end / spy_start - 1) * 100 if spy_start > 0 else 0.0
     spy_alpha = total_return_pct - spy_total_return
     stock_end = float(price_by_date[last_priced_date])
-    stock_total_return = (
-        (stock_end / stock_start - 1) * 100 if stock_start > 0 else 0.0
-    )
+    stock_total_return = (stock_end / stock_start - 1) * 100 if stock_start > 0 else 0.0
     stock_alpha = total_return_pct - stock_total_return
 
     n_trades = len(trades)
@@ -1549,15 +1530,9 @@ def _simulate_pnl(
             daily_returns.append(curr / prev - 1)
     if len(daily_returns) > 1:
         mean_ret = sum(daily_returns) / len(daily_returns)
-        var_ret = sum((r - mean_ret) ** 2 for r in daily_returns) / (
-            len(daily_returns) - 1
-        )
+        var_ret = sum((r - mean_ret) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
         stdev_ret = var_ret**0.5
-        sharpe = (
-            (mean_ret / stdev_ret) * (_TRADING_DAYS_PER_YEAR**0.5)
-            if stdev_ret > 0
-            else 0.0
-        )
+        sharpe = (mean_ret / stdev_ret) * (_TRADING_DAYS_PER_YEAR**0.5) if stdev_ret > 0 else 0.0
     else:
         sharpe = 0.0
 
@@ -1573,9 +1548,7 @@ def _simulate_pnl(
                 max_dd = dd
 
     total_days = len(daily_values)
-    days_in_market_pct = (
-        days_in_market / total_days * 100 if total_days else 0.0
-    )
+    days_in_market_pct = days_in_market / total_days * 100 if total_days else 0.0
 
     summary = PnlSummary(
         starting_capital=_PNL_STARTING_CAPITAL,
@@ -1980,9 +1953,7 @@ def time_split_validation(
     if watchlist.get(user_id=user_id, symbol=validated) is None:
         raise NotFoundError(details={"symbol": validated})
 
-    all_snapshots = sorted(
-        snapshots.list_for_symbol(validated), key=lambda s: s.date
-    )
+    all_snapshots = sorted(snapshots.list_for_symbol(validated), key=lambda s: s.date)
     if days is not None and all_snapshots:
         latest = max(s.date for s in all_snapshots)
         cutoff = latest - timedelta(days=days)
@@ -2051,8 +2022,6 @@ def time_split_validation(
         train=train_half,
         test=test_half,
         spy_alpha_delta=round(test_half.spy_alpha_pct - train_half.spy_alpha_pct, 3),
-        stock_alpha_delta=round(
-            test_half.stock_alpha_pct - train_half.stock_alpha_pct, 3
-        ),
+        stock_alpha_delta=round(test_half.stock_alpha_pct - train_half.stock_alpha_pct, 3),
         sharpe_delta=round(test_half.sharpe_ratio - train_half.sharpe_ratio, 3),
     )

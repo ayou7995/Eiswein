@@ -40,9 +40,7 @@ _DIRECTION_NAMES: Final[frozenset[str]] = frozenset(
 # the EnhancedDetail UI but it's still a timing-flavoured indicator.
 # v2 Phase 3: TTM Squeeze joins the timing set as a breakout-direction
 # gauge — the squeeze fires, the squeeze ignites which way.
-_TIMING_NAMES: Final[frozenset[str]] = frozenset(
-    {"macd", "bollinger", "adx", "atr", "ttm_squeeze"}
-)
+_TIMING_NAMES: Final[frozenset[str]] = frozenset({"macd", "bollinger", "adx", "atr", "ttm_squeeze"})
 # Per-ticker macro + market-regime indicators both surface under the
 # "macro" category at the domain layer — the frontend can split them
 # visually (大盤 vs 總經) using the indicator_name. SPX ADX (v2 Phase 2)

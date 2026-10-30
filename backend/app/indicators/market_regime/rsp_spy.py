@@ -69,13 +69,9 @@ def compute_rsp_spy(_frame: object, context: IndicatorContext) -> IndicatorResul
             data_as_of=data_as_of,
         )
 
-    joined = pd.concat(
-        [spy["close"].rename("spy"), rsp["close"].rename("rsp")], axis=1
-    ).dropna()
+    joined = pd.concat([spy["close"].rename("spy"), rsp["close"].rename("rsp")], axis=1).dropna()
     if len(joined) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars_joined": len(joined)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars_joined": len(joined)}, data_as_of=data_as_of)
 
     ratio = joined["rsp"] / joined["spy"]
     current_ratio = float(ratio.iloc[-1])
@@ -121,9 +117,7 @@ def _percent_slope_per_day(series: pd.Series) -> float:
     return total_pct / len(series)
 
 
-def _classify(
-    *, slope_pct_per_day: float, slope_20d_pct: float
-) -> tuple[SignalToneLiteral, str]:
+def _classify(*, slope_pct_per_day: float, slope_20d_pct: float) -> tuple[SignalToneLiteral, str]:
     suffix = f"RSP/SPY 20D {slope_20d_pct:+.2f}%"
     if slope_pct_per_day >= _SLOPE_GREEN_PCT_PER_DAY:
         return SignalTone.GREEN, f"{suffix}（廣度健康）"
