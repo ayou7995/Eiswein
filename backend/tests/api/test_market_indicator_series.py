@@ -873,7 +873,6 @@ def test_range_all_rejects_unknown_value(
     assert resp.status_code == 422
 
 
-
 def test_spx_adx_series_shape(
     client: TestClient,
     test_password: str,
@@ -902,7 +901,6 @@ def test_spx_adx_series_shape(
     assert "SPX ADX" in body["summary_zh"]
 
 
-
 def test_vix_term_returns_404_when_history_too_short(
     client: TestClient,
     test_password: str,
@@ -915,5 +913,3 @@ def test_vix_term_returns_404_when_history_too_short(
     resp = client.get("/api/v1/market/indicator/vix_term/series")
     assert resp.status_code == 404
     assert resp.json()["error"]["details"]["reason"] == "insufficient_history"
-
-

@@ -26,9 +26,7 @@ def _ohlcv(close_pattern: np.ndarray, *, range_pct: float = 0.01) -> pd.DataFram
     high = close + half_range
     low = close - half_range
     volume = pd.Series(np.full(n, 1_000_000, dtype="int64"), index=idx)
-    return pd.DataFrame(
-        {"open": close, "high": high, "low": low, "close": close, "volume": volume}
-    )
+    return pd.DataFrame({"open": close, "high": high, "low": low, "close": close, "volume": volume})
 
 
 def _ctx() -> IndicatorContext:

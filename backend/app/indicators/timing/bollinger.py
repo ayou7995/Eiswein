@@ -35,9 +35,7 @@ def compute_bollinger(frame: pd.DataFrame, context: IndicatorContext) -> Indicat
     close = frame["close"]
     data_as_of = frame_as_of(frame)
     if len(close) < _LENGTH + 1:
-        return insufficient_result(
-            NAME, detail={"bars": len(close)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(close)}, data_as_of=data_as_of)
 
     bands = bollinger_bands(close, length=_LENGTH)
     upper = last_float(bands.upper)

@@ -46,9 +46,7 @@ def compute_dxy(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     series = dxy["value"].astype("float64").dropna()
     # Need 20-bar SMA + 5 more bars for the streak comparison.
     if len(series) < _SMA_WINDOW + _STREAK + 1:
-        return insufficient_result(
-            NAME, detail={"bars": len(series)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(series)}, data_as_of=data_as_of)
 
     ma = sma(series, _SMA_WINDOW).dropna()
     if len(ma) < _STREAK + 1:

@@ -736,6 +736,7 @@ def test_range_all_returns_full_five_year_window(
     assert resp.status_code == 200
     assert len(resp.json()["series"]) == 1260
 
+
 def test_adx_series_shape(
     client: TestClient,
     test_password: str,
@@ -810,7 +811,6 @@ def test_atr_series_shape(
     current = body["current"]
     assert current["band"] in {"calm", "elevated", "high", "unknown"}
     assert body["thresholds"] == {"calm": 1.5, "elevated": 3.5}
-
 
 
 def test_ttm_squeeze_series_shape(

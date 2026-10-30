@@ -30,9 +30,7 @@ def _ohlcv(
     # Re-derive close so it sits exactly at close_in_range of [low,high]
     high = low + (close - low) / close_in_range
     vol = pd.Series(np.full(n, volume, dtype="int64"), index=idx)
-    return pd.DataFrame(
-        {"open": close, "high": high, "low": low, "close": close, "volume": vol}
-    )
+    return pd.DataFrame({"open": close, "high": high, "low": low, "close": close, "volume": vol})
 
 
 def _ctx() -> IndicatorContext:

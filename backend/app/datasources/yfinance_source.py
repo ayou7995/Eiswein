@@ -198,9 +198,7 @@ class YFinanceSource(DataSource):
             return {}
 
         try:
-            raw = await asyncio.to_thread(
-                _download_with_retry, cleaned, period="1d", interval="1d"
-            )
+            raw = await asyncio.to_thread(_download_with_retry, cleaned, period="1d", interval="1d")
         except Exception as exc:
             logger.warning(
                 "yfinance_today_running_failed",
@@ -265,9 +263,7 @@ class YFinanceSource(DataSource):
     retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
     reraise=True,
 )
-def _download_with_retry(
-    symbols: list[str], *, period: str, interval: str = "1d"
-) -> pd.DataFrame:
+def _download_with_retry(symbols: list[str], *, period: str, interval: str = "1d") -> pd.DataFrame:
     """Single bulk upstream call. Returns raw yfinance multi-ticker frame.
 
     ``interval`` defaults to daily; intraday refresh passes ``5m`` to

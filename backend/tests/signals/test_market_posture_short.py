@@ -19,9 +19,7 @@ def _build_short(greens: int, reds: int, yellows: int = 0) -> dict[str, Indicato
         msg = "green + red + yellow votes exceed 4"
         raise ValueError(msg)
     signals: list[SignalToneLiteral] = (
-        [SignalTone.GREEN] * greens
-        + [SignalTone.RED] * reds
-        + [SignalTone.YELLOW] * yellows
+        [SignalTone.GREEN] * greens + [SignalTone.RED] * reds + [SignalTone.YELLOW] * yellows
     )
     while len(signals) < 4:
         signals.append(SignalTone.YELLOW)
@@ -62,8 +60,7 @@ def test_short_posture_all_yellow_is_normal() -> None:
 
 def test_short_posture_all_insufficient_is_normal() -> None:
     results = {
-        name: _make_result(name, data_sufficient=False)
-        for name in REGIME_SHORT_INDICATOR_NAMES
+        name: _make_result(name, data_sufficient=False) for name in REGIME_SHORT_INDICATOR_NAMES
     }
     assert classify_market_posture_short(results) == MarketPosture.NORMAL
 

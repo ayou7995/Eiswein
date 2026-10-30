@@ -57,9 +57,7 @@ def compute_unrate(_frame: object, context: IndicatorContext) -> IndicatorResult
     series = unrate["value"].astype("float64").dropna()
     data_as_of = frame_as_of(unrate)
     if len(series) < _MIN_MONTHS:
-        return insufficient_result(
-            NAME, detail={"months": len(series)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"months": len(series)}, data_as_of=data_as_of)
 
     current_rate = float(series.iloc[-1])
     prior_rate = float(series.iloc[-2])

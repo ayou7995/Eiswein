@@ -59,9 +59,7 @@ def compute_vix(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResu
     data_as_of = frame_as_of(vix)
     series = vix["value"].astype("float64").dropna()
     if len(series) < _TREND_WINDOW + 1:
-        return insufficient_result(
-            NAME, detail={"bars": len(series)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(series)}, data_as_of=data_as_of)
 
     level = float(series.iloc[-1])
     prior = float(series.iloc[-(_TREND_WINDOW + 1)])

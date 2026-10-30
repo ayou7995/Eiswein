@@ -225,6 +225,28 @@ def test_token_alert_renders_and_sends(settings: Settings) -> None:
     assert "schwab" in sent_msg.as_string()
 
 
+def test_token_alert_expired_wording(settings: Settings) -> None:
+    cfg = _configured_settings(settings)
+    smtp_instance = MagicMock()
+    smtp_ctx = MagicMock()
+    smtp_ctx.__enter__.return_value = smtp_instance
+    smtp_ctx.__exit__.return_value = False
+
+    with patch.object(email_dispatcher.smtplib, "SMTP", return_value=smtp_ctx):
+        ok = email_dispatcher.send_token_expiry_alert(
+            days_remaining=0,
+            expires_at=datetime(2026, 4, 21, 9, 0, tzinfo=UTC),
+            broker="schwab",
+            settings=cfg,
+            expired=True,
+        )
+
+    assert ok is True
+    sent_msg = smtp_instance.send_message.call_args.args[0]
+    assert sent_msg["Subject"] == "[Eiswein] Broker token expired"
+    assert "expires in" not in sent_msg["Subject"]
+
+
 def test_password_never_leaks_into_rendered_body(settings: Settings) -> None:
     cfg = _configured_settings(settings)
     result = _base_result()

@@ -59,9 +59,7 @@ def compute_spx_adx(frame: pd.DataFrame, context: IndicatorContext) -> Indicator
         return insufficient_result(NAME)
     data_as_of = frame_as_of(spx)
     if len(spx) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(spx)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(spx)}, data_as_of=data_as_of)
 
     result = wilder_adx(spx["high"], spx["low"], spx["close"], length=_LENGTH)
     adx_value = last_float(result.adx)

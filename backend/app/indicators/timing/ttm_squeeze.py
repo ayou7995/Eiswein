@@ -57,9 +57,7 @@ _FIRE_WINDOW = 5
 _MIN_BARS = _LENGTH * 2 + _FIRE_WINDOW
 
 
-def compute_ttm_squeeze(
-    frame: pd.DataFrame, context: IndicatorContext
-) -> IndicatorResult:
+def compute_ttm_squeeze(frame: pd.DataFrame, context: IndicatorContext) -> IndicatorResult:
     _ = context
     if frame is None or frame.empty:
         return insufficient_result(NAME)
@@ -68,9 +66,7 @@ def compute_ttm_squeeze(
         return insufficient_result(NAME)
     data_as_of = frame_as_of(frame)
     if len(frame) < _MIN_BARS:
-        return insufficient_result(
-            NAME, detail={"bars": len(frame)}, data_as_of=data_as_of
-        )
+        return insufficient_result(NAME, detail={"bars": len(frame)}, data_as_of=data_as_of)
 
     high = frame["high"].astype("float64")
     low = frame["low"].astype("float64")

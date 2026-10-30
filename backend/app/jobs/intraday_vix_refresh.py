@@ -104,12 +104,8 @@ async def run(
             logger.info("intraday_vix_no_bar", symbol=symbol)
             continue
         close = float(last_close)
-        rows.append(
-            MacroRow(series_id=series_id, date=bar_date, value=Decimal(str(close)))
-        )
-        written.append(
-            {"series_id": series_id, "date": bar_date.isoformat(), "value": close}
-        )
+        rows.append(MacroRow(series_id=series_id, date=bar_date, value=Decimal(str(close))))
+        written.append({"series_id": series_id, "date": bar_date.isoformat(), "value": close})
 
     if not rows:
         logger.warning("intraday_vix_no_data", symbols=list(_SYMBOL_TO_SERIES))
